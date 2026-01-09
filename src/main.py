@@ -96,32 +96,35 @@ class PolymarketAlertBot:
     
     async def start(self):
         """Start the bot."""
-        logger.info("bot_starting")
+        print("Bot iniciando...", flush=True)
         
         # Connect to database
         await self.db.connect()
+        print("DB conectada OK", flush=True)
         
         # Send startup message
         await self.notifier.send_startup_message()
+        print("Mensaje de startup enviado", flush=True)
         
-        logger.info("bot_started", poll_interval=self.poll_interval)
+        print(f"Iniciando loop principal (cada {self.poll_interval}s)", flush=True)
         
         # Main loop
         while True:
             try:
                 await self.poll_cycle()
             except Exception as e:
-                logger.error("poll_cycle_error", error=str(e))
+                print(f"Error en ciclo: {e}", flush=True)
             
             await asyncio.sleep(self.poll_interval)
     
     async def poll_cycle(self):
         """Ejecutar un ciclo de polling."""
-        logger.info("ciclo_polling_inicio")
+        print("--- Ciclo de polling ---", flush=True)
         
         async with PolymarketClient() as client:
             # Obtener trades recientes de toda la plataforma (endpoint público)
             trades = await client.get_recent_trades(limit=200)
+            print(f"Trades obtenidos: {len(trades)}", flush=True)
             
             if not trades:
                 logger.warning("no_trades_encontrados")
