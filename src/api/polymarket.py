@@ -1,5 +1,6 @@
 """Cliente de API de Polymarket para obtener mercados y trades."""
 import httpx
+import re
 from datetime import datetime
 from typing import Optional
 import structlog
@@ -11,6 +12,44 @@ logger = structlog.get_logger()
 # URLs base de API
 GAMMA_API_URL = "https://gamma-api.polymarket.com"
 DATA_API_URL = "https://data-api.polymarket.com"
+
+# Palabras clave para EXCLUIR (deportes, crypto corto plazo)
+EXCLUDE_KEYWORDS = [
+    # Deportes
+    r'\bNBA\b', r'\bNFL\b', r'\bNHL\b', r'\bMLB\b', r'\bMLS\b',
+    r'\bvs\.?\b', r'\bSpread:', r'\bPoints\b', r'\bGoals\b',
+    r'Lakers', r'Warriors', r'Celtics', r'Knicks', r'Bulls', r'Heat',
+    r'Mavericks', r'Nuggets', r'Clippers', r'Nets', r'Hawks', r'Jazz',
+    r'Grizzlies', r'Pelicans', r'Cavaliers', r'Bucks', r'Pistons',
+    r'Chiefs', r'Eagles', r'Cowboys', r'Patriots', r'Packers',
+    r'Raiders', r'Broncos', r'Chargers', r'Ravens', r'Steelers',
+    r'49ers', r'Seahawks', r'Cardinals', r'Rams', r'Lions', r'Bears',
+    r'Vikings', r'Saints', r'Falcons', r'Panthers', r'Buccaneers',
+    r'Jets', r'Bills', r'Dolphins', r'Texans', r'Colts', r'Titans', r'Jaguars',
+    r'Commanders', r'Giants', r'Bengals', r'Browns', r'Red Sox', r'Yankees',
+    r'Blue Jackets', r'Golden Knights', r'Penguins', r'Bruins', r'Rangers',
+    r'Redhawks', r'Beavers', r'Raiders', r'Miners', r'Ole Miss', r'Miami vs',
+    r'Middle Tennessee', r'UTEP', r'Seattle Redhawks', r'Oregon State',
+    r'Tottenham', r'Champions League', r'Premier League', r'La Liga',
+    r'HLTV', r'esports', r'Awper',
+    # Crypto corto plazo (apuestas de 15 min)
+    r'Up or Down', r'updown', r'\d+PM.*ET', r'\d+AM.*ET',
+    r'Bitcoin Up', r'Ethereum Up', r'Solana Up', r'XRP Up',
+    r'BTC Up', r'ETH Up', r'SOL Up',
+]
+
+def is_insider_relevant(title: str) -> bool:
+    """Verifica si el mercado es relevante para insider info (no deportes/crypto corto plazo)."""
+    if not title:
+        return False
+    
+    title_upper = title.upper()
+    
+    for pattern in EXCLUDE_KEYWORDS:
+        if re.search(pattern, title, re.IGNORECASE):
+            return False
+    
+    return True
 
 
 class PolymarketClient:
@@ -34,26 +73,42 @@ class PolymarketClient:
             raise RuntimeError("Cliente no inicializado. Usa 'async with'.")
         return self._client
     
-    async def get_recent_trades(self, limit: int = 100) -> list[Trade]:
+    async def get_recent_trades(self, limit: int = 100, filter_insider: bool = True) -> list[Trade]:
         """Obtener trades recientes de toda la plataforma (endpoint público)."""
         try:
+            # Pedimos más trades porque filtraremos muchos
+            fetch_limit = limit * 3 if filter_insider else limit
+            
             response = await self.client.get(
                 f"{DATA_API_URL}/trades",
-                params={"limit": limit}
+                params={"limit": fetch_limit}
             )
             response.raise_for_status()
             data = response.json()
             
             trades = []
+            filtered_count = 0
+            
             for item in data:
                 try:
+                    title = item.get("title", "")
+                    
+                    # Filtrar deportes y crypto corto plazo
+                    if filter_insider and not is_insider_relevant(title):
+                        filtered_count += 1
+                        continue
+                    
                     trade = self._parse_trade(item)
                     if trade:
                         trades.append(trade)
+                        
+                    if len(trades) >= limit:
+                        break
+                        
                 except Exception as e:
                     logger.warning("error_parseando_trade", error=str(e))
             
-            logger.info("trades_obtenidos", count=len(trades))
+            print(f"Trades: {len(trades)} relevantes, {filtered_count} filtrados (deportes/crypto)", flush=True)
             return trades
             
         except httpx.HTTPError as e:
