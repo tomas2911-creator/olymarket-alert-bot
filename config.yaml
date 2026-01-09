@@ -1,0 +1,44 @@
+# Polymarket Insider Alert Bot - Configuration
+
+# Polling settings
+polling:
+  interval_seconds: 60  # How often to check for new trades
+  max_markets: 50       # Maximum markets to monitor per cycle
+
+# Detection thresholds
+detection:
+  # Wallet freshness
+  fresh_wallet_max_trades: 5      # Wallet is "fresh" if <= this many trades
+  fresh_wallet_max_days: 30       # Or if first seen within this many days
+  
+  # Size anomaly (absolute)
+  min_size_usd: 2000              # Minimum trade size to consider
+  
+  # Size anomaly (relative to market)
+  market_percentile: 95           # Trade size >= this percentile triggers
+  
+  # Wallet behavior shift
+  wallet_size_multiplier: 5       # Trade size >= X times wallet average
+  
+  # Concentration
+  concentration_threshold_pct: 10  # Trade as % of recent volume
+
+# Scoring system
+scoring:
+  fresh_wallet_points: 2
+  large_size_points: 2
+  market_anomaly_points: 2
+  wallet_shift_points: 3
+  concentration_points: 3
+  alert_threshold: 5              # Minimum score to trigger alert
+
+# Alert settings
+alerts:
+  cooldown_hours: 6               # Don't re-alert same wallet+market within this time
+  max_alerts_per_hour: 10         # Rate limit alerts
+
+# Market filters (optional - leave empty to monitor all)
+market_filters:
+  categories: []                  # e.g., ["politics", "crypto", "sports"]
+  min_volume_24h: 0               # Minimum 24h volume to monitor
+  exclude_slugs: []               # Market slugs to ignore
