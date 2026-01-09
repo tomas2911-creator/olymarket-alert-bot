@@ -17,13 +17,22 @@ from dotenv import load_dotenv
 
 print("Imports básicos OK", flush=True)
 
-from src.api.polymarket import PolymarketClient
-from src.storage.database import Database
-from src.detection.analyzer import AnomalyAnalyzer
-from src.alerts.telegram import TelegramNotifier
+try:
+    from src.api.polymarket import PolymarketClient
+    print("Import PolymarketClient OK", flush=True)
+    from src.storage.database import Database
+    print("Import Database OK", flush=True)
+    from src.detection.analyzer import AnomalyAnalyzer
+    print("Import AnomalyAnalyzer OK", flush=True)
+    from src.alerts.telegram import TelegramNotifier
+    print("Import TelegramNotifier OK", flush=True)
+except Exception as e:
+    print(f"ERROR en imports: {e}", flush=True)
+    raise
 
 # Load environment variables
 load_dotenv()
+print("dotenv cargado OK", flush=True)
 
 # Configure structured logging
 structlog.configure(
