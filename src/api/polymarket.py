@@ -13,7 +13,7 @@ logger = structlog.get_logger()
 GAMMA_API_URL = "https://gamma-api.polymarket.com"
 DATA_API_URL = "https://data-api.polymarket.com"
 
-# Palabras clave para EXCLUIR (deportes, crypto corto plazo)
+# Palabras clave para EXCLUIR (deportes, crypto)
 EXCLUDE_KEYWORDS = [
     # Deportes
     r'\bNBA\b', r'\bNFL\b', r'\bNHL\b', r'\bMLB\b', r'\bMLS\b',
@@ -32,10 +32,17 @@ EXCLUDE_KEYWORDS = [
     r'Middle Tennessee', r'UTEP', r'Seattle Redhawks', r'Oregon State',
     r'Tottenham', r'Champions League', r'Premier League', r'La Liga',
     r'HLTV', r'esports', r'Awper',
-    # Crypto corto plazo (apuestas de 15 min)
+    # CRYPTO - todas las predicciones
+    r'\bBitcoin\b', r'\bBTC\b', r'\bEthereum\b', r'\bETH\b',
+    r'\bSolana\b', r'\bSOL\b', r'\bXRP\b', r'\bDogecoin\b', r'\bDOGE\b',
+    r'\bCardano\b', r'\bADA\b', r'\bPolkadot\b', r'\bDOT\b',
+    r'\bAvalanche\b', r'\bAVAX\b', r'\bChainlink\b', r'\bLINK\b',
+    r'\bPolygon\b', r'\bMATIC\b', r'\bLitecoin\b', r'\bLTC\b',
+    r'\bUniswap\b', r'\bUNI\b', r'\bShiba\b', r'\bSHIB\b',
+    r'\bPepe\b', r'\bMeme coin\b', r'\bcrypto\b', r'\bcryptocurrency\b',
     r'Up or Down', r'updown', r'\d+PM.*ET', r'\d+AM.*ET',
-    r'Bitcoin Up', r'Ethereum Up', r'Solana Up', r'XRP Up',
-    r'BTC Up', r'ETH Up', r'SOL Up',
+    r'price of', r'above \$', r'below \$', r'close above', r'close below',
+    r'all-time high', r'ATH', r'\bNFT\b', r'\bNFTs\b',
 ]
 
 def is_insider_relevant(title: str) -> bool:
