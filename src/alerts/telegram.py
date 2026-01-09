@@ -11,17 +11,25 @@ logger = structlog.get_logger()
 
 
 class TelegramNotifier:
-    """Sends alerts to Telegram."""
+    """Envía alertas a múltiples usuarios de Telegram."""
     
-    def __init__(self, bot_token: Optional[str] = None, chat_id: Optional[str] = None):
+    def __init__(self, bot_token: Optional[str] = None, chat_ids: Optional[str] = None):
         self.bot_token = bot_token or os.getenv("TELEGRAM_BOT_TOKEN")
-        self.chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
+        chat_ids_str = chat_ids or os.getenv("TELEGRAM_CHAT_IDS") or os.getenv("TELEGRAM_CHAT_ID")
+        
+        # Soporta múltiples IDs separados por coma: "123,456,789"
+        self.chat_ids: list[str] = []
+        if chat_ids_str:
+            self.chat_ids = [cid.strip() for cid in chat_ids_str.split(",") if cid.strip()]
+        
         self._bot: Optional[Bot] = None
         
         if not self.bot_token:
-            logger.warning("telegram_bot_token_missing")
-        if not self.chat_id:
-            logger.warning("telegram_chat_id_missing")
+            print("WARNING: TELEGRAM_BOT_TOKEN no configurado", flush=True)
+        if not self.chat_ids:
+            print("WARNING: TELEGRAM_CHAT_IDS no configurado", flush=True)
+        else:
+            print(f"Telegram configurado para {len(self.chat_ids)} usuario(s)", flush=True)
     
     @property
     def bot(self) -> Bot:
@@ -31,67 +39,66 @@ class TelegramNotifier:
     
     @property
     def is_configured(self) -> bool:
-        return bool(self.bot_token and self.chat_id)
+        return bool(self.bot_token and self.chat_ids)
+    
+    async def _send_to_all(self, text: str, disable_preview: bool = False) -> int:
+        """Envía mensaje a todos los chat IDs configurados. Retorna cantidad de envíos exitosos."""
+        success_count = 0
+        for chat_id in self.chat_ids:
+            try:
+                await self.bot.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                    disable_web_page_preview=disable_preview
+                )
+                success_count += 1
+            except Exception as e:
+                print(f"Error enviando a {chat_id}: {e}", flush=True)
+        return success_count
     
     async def send_alert(self, candidate: AlertCandidate) -> bool:
-        """Send an alert for a suspicious trade."""
+        """Envía alerta a todos los usuarios."""
         if not self.is_configured:
-            logger.warning("telegram_not_configured")
+            print("Telegram no configurado", flush=True)
             return False
         
         try:
             message = self._format_message(candidate)
-            await self.bot.send_message(
-                chat_id=self.chat_id,
-                text=message,
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=True
-            )
-            logger.info(
-                "alert_sent",
-                wallet=candidate.trade.wallet_address[:10],
-                market=candidate.trade.market_slug,
-                score=candidate.score
-            )
-            return True
+            sent = await self._send_to_all(message, disable_preview=True)
+            print(f"Alerta enviada a {sent}/{len(self.chat_ids)} usuarios", flush=True)
+            return sent > 0
         except Exception as e:
-            logger.error("failed_to_send_alert", error=str(e))
+            print(f"Error enviando alerta: {e}", flush=True)
             return False
     
     async def send_startup_message(self):
-        """Send a startup notification."""
+        """Envía mensaje de inicio a todos los usuarios."""
         if not self.is_configured:
             return
         
         try:
-            await self.bot.send_message(
-                chat_id=self.chat_id,
-                text="🤖 <b>Polymarket Alert Bot Started</b>\n\nMonitoring for suspicious activity...",
-                parse_mode=ParseMode.HTML
-            )
+            text = "🤖 <b>Polymarket Alert Bot Started</b>\n\nMonitoring for suspicious activity..."
+            sent = await self._send_to_all(text)
+            print(f"Mensaje startup enviado a {sent} usuario(s)", flush=True)
         except Exception as e:
-            logger.error("failed_to_send_startup", error=str(e))
+            print(f"Error enviando startup: {e}", flush=True)
     
     async def send_health_check(self, stats: dict):
-        """Send periodic health check message."""
+        """Envía health check a todos los usuarios."""
         if not self.is_configured:
             return
         
         try:
             message = (
                 f"📊 <b>Health Check</b>\n\n"
-                f"• Markets monitored: {stats.get('markets', 0)}\n"
-                f"• Trades processed: {stats.get('trades', 0)}\n"
-                f"• Alerts sent: {stats.get('alerts', 0)}\n"
+                f"• Trades procesados: {stats.get('trades', 0)}\n"
+                f"• Alertas enviadas: {stats.get('alerts', 0)}\n"
                 f"• Uptime: {stats.get('uptime', 'N/A')}"
             )
-            await self.bot.send_message(
-                chat_id=self.chat_id,
-                text=message,
-                parse_mode=ParseMode.HTML
-            )
+            await self._send_to_all(message)
         except Exception as e:
-            logger.error("failed_to_send_health_check", error=str(e))
+            print(f"Error enviando health check: {e}", flush=True)
     
     def _format_message(self, candidate: AlertCandidate) -> str:
         """Format alert message for Telegram."""
