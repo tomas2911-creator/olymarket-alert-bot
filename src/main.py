@@ -1,13 +1,21 @@
-"""Main entry point for Polymarket Alert Bot."""
+"""Entry point principal del Polymarket Alert Bot."""
 import asyncio
 import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# Forzar output sin buffer
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
+print("=== POLYMARKET ALERT BOT INICIANDO ===", flush=True)
+
 import yaml
 import structlog
 from dotenv import load_dotenv
+
+print("Imports básicos OK", flush=True)
 
 from src.api.polymarket import PolymarketClient
 from src.storage.database import Database
