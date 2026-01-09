@@ -1,4 +1,4 @@
-"""Polymarket API client for fetching markets and trades."""
+"""Cliente de API de Polymarket para obtener mercados y trades."""
 import httpx
 from datetime import datetime
 from typing import Optional
@@ -8,14 +8,13 @@ from src.models import Market, Trade
 
 logger = structlog.get_logger()
 
-# API Base URLs
-CLOB_API_URL = "https://clob.polymarket.com"
+# URLs base de API
 GAMMA_API_URL = "https://gamma-api.polymarket.com"
 DATA_API_URL = "https://data-api.polymarket.com"
 
 
 class PolymarketClient:
-    """Client for interacting with Polymarket APIs."""
+    """Cliente para interactuar con las APIs de Polymarket."""
     
     def __init__(self, timeout: float = 30.0):
         self.timeout = timeout
@@ -32,11 +31,37 @@ class PolymarketClient:
     @property
     def client(self) -> httpx.AsyncClient:
         if self._client is None:
-            raise RuntimeError("Client not initialized. Use 'async with' context manager.")
+            raise RuntimeError("Cliente no inicializado. Usa 'async with'.")
         return self._client
     
+    async def get_recent_trades(self, limit: int = 100) -> list[Trade]:
+        """Obtener trades recientes de toda la plataforma (endpoint público)."""
+        try:
+            response = await self.client.get(
+                f"{DATA_API_URL}/trades",
+                params={"limit": limit}
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            trades = []
+            for item in data:
+                try:
+                    trade = self._parse_trade(item)
+                    if trade:
+                        trades.append(trade)
+                except Exception as e:
+                    logger.warning("error_parseando_trade", error=str(e))
+            
+            logger.info("trades_obtenidos", count=len(trades))
+            return trades
+            
+        except httpx.HTTPError as e:
+            logger.error("error_obteniendo_trades", error=str(e))
+            return []
+    
     async def get_markets(self, limit: int = 100, active_only: bool = True) -> list[Market]:
-        """Fetch list of markets from Gamma API."""
+        """Obtener lista de mercados desde Gamma API."""
         try:
             params = {"limit": limit}
             if active_only:
@@ -63,110 +88,50 @@ class PolymarketClient:
                     if market.condition_id:
                         markets.append(market)
                 except Exception as e:
-                    logger.warning("failed_to_parse_market", error=str(e), item=item)
+                    logger.warning("error_parseando_mercado", error=str(e))
             
-            logger.info("fetched_markets", count=len(markets))
+            logger.info("mercados_obtenidos", count=len(markets))
             return markets
             
         except httpx.HTTPError as e:
-            logger.error("failed_to_fetch_markets", error=str(e))
+            logger.error("error_obteniendo_mercados", error=str(e))
             return []
     
-    async def get_market_trades(self, condition_id: str, limit: int = 100) -> list[Trade]:
-        """Fetch recent trades for a specific market."""
+    def _parse_trade(self, item: dict) -> Optional[Trade]:
+        """Parsear un trade desde la respuesta de la API."""
         try:
-            response = await self.client.get(
-                f"{CLOB_API_URL}/trades",
-                params={
-                    "market": condition_id,
-                    "limit": limit
-                }
-            )
-            response.raise_for_status()
-            data = response.json()
-            
-            trades = []
-            items = data if isinstance(data, list) else data.get("data", [])
-            
-            for item in items:
-                try:
-                    trade = self._parse_trade(item, condition_id)
-                    if trade:
-                        trades.append(trade)
-                except Exception as e:
-                    logger.warning("failed_to_parse_trade", error=str(e))
-            
-            return trades
-            
-        except httpx.HTTPError as e:
-            logger.warning("failed_to_fetch_trades", market=condition_id, error=str(e))
-            return []
-    
-    async def get_all_recent_trades(self, markets: list[Market], trades_per_market: int = 50) -> list[Trade]:
-        """Fetch recent trades across multiple markets."""
-        all_trades = []
-        
-        for market in markets:
-            trades = await self.get_market_trades(market.condition_id, trades_per_market)
-            for trade in trades:
-                trade.market_question = market.question
-                trade.market_slug = market.slug
-            all_trades.extend(trades)
-        
-        # Sort by timestamp descending
-        all_trades.sort(key=lambda t: t.timestamp, reverse=True)
-        logger.info("fetched_all_trades", total=len(all_trades), markets=len(markets))
-        
-        return all_trades
-    
-    def _parse_trade(self, item: dict, condition_id: str) -> Optional[Trade]:
-        """Parse a trade from API response."""
-        try:
-            # Handle different API response formats
-            timestamp_str = item.get("timestamp") or item.get("matchTime") or item.get("created_at")
-            if timestamp_str:
-                if isinstance(timestamp_str, (int, float)):
-                    timestamp = datetime.fromtimestamp(timestamp_str)
-                else:
-                    timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            # Timestamp (viene como unix timestamp)
+            timestamp_val = item.get("timestamp")
+            if isinstance(timestamp_val, (int, float)):
+                timestamp = datetime.fromtimestamp(timestamp_val)
             else:
                 timestamp = datetime.now()
             
-            # Get wallet address
-            wallet = (
-                item.get("maker_address") or 
-                item.get("taker_address") or 
-                item.get("owner") or
-                item.get("user", {}).get("address", "unknown")
-            )
+            # Wallet address
+            wallet = item.get("proxyWallet", "unknown")
             
-            # Get size (try different field names)
-            size_str = item.get("size") or item.get("amount") or item.get("tradeAmount") or "0"
-            size = float(size_str) if size_str else 0.0
+            # Size en USD
+            size = float(item.get("size", 0))
             
-            # Get price
-            price_str = item.get("price") or item.get("avgPrice") or "0"
-            price = float(price_str) if price_str else 0.0
+            # Price
+            price = float(item.get("price", 0))
             
-            # Get side
-            side = item.get("side") or item.get("outcome") or "YES"
-            if side.lower() in ["buy", "long", "yes"]:
-                side = "YES"
-            elif side.lower() in ["sell", "short", "no"]:
-                side = "NO"
+            # Side (BUY/SELL -> YES/NO)
+            side = item.get("side", "BUY")
+            outcome = item.get("outcome", "Yes")
             
             return Trade(
-                transaction_hash=item.get("transactionHash") or item.get("id") or "",
-                market_id=condition_id,
-                market_question=item.get("market", {}).get("question", ""),
-                market_slug=item.get("market", {}).get("slug", ""),
+                transaction_hash=item.get("transactionHash", ""),
+                market_id=item.get("conditionId", ""),
+                market_question=item.get("title", ""),
+                market_slug=item.get("slug", ""),
                 wallet_address=wallet,
-                side=side.upper(),
+                side=side,
                 size=size,
                 price=price,
                 timestamp=timestamp,
-                outcome=item.get("outcome", side)
+                outcome=outcome
             )
         except Exception as e:
-            logger.warning("trade_parse_error", error=str(e), item=item)
+            logger.warning("error_parse_trade", error=str(e), item=item)
             return None

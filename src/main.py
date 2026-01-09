@@ -99,27 +99,24 @@ class PolymarketAlertBot:
             await asyncio.sleep(self.poll_interval)
     
     async def poll_cycle(self):
-        """Execute one polling cycle."""
-        logger.info("poll_cycle_start")
+        """Ejecutar un ciclo de polling."""
+        logger.info("ciclo_polling_inicio")
         
         async with PolymarketClient() as client:
-            # 1. Fetch active markets
-            markets = await client.get_markets(limit=self.max_markets)
+            # Obtener trades recientes de toda la plataforma (endpoint público)
+            trades = await client.get_recent_trades(limit=200)
             
-            if not markets:
-                logger.warning("no_markets_found")
+            if not trades:
+                logger.warning("no_trades_encontrados")
                 return
             
-            # 2. Fetch recent trades
-            trades = await client.get_all_recent_trades(markets, trades_per_market=20)
+            logger.info("trades_obtenidos", count=len(trades))
             
-            logger.info("trades_fetched", count=len(trades))
-            
-            # 3. Process each trade
+            # Procesar cada trade
             for trade in trades:
                 await self.process_trade(trade)
         
-        logger.info("poll_cycle_complete", processed=self.trades_processed, alerts=self.alerts_sent)
+        logger.info("ciclo_polling_completo", procesados=self.trades_processed, alertas=self.alerts_sent)
     
     async def process_trade(self, trade):
         """Process a single trade for anomalies."""
