@@ -186,7 +186,7 @@ class PolymarketClient:
                 transaction_hash=item.get("transactionHash", ""),
                 market_id=item.get("conditionId", ""),
                 market_question=item.get("title", ""),
-                market_slug=item.get("slug", ""),
+                market_slug=item.get("eventSlug", item.get("slug", "")),
                 wallet_address=wallet,
                 side=side,
                 size=size,
