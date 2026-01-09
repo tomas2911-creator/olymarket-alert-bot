@@ -201,16 +201,22 @@ class PolymarketAlertBot:
 
 async def main():
     """Main entry point."""
-    config = load_config()
-    bot = PolymarketAlertBot(config)
-    
+    print("=== INICIANDO MAIN ===", flush=True)
     try:
+        config = load_config()
+        print(f"Config cargada: {bool(config)}", flush=True)
+        bot = PolymarketAlertBot(config)
+        print("Bot creado OK", flush=True)
         await bot.start()
     except KeyboardInterrupt:
-        logger.info("keyboard_interrupt")
-    finally:
-        await bot.shutdown()
+        print("Keyboard interrupt", flush=True)
+    except Exception as e:
+        print(f"ERROR en main: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":
+    print("=== EJECUTANDO ASYNCIO.RUN ===", flush=True)
     asyncio.run(main())
