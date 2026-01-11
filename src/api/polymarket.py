@@ -95,14 +95,22 @@ class PolymarketClient:
             
             trades = []
             filtered_count = 0
+            size_filtered = 0
+            MIN_SIZE_USD = 5000  # Mínimo $5000 USD
             
             for item in data:
                 try:
                     title = item.get("title", "")
+                    size = float(item.get("size", 0))
                     
-                    # Filtrar deportes y crypto corto plazo
+                    # Filtrar deportes y crypto
                     if filter_insider and not is_insider_relevant(title):
                         filtered_count += 1
+                        continue
+                    
+                    # Filtrar trades menores a $5000
+                    if size < MIN_SIZE_USD:
+                        size_filtered += 1
                         continue
                     
                     trade = self._parse_trade(item)
@@ -115,7 +123,7 @@ class PolymarketClient:
                 except Exception as e:
                     logger.warning("error_parseando_trade", error=str(e))
             
-            print(f"Trades: {len(trades)} relevantes, {filtered_count} filtrados (deportes/crypto)", flush=True)
+            print(f"Trades: {len(trades)} relevantes (>=$5k), {filtered_count} filtrados (categoria), {size_filtered} filtrados (<$5k)", flush=True)
             return trades
             
         except httpx.HTTPError as e:
