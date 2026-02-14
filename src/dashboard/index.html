@@ -471,9 +471,9 @@ function filterAlerts(){
     if(filtered.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
     empty.classList.add('hidden');
     body.innerHTML=filtered.map(a=>{
-        // Triggers / señales
-        const triggers=(a.triggers||'').split(',').filter(Boolean).map(t=>t.trim());
-        const triggerHtml=triggers.length>0?triggers.slice(0,3).map(t=>`<span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-700 text-gray-300">${t}</span>`).join(' '):'<span class="text-gray-600 text-[10px]">-</span>';
+        // Triggers / señales (separados por ||)
+        const triggers=(a.triggers||'').split('||').filter(Boolean).map(t=>t.trim());
+        const triggerHtml=triggers.length>0?`<div class="flex flex-col gap-0.5">${triggers.slice(0,4).map(t=>`<span class="text-[10px] text-gray-300">${t}</span>`).join('')}</div>`:'<span class="text-gray-600 text-[10px]">-</span>';
         // Copy-trade badge
         const copyBadge=a.is_copy_trade?'<span class="text-yellow-400 text-xs" title="Copy-Trade Alert">⭐</span> ':'';
         // Price impact

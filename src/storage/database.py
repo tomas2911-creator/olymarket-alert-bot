@@ -349,7 +349,7 @@ class Database:
             """,
                 wallet.lower(), market_id, market_question, market_slug,
                 side, outcome, size, price, score,
-                ",".join(triggers), ",".join(cluster_wallets),
+                "||".join(triggers), ",".join(cluster_wallets),
                 days_to_close, wallet_hit_rate,
             )
             return row["id"] if row else 0
