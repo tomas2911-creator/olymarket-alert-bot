@@ -110,121 +110,87 @@ class CryptoArbDetector:
     async def _scan_active_markets(self):
         """Buscar mercados crypto up/down activos en Polymarket.
 
-        Los mercados tienen slugs tipo: btc-updown-15m-{ts}, eth-updown-15m-{ts}
-        y también el formato de la Events API: bitcoin-up-or-down-{fecha}
+        Polymarket crea mercados con slugs predecibles basados en timestamps:
+          - btc-updown-5m-{unix_ts}   (cada 5 min)
+          - btc-updown-15m-{unix_ts}  (cada 15 min)
+          - eth-updown-15m-{unix_ts}  (cada 15 min)
+          - sol-updown-15m-{unix_ts}  (cada 15 min)
+
+        El API genérico de Gamma NO devuelve estos mercados en las primeras
+        páginas, así que los buscamos por slug exacto calculando timestamps.
         """
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 enabled_coins = {c["symbol"] for c in config.CRYPTO_ARB_COINS}
+                now_ts = int(time.time())
 
-                # Slug prefixes para cada moneda
-                slug_map = {
-                    "BTC": ["btc-updown-", "bitcoin-up-or-down-"],
-                    "ETH": ["eth-updown-", "ethereum-up-or-down-"],
-                    "SOL": ["sol-updown-", "solana-up-or-down-"],
-                }
-
-                # Buscar en Markets API (múltiples páginas)
-                all_markets = []
-                for offset in [0, 500]:
-                    try:
-                        resp = await client.get(
-                            f"{config.GAMMA_API_URL}/markets",
-                            params={
-                                "active": "true",
-                                "closed": "false",
-                                "limit": "500",
-                                "offset": str(offset),
-                            },
-                        )
-                        if resp.status_code == 200:
-                            batch = resp.json()
-                            if batch:
-                                all_markets.extend(batch)
-                    except Exception:
-                        pass
-
-                # También buscar via Events API con tag up-or-down
-                try:
-                    resp = await client.get(
-                        f"{config.GAMMA_API_URL}/events",
-                        params={
-                            "active": "true",
-                            "closed": "false",
-                            "limit": "200",
-                        },
-                    )
-                    if resp.status_code == 200:
-                        events = resp.json()
-                        for ev in events:
-                            for m in ev.get("markets", []):
-                                if not m.get("closed"):
-                                    all_markets.append(m)
-                except Exception:
-                    pass
-
-                # Deduplicar
-                seen_cids = set()
-                markets = []
-                for m in all_markets:
-                    cid = m.get("conditionId", "")
-                    if cid and cid not in seen_cids:
-                        seen_cids.add(cid)
-                        markets.append(m)
+                # Generar slugs candidatos para ventanas recientes y futuras
+                # BTC tiene 5m y 15m, ETH/SOL solo 15m
+                slug_templates = []
+                if "BTC" in enabled_coins:
+                    slug_templates.append(("BTC", "btc-updown-5m", 300))   # cada 5 min
+                    slug_templates.append(("BTC", "btc-updown-15m", 900))  # cada 15 min
+                if "ETH" in enabled_coins:
+                    slug_templates.append(("ETH", "eth-updown-15m", 900))
+                if "SOL" in enabled_coins:
+                    slug_templates.append(("SOL", "sol-updown-15m", 900))
 
                 new_active = {}
+                slugs_checked = 0
 
-                for m in markets:
-                    q = m.get("question", "").lower()
-                    slug = m.get("slug", "").lower()
+                for coin, prefix, interval in slug_templates:
+                    # Redondear timestamp al intervalo más cercano
+                    base_ts = (now_ts // interval) * interval
+                    # Buscar desde -2 intervalos hasta +6 intervalos adelante
+                    for offset in range(-2, 7):
+                        ts = base_ts + (offset * interval)
+                        slug = f"{prefix}-{ts}"
+                        slugs_checked += 1
 
-                    # Detectar mercado crypto up/down por slug o pregunta
-                    coin = None
-                    for symbol, prefixes in slug_map.items():
-                        if symbol not in enabled_coins:
-                            continue
-                        for prefix in prefixes:
-                            if slug.startswith(prefix.lower()):
-                                coin = symbol
-                                break
-                        if coin:
-                            break
-
-                    # Fallback: buscar por pregunta
-                    if not coin:
-                        if "up or down" not in q:
-                            continue
-                        coin_match = CRYPTO_MARKET_RE.search(q)
-                        if coin_match:
-                            coin_raw = coin_match.group(1).lower()
-                            coin = COIN_MAP.get(coin_raw)
-                        if not coin or coin not in enabled_coins:
-                            continue
-
-                    cid = m.get("conditionId", "")
-                    if not cid:
-                        continue
-
-                    end_str = m.get("endDate") or m.get("end_date_iso")
-                    end_date = None
-                    if end_str:
                         try:
-                            ed = datetime.fromisoformat(
-                                end_str.replace("Z", "+00:00")
+                            resp = await client.get(
+                                f"{config.GAMMA_API_URL}/events",
+                                params={"slug": slug},
                             )
-                            if ed.tzinfo is None:
-                                ed = ed.replace(tzinfo=timezone.utc)
-                            end_date = ed
+                            if resp.status_code != 200:
+                                continue
+                            events = resp.json()
+                            if not events:
+                                continue
+
+                            ev = events[0]
+                            if ev.get("closed") or not ev.get("active"):
+                                continue
+
+                            # Extraer mercados activos del evento
+                            for m in ev.get("markets", []):
+                                if m.get("closed"):
+                                    continue
+                                cid = m.get("conditionId", "")
+                                if not cid or cid in new_active:
+                                    continue
+
+                                end_str = m.get("endDate") or ev.get("endDate")
+                                end_date = None
+                                if end_str:
+                                    try:
+                                        ed = datetime.fromisoformat(
+                                            end_str.replace("Z", "+00:00"))
+                                        if ed.tzinfo is None:
+                                            ed = ed.replace(tzinfo=timezone.utc)
+                                        end_date = ed
+                                    except Exception:
+                                        pass
+
+                                new_active[cid] = {
+                                    "condition_id": cid,
+                                    "question": m.get("question", "") or ev.get("title", ""),
+                                    "coin": coin,
+                                    "end_date": end_date,
+                                    "tokens": [],
+                                }
                         except Exception:
                             pass
-
-                    new_active[cid] = {
-                        "condition_id": cid,
-                        "question": m.get("question", ""),
-                        "coin": coin,
-                        "end_date": end_date,
-                        "tokens": [],
-                    }
 
                 # Obtener tokens (precios) de CLOB para cada mercado activo
                 for cid, mdata in new_active.items():
@@ -240,9 +206,9 @@ class CryptoArbDetector:
 
                 self._active_markets = new_active
 
-                print(f"[CryptoDetector] Scan: {len(markets)} mercados, "
+                print(f"[CryptoDetector] Scan: {slugs_checked} slugs verificados, "
                       f"{len(new_active)} crypto up/down activos", flush=True)
-                for cid, md in list(new_active.items())[:5]:
+                for cid, md in list(new_active.items())[:8]:
                     remaining = ""
                     if md["end_date"]:
                         rem_sec = (md["end_date"] - datetime.now(timezone.utc)).total_seconds()
