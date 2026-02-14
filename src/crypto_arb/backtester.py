@@ -194,31 +194,80 @@ class CryptoArbBacktester:
     async def _fetch_resolved_markets(self, client: httpx.AsyncClient,
                                        coin_name: str, days: int) -> list[dict]:
         """Obtener mercados crypto up/down resueltos de los últimos N días."""
-        markets = []
+        import re
+        all_markets = []
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        # Buscar por múltiples tags para cubrir más mercados
+        tags_to_search = ["crypto", "crypto-prices", "bitcoin", "ethereum", "solana", "updown"]
         try:
-            # Gamma API: buscar mercados cerrados con "Up or Down" en el título
-            resp = await client.get(
-                f"{config.GAMMA_API_URL}/markets",
-                params={
-                    "closed": "true",
-                    "limit": "200",
-                    "_order": "closedTime",
-                    "_sort": "desc",
-                },
+            for tag in tags_to_search:
+                try:
+                    resp = await client.get(
+                        f"{config.GAMMA_API_URL}/markets",
+                        params={
+                            "closed": "true",
+                            "limit": "200",
+                            "tag": tag,
+                            "_order": "closedTime",
+                            "_sort": "desc",
+                        },
+                    )
+                    if resp.status_code == 200:
+                        all_markets.extend(resp.json())
+                except Exception:
+                    pass
+
+            # También buscar sin tag pero con texto
+            try:
+                resp = await client.get(
+                    f"{config.GAMMA_API_URL}/markets",
+                    params={
+                        "closed": "true",
+                        "limit": "200",
+                        "_order": "closedTime",
+                        "_sort": "desc",
+                    },
+                )
+                if resp.status_code == 200:
+                    all_markets.extend(resp.json())
+            except Exception:
+                pass
+
+            # Deduplicar
+            seen = set()
+            unique_markets = []
+            for m in all_markets:
+                cid = m.get("conditionId", "")
+                if cid and cid not in seen:
+                    seen.add(cid)
+                    unique_markets.append(m)
+
+            # Regex flexible para detectar mercados crypto up/down
+            coin_re = re.compile(rf"\b{re.escape(coin_name)}\b", re.IGNORECASE)
+            updown_re = re.compile(
+                r"(up\s+or\s+down|above|below|higher|lower|15.?min|price)",
+                re.IGNORECASE,
             )
-            if resp.status_code != 200:
-                return []
 
-            data = resp.json()
-            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-
-            for m in data:
+            markets = []
+            for m in unique_markets:
                 q = m.get("question", "")
-                if coin_name.lower() not in q.lower():
-                    continue
-                if "up or down" not in q.lower():
+                tags = [t.lower() for t in (m.get("tags") or [])]
+
+                # ¿Menciona la moneda?
+                has_coin = bool(coin_re.search(q))
+                has_coin_tag = coin_name.lower() in " ".join(tags)
+                if not has_coin and not has_coin_tag:
                     continue
 
+                # ¿Es mercado up/down o precio?
+                has_updown = bool(updown_re.search(q))
+                has_updown_tag = any(t in tags for t in ["updown", "up-or-down", "crypto-prices"])
+                if not has_updown and not has_updown_tag:
+                    continue
+
+                # ¿Dentro del rango de fechas?
                 closed_time = m.get("closedTime")
                 if closed_time:
                     try:
@@ -235,6 +284,9 @@ class CryptoArbBacktester:
                         "question": q,
                         "closed_time": closed_time,
                     })
+
+            print(f"[Backtest] {coin_name}: {len(unique_markets)} mercados escaneados, "
+                  f"{len(markets)} crypto up/down encontrados", flush=True)
 
         except Exception as e:
             logger.warning("backtest_fetch_error", error=str(e))
