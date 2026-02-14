@@ -369,36 +369,44 @@ class CryptoArbBacktester:
     async def _get_binance_klines(self, client: httpx.AsyncClient,
                                    symbol: str, start_dt: datetime,
                                    end_dt: datetime) -> list[dict]:
-        """Obtener klines de 1 minuto de Binance para un rango de tiempo."""
-        try:
-            start_ms = int(start_dt.timestamp() * 1000)
-            end_ms = int(end_dt.timestamp() * 1000)
-            resp = await client.get(
-                "https://api.binance.com/api/v3/klines",
-                params={
-                    "symbol": symbol,
-                    "interval": "1m",
-                    "startTime": str(start_ms),
-                    "endTime": str(end_ms),
-                    "limit": "500",
-                },
-            )
-            if resp.status_code != 200:
-                return []
-            raw = resp.json()
-            return [
-                {
-                    "ts": k[0] / 1000,  # Unix seconds
-                    "open": float(k[1]),
-                    "high": float(k[2]),
-                    "low": float(k[3]),
-                    "close": float(k[4]),
-                }
-                for k in raw
-            ]
-        except Exception as e:
-            print(f"[Backtest] Error klines {symbol}: {e}", flush=True)
-            return []
+        """Obtener klines de 1 minuto de Binance para un rango de tiempo.
+        Intenta múltiples fuentes: binance.com, binance.us (para servidores en US).
+        """
+        start_ms = int(start_dt.timestamp() * 1000)
+        end_ms = int(end_dt.timestamp() * 1000)
+        params = {
+            "symbol": symbol,
+            "interval": "1m",
+            "startTime": str(start_ms),
+            "endTime": str(end_ms),
+            "limit": "500",
+        }
+        urls = [
+            "https://api.binance.com/api/v3/klines",
+            "https://api.binance.us/api/v3/klines",
+        ]
+        for url in urls:
+            try:
+                resp = await client.get(url, params=params)
+                if resp.status_code != 200:
+                    continue
+                raw = resp.json()
+                if not raw:
+                    continue
+                return [
+                    {
+                        "ts": k[0] / 1000,
+                        "open": float(k[1]),
+                        "high": float(k[2]),
+                        "low": float(k[3]),
+                        "close": float(k[4]),
+                    }
+                    for k in raw
+                ]
+            except Exception:
+                continue
+        print(f"[Backtest] No klines from any source for {symbol}", flush=True)
+        return []
 
     async def _simulate_trade(self, client: httpx.AsyncClient, market: dict,
                                coin: str, bet_size: float,
