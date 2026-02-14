@@ -25,6 +25,10 @@ class AnomalyAnalyzer:
         accumulation_info: Optional[dict] = None,
         market_price: Optional[float] = None,
         smart_cluster_count: int = 0,
+        # v5.0: módulos opcionales
+        orderbook_depth_pct: Optional[float] = None,
+        market_liquidity: Optional[float] = None,
+        market_category: Optional[str] = None,
     ) -> AlertCandidate:
         score = 0
         triggers: list[str] = []
@@ -129,6 +133,22 @@ class AnomalyAnalyzer:
             if resolved >= 3 and wallet_stats.hit_rate >= 60:
                 score += 2
                 triggers.append(f"🚪 Exit (smart money vende)")
+
+        # ── Señales v5.0 (módulos opcionales) ─────────────────────
+
+        # 15. ORDER BOOK DEPTH: trade consume % significativo del book
+        if config.FEATURE_ORDERBOOK_DEPTH and orderbook_depth_pct is not None:
+            if orderbook_depth_pct >= config.ORDERBOOK_MIN_DEPTH_PCT:
+                score += config.ORDERBOOK_DEPTH_POINTS
+                triggers.append(f"📕 Consume {orderbook_depth_pct:.1f}% del book")
+
+        # 16. MERCADO NICHO: mercado con poca liquidez = insider info más valiosa
+        if config.FEATURE_MARKET_CLASSIFICATION and market_liquidity is not None:
+            if market_liquidity < config.NICHE_MAX_LIQUIDITY:
+                is_mainstream = (market_category or "").lower() in config.MAINSTREAM_CATEGORIES
+                if not is_mainstream:
+                    score += config.NICHE_MARKET_POINTS
+                    triggers.append(f"🔬 Nicho (liq ${market_liquidity:,.0f})")
 
         return AlertCandidate(
             trade=trade,

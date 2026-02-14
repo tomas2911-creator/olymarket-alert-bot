@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-print("=== POLYMARKET ALERT BOT v2.0 INICIANDO ===", flush=True)
+print("=== POLYMARKET ALERT BOT v3.0 INICIANDO ===", flush=True)
 
 import structlog
 import uvicorn
@@ -21,6 +21,9 @@ from src.detection.analyzer import AnomalyAnalyzer
 from src.alerts.telegram import TelegramNotifier
 from src.api.routes import router
 from src.api.polygonscan import get_wallet_onchain_info
+from src.crypto_arb.binance_feed import BinanceFeed
+from src.crypto_arb.detector import CryptoArbDetector
+from src.crypto_arb.backtester import CryptoArbBacktester
 
 structlog.configure(
     processors=[
@@ -49,6 +52,10 @@ class PolymarketAlertBot:
         self.alerts_sent = 0
         self._running = False
         self._watchlist: set[str] = set()
+        # Crypto Arb (inicializado solo si feature está habilitada)
+        self.binance_feed = None
+        self.crypto_detector = None
+        self.backtester = CryptoArbBacktester()
 
     async def start(self):
         """Inicializar DB y marcar como running."""
@@ -61,6 +68,9 @@ class PolymarketAlertBot:
         self._running = True
         # Telegram startup en background para no bloquear healthcheck
         asyncio.create_task(self._send_startup_safe())
+        # Iniciar crypto arb si está habilitado
+        if config.FEATURE_CRYPTO_ARB:
+            await self._start_crypto_arb()
 
     async def _send_startup_safe(self):
         try:
@@ -69,8 +79,43 @@ class PolymarketAlertBot:
         except Exception as e:
             print(f"Error enviando startup a Telegram: {e}", flush=True)
 
+    async def _start_crypto_arb(self):
+        """Inicializar módulo crypto arb."""
+        try:
+            pairs = [c["binance_pair"] for c in config.CRYPTO_ARB_COINS]
+            self.binance_feed = BinanceFeed(pairs=pairs)
+            self.crypto_detector = CryptoArbDetector(self.binance_feed)
+            # Lanzar feed y detector como tasks
+            asyncio.create_task(self._run_binance_feed())
+            asyncio.create_task(self._run_crypto_detector())
+            print(f"Crypto Arb iniciado: {len(pairs)} pares, modo={config.CRYPTO_ARB_MODE}", flush=True)
+        except Exception as e:
+            print(f"Error iniciando Crypto Arb: {e}", flush=True)
+
+    async def _run_binance_feed(self):
+        """Wrapper para Binance feed con reconexión."""
+        while self._running and self.binance_feed:
+            try:
+                await self.binance_feed.start()
+            except Exception as e:
+                print(f"Binance feed error, reintentando en 10s: {e}", flush=True)
+                await asyncio.sleep(10)
+
+    async def _run_crypto_detector(self):
+        """Wrapper para detector crypto con manejo de señales."""
+        # Esperar 5 segundos para que el feed se conecte
+        await asyncio.sleep(5)
+        try:
+            await self.crypto_detector.start()
+        except Exception as e:
+            print(f"Crypto detector error: {e}", flush=True)
+
     async def stop(self):
         self._running = False
+        if self.binance_feed:
+            await self.binance_feed.stop()
+        if self.crypto_detector:
+            await self.crypto_detector.stop()
         await self.db.close()
 
     # ── Polling principal ─────────────────────────────────────────────
@@ -119,6 +164,14 @@ class PolymarketAlertBot:
                             print(f"Coordinacion detectada: {coord_count} pares", flush=True)
                     except Exception as e:
                         print(f"Error en coordinacion: {e}", flush=True)
+
+                # Cada 3 ciclos (~3 min): procesar señales crypto arb
+                if cycle % 3 == 0 and config.FEATURE_CRYPTO_ARB:
+                    await self.process_crypto_signals()
+
+                # Cada 10 ciclos (~10 min): resolver señales crypto antiguas
+                if cycle % 10 == 0 and config.FEATURE_CRYPTO_ARB:
+                    await self.resolve_crypto_signals()
 
             except Exception as e:
                 print(f"Error en ciclo polling: {e}", flush=True)
@@ -353,6 +406,73 @@ class PolymarketAlertBot:
                 print(f"On-chain check: {len(wallets)} wallets", flush=True)
         except Exception as e:
             print(f"Error en on-chain check: {e}", flush=True)
+
+    # ── Crypto Arb Signal Processing ────────────────────────────────
+
+    async def process_crypto_signals(self):
+        """Procesar señales del detector crypto y guardarlas en DB + Telegram."""
+        if not self.crypto_detector:
+            return
+        try:
+            signals = self.crypto_detector.get_recent_signals(10)
+            for sig in signals:
+                # Verificar si ya registramos esta señal (por condition_id reciente)
+                existing = await self.db.get_crypto_signals_history(limit=10)
+                is_dup = any(
+                    e["condition_id"] == sig["condition_id"]
+                    for e in existing
+                )
+                if is_dup:
+                    continue
+
+                # Guardar en DB
+                sig["paper_bet_size"] = config.CRYPTO_ARB_PAPER_BET
+                await self.db.record_crypto_signal(sig)
+
+                # Enviar a Telegram
+                if config.CRYPTO_ARB_TELEGRAM:
+                    await self.notifier.send_crypto_signal(sig)
+                    print(f"Crypto signal: {sig['coin']} {sig['direction']} "
+                          f"conf={sig['confidence']:.0f}% edge={sig['edge_pct']:.1f}%",
+                          flush=True)
+        except Exception as e:
+            print(f"Error procesando crypto signals: {e}", flush=True)
+
+    async def resolve_crypto_signals(self):
+        """Resolver señales crypto pendientes verificando resultado del mercado."""
+        try:
+            unresolved = await self.db.get_unresolved_crypto_signals()
+            if not unresolved:
+                return
+
+            resolved_count = 0
+            async with PolymarketClient() as client:
+                for sig in unresolved:
+                    cid = sig["condition_id"]
+                    resolution = await client.check_market_resolution(cid)
+                    if not resolution:
+                        continue
+
+                    # Determinar si ganamos
+                    won = resolution.lower() == sig["direction"].lower()
+                    paper_result = "win" if won else "loss"
+                    bet = float(sig.get("paper_bet_size", config.CRYPTO_ARB_PAPER_BET))
+                    odds = float(sig.get("poly_odds", 0.5))
+
+                    if won:
+                        paper_pnl = bet * (1 - odds)  # Ganamos: recibimos $1, pagamos odds
+                    else:
+                        paper_pnl = -(bet * odds)  # Perdemos lo apostado
+
+                    await self.db.resolve_crypto_signal(
+                        sig["id"], resolution, paper_result, round(paper_pnl, 2)
+                    )
+                    resolved_count += 1
+
+            if resolved_count:
+                print(f"Crypto signals resueltas: {resolved_count}", flush=True)
+        except Exception as e:
+            print(f"Error resolviendo crypto signals: {e}", flush=True)
 
     # ── Health Check ──────────────────────────────────────────────────
 

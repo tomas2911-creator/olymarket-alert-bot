@@ -259,6 +259,41 @@ class PolymarketClient:
             pass
         return None
 
+    # ── Order Book Depth ────────────────────────────────────────────
+
+    async def get_orderbook_depth(self, token_id: str) -> Optional[dict]:
+        """Obtener profundidad del order book via CLOB API.
+        Devuelve total de liquidez en bids y asks.
+        """
+        try:
+            response = await self.client.get(
+                f"{config.CLOB_API_URL}/book",
+                params={"token_id": token_id},
+            )
+            if response.status_code == 200:
+                data = response.json()
+                bids = data.get("bids", [])
+                asks = data.get("asks", [])
+                total_bids = sum(float(b.get("size", 0)) for b in bids)
+                total_asks = sum(float(a.get("size", 0)) for a in asks)
+                return {
+                    "total_bids": total_bids,
+                    "total_asks": total_asks,
+                    "total_liquidity": total_bids + total_asks,
+                    "bid_levels": len(bids),
+                    "ask_levels": len(asks),
+                }
+        except Exception:
+            pass
+        return None
+
+    def calc_depth_impact(self, trade_size: float, book: dict) -> float:
+        """Calcular qué % del order book consume un trade."""
+        total = book.get("total_liquidity", 0)
+        if total <= 0:
+            return 0
+        return (trade_size / total) * 100
+
     # ── Parse ─────────────────────────────────────────────────────────
 
     def _parse_trade(self, item: dict) -> Optional[Trade]:

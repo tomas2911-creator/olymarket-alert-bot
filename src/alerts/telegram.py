@@ -145,6 +145,44 @@ class TelegramNotifier:
             print(f"Error enviando copy-trade alert: {e}", flush=True)
             return False
 
+    async def send_crypto_signal(self, signal: dict) -> bool:
+        """Enviar señal de crypto arb a Telegram."""
+        if not self.is_configured:
+            return False
+        try:
+            coin = signal.get("coin", "?")
+            direction = signal.get("direction", "?").upper()
+            emoji = "🟢" if direction == "UP" else "🔴"
+            conf = float(signal.get("confidence", 0) or 0)
+            edge = float(signal.get("edge_pct", 0) or 0)
+            poly_odds = float(signal.get("poly_odds", 0) or 0)
+            fair_odds = float(signal.get("fair_odds", 0) or 0)
+            spot = float(signal.get("spot_price", 0) or 0)
+            change = float(signal.get("spot_change_pct", 0) or 0)
+            time_rem = int(signal.get("time_remaining_sec", 0) or 0)
+            minutes = time_rem // 60
+            seconds = time_rem % 60
+            expected = float(signal.get("expected_profit_pct", 0) or 0)
+
+            # Barra de confianza
+            filled = int(conf / 10)
+            conf_bar = "█" * filled + "░" * (10 - filled)
+
+            message = (
+                f"{emoji} <b>Crypto Arb Signal — {coin} {direction}</b>\n\n"
+                f"<b>Spot:</b> ${spot:,.2f} ({change:+.3f}%)\n"
+                f"<b>Polymarket:</b> {poly_odds:.2f} → Fair: {fair_odds:.2f}\n"
+                f"<b>Edge:</b> {edge:.1f}% | <b>Profit est:</b> {expected:.0f}%\n\n"
+                f"<b>Confianza:</b> [{conf_bar}] {conf:.0f}%\n"
+                f"<b>Cierra en:</b> {minutes}m {seconds}s\n\n"
+                f"💡 <i>Señal automática. Paper trading.</i>"
+            )
+            sent = await self._send_to_all(message, disable_preview=True)
+            return sent > 0
+        except Exception as e:
+            print(f"Error enviando crypto signal: {e}", flush=True)
+            return False
+
     def _format_message(self, candidate: AlertCandidate) -> str:
         trade = candidate.trade
         wallet_short = f"{trade.wallet_address[:6]}...{trade.wallet_address[-4:]}"

@@ -183,6 +183,37 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_wallets_smart ON wallets(smart_money_score DESC);
             """)
 
+            # Tabla de señales crypto arb
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS crypto_signals (
+                    id SERIAL PRIMARY KEY,
+                    coin TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    spot_change_pct DOUBLE PRECISION,
+                    poly_odds DOUBLE PRECISION,
+                    fair_odds DOUBLE PRECISION,
+                    confidence DOUBLE PRECISION,
+                    edge_pct DOUBLE PRECISION,
+                    condition_id TEXT,
+                    market_question TEXT,
+                    spot_price DOUBLE PRECISION,
+                    time_remaining_sec INTEGER,
+                    -- Paper trading
+                    paper_bet_size DOUBLE PRECISION DEFAULT 0,
+                    paper_result TEXT,
+                    paper_pnl DOUBLE PRECISION,
+                    resolved BOOLEAN DEFAULT FALSE,
+                    resolution TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_crypto_signals_created
+                    ON crypto_signals(created_at);
+                CREATE INDEX IF NOT EXISTS idx_crypto_signals_coin
+                    ON crypto_signals(coin);
+                CREATE INDEX IF NOT EXISTS idx_crypto_signals_resolved
+                    ON crypto_signals(resolved);
+            """)
+
     # ── Wallet Stats ──────────────────────────────────────────────────
 
     async def get_wallet_stats(self, address: str) -> Optional[WalletStats]:
@@ -1065,6 +1096,116 @@ class Database:
                 data.get("erc1155_transfers"),
                 address.lower(),
             )
+
+    # ── Crypto Arb Signals ────────────────────────────────────────────
+
+    async def record_crypto_signal(self, signal: dict) -> int:
+        """Registrar señal crypto arb y devolver ID."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                INSERT INTO crypto_signals
+                (coin, direction, spot_change_pct, poly_odds, fair_odds,
+                 confidence, edge_pct, condition_id, market_question,
+                 spot_price, time_remaining_sec, paper_bet_size)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                RETURNING id
+            """,
+                signal["coin"], signal["direction"],
+                signal.get("spot_change_pct"), signal.get("poly_odds"),
+                signal.get("fair_odds"), signal.get("confidence"),
+                signal.get("edge_pct"), signal.get("condition_id"),
+                signal.get("market_question"), signal.get("spot_price"),
+                signal.get("time_remaining_sec"),
+                signal.get("paper_bet_size", 0),
+            )
+            return row["id"] if row else 0
+
+    async def resolve_crypto_signal(self, signal_id: int, resolution: str,
+                                     paper_result: str, paper_pnl: float):
+        """Resolver señal crypto con resultado real."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE crypto_signals SET
+                    resolved = TRUE, resolution = $1,
+                    paper_result = $2, paper_pnl = $3
+                WHERE id = $4
+            """, resolution, paper_result, paper_pnl, signal_id)
+
+    async def get_unresolved_crypto_signals(self) -> list[dict]:
+        """Señales crypto pendientes de resolución."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT * FROM crypto_signals
+                WHERE resolved = FALSE
+                  AND created_at > NOW() - INTERVAL '2 hours'
+                ORDER BY created_at DESC
+            """)
+            return [_serialize_row(r) for r in rows]
+
+    async def get_crypto_signals_history(self, limit: int = 200,
+                                          coin: str = None) -> list[dict]:
+        """Historial de señales crypto para dashboard."""
+        async with self._pool.acquire() as conn:
+            if coin:
+                rows = await conn.fetch("""
+                    SELECT * FROM crypto_signals
+                    WHERE coin = $1
+                    ORDER BY created_at DESC LIMIT $2
+                """, coin, limit)
+            else:
+                rows = await conn.fetch("""
+                    SELECT * FROM crypto_signals
+                    ORDER BY created_at DESC LIMIT $1
+                """, limit)
+            return [_serialize_row(r) for r in rows]
+
+    async def get_crypto_arb_stats(self) -> dict:
+        """Estadísticas del bot crypto arb."""
+        async with self._pool.acquire() as conn:
+            total = await conn.fetchval(
+                "SELECT COUNT(*) FROM crypto_signals")
+            resolved = await conn.fetchval(
+                "SELECT COUNT(*) FROM crypto_signals WHERE resolved = TRUE")
+            wins = await conn.fetchval(
+                "SELECT COUNT(*) FROM crypto_signals WHERE paper_result = 'win'")
+            total_pnl = await conn.fetchval(
+                "SELECT COALESCE(SUM(paper_pnl), 0) FROM crypto_signals WHERE resolved = TRUE")
+            today_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM crypto_signals WHERE created_at > NOW() - INTERVAL '24 hours'")
+            today_pnl = await conn.fetchval(
+                "SELECT COALESCE(SUM(paper_pnl), 0) FROM crypto_signals "
+                "WHERE resolved = TRUE AND created_at > NOW() - INTERVAL '24 hours'")
+
+            # Por moneda
+            by_coin = await conn.fetch("""
+                SELECT coin,
+                       COUNT(*) as total,
+                       COUNT(CASE WHEN paper_result = 'win' THEN 1 END) as wins,
+                       COALESCE(SUM(paper_pnl), 0) as pnl
+                FROM crypto_signals
+                WHERE resolved = TRUE
+                GROUP BY coin
+            """)
+
+            return {
+                "total_signals": total or 0,
+                "resolved": resolved or 0,
+                "wins": wins or 0,
+                "win_rate": round((wins / resolved * 100) if resolved else 0, 1),
+                "total_pnl": round(float(total_pnl or 0), 2),
+                "signals_24h": today_count or 0,
+                "pnl_24h": round(float(today_pnl or 0), 2),
+                "by_coin": [
+                    {
+                        "coin": r["coin"],
+                        "total": r["total"],
+                        "wins": r["wins"],
+                        "pnl": round(float(r["pnl"]), 2),
+                        "win_rate": round((r["wins"] / r["total"] * 100) if r["total"] else 0, 1),
+                    }
+                    for r in by_coin
+                ],
+            }
 
 
 def _serialize_row(row) -> dict:

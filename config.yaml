@@ -1,11 +1,25 @@
 # Polymarket Insider Alert Bot - Configuration
 
-# Polling settings
+# ══════════════════════════════════════════════════════════════
+# MÓDULOS — activar/desactivar features independientemente
+# ══════════════════════════════════════════════════════════════
+features:
+  orderbook_depth: true           # Análisis de profundidad del order book en scoring
+  market_classification: true     # Clasificar mercados nicho vs mainstream
+  wallet_baskets: false           # Grupos de wallets por tema (requiere datos históricos)
+  sniper_dbscan: false            # Clustering avanzado DBSCAN
+  crypto_arb: false               # Bot de arbitraje crypto 15-min up/down
+
+# ══════════════════════════════════════════════════════════════
+# POLLING
+# ══════════════════════════════════════════════════════════════
 polling:
   interval_seconds: 60  # How often to check for new trades
   max_markets: 50       # Maximum markets to monitor per cycle
 
-# Detection thresholds
+# ══════════════════════════════════════════════════════════════
+# DETECTION
+# ══════════════════════════════════════════════════════════════
 detection:
   # Wallet freshness
   fresh_wallet_max_trades: 5      # Wallet is "fresh" if <= this many trades
@@ -23,7 +37,9 @@ detection:
   # Concentration
   concentration_threshold_pct: 10  # Trade as % of recent volume
 
-# Scoring system
+# ══════════════════════════════════════════════════════════════
+# SCORING
+# ══════════════════════════════════════════════════════════════
 scoring:
   fresh_wallet_points: 2
   large_size_points: 2
@@ -31,14 +47,65 @@ scoring:
   wallet_shift_points: 3
   concentration_points: 3
   alert_threshold: 5              # Minimum score to trigger alert
+  # Nuevos puntos para módulos opcionales
+  orderbook_depth_points: 2       # Trade consume >2% del order book
+  niche_market_points: 2          # Mercado nicho con poca liquidez
 
-# Alert settings
+# ══════════════════════════════════════════════════════════════
+# ALERTS
+# ══════════════════════════════════════════════════════════════
 alerts:
   cooldown_hours: 6               # Don't re-alert same wallet+market within this time
   max_alerts_per_hour: 10         # Rate limit alerts
 
-# Market filters (optional - leave empty to monitor all)
+# ══════════════════════════════════════════════════════════════
+# MARKET FILTERS
+# ══════════════════════════════════════════════════════════════
 market_filters:
   categories: []                  # e.g., ["politics", "crypto", "sports"]
   min_volume_24h: 0               # Minimum 24h volume to monitor
   exclude_slugs: []               # Market slugs to ignore
+
+# ══════════════════════════════════════════════════════════════
+# ORDER BOOK DEPTH (módulo orderbook_depth)
+# ══════════════════════════════════════════════════════════════
+orderbook:
+  min_depth_pct: 2.0              # Trade consume X% del book = señal fuerte
+  cache_ttl_seconds: 30           # Cache del order book para evitar rate limits
+
+# ══════════════════════════════════════════════════════════════
+# MARKET CLASSIFICATION (módulo market_classification)
+# ══════════════════════════════════════════════════════════════
+market_classification:
+  niche_max_liquidity: 50000      # Mercado con <$50K liquidez = nicho
+  niche_score_multiplier: 1.5     # Multiplicar score en mercados nicho
+  mainstream_categories:           # Categorías consideradas mainstream
+    - "politics"
+    - "sports"
+    - "crypto-prices"
+
+# ══════════════════════════════════════════════════════════════
+# CRYPTO ARB — Bot de arbitraje crypto 15-min up/down
+# ══════════════════════════════════════════════════════════════
+crypto_arb:
+  mode: "alert"                   # "alert" = solo Telegram, "paper" = paper trading
+  coins:                          # Monedas a monitorear
+    - symbol: "BTC"
+      binance_pair: "btcusdt"
+    - symbol: "ETH"
+      binance_pair: "ethusdt"
+    - symbol: "SOL"
+      binance_pair: "solusdt"
+  # Parámetros de señal
+  min_price_move_pct: 0.15        # Movimiento mínimo en spot para señal
+  max_poly_odds: 0.65             # Odds máximo en Polymarket para entrar
+  min_confidence_pct: 70          # Confianza mínima para alertar
+  # Timing
+  min_time_remaining_sec: 120     # Mínimo 2 min antes del cierre
+  max_time_remaining_sec: 720     # Máximo 12 min antes del cierre
+  lookback_seconds: 180           # Ventana de análisis de momentum (3 min)
+  # Paper trading
+  paper_bet_size: 100             # Tamaño de apuesta simulada (USD)
+  max_daily_signals: 50           # Límite de señales por día
+  # Telegram
+  telegram_alerts: true           # Enviar señales a Telegram
