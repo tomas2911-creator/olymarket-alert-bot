@@ -928,12 +928,17 @@ class Database:
 
     # ── Polygonscan Data ─────────────────────────────────────────────
 
-    async def get_wallets_for_onchain_check(self, limit: int = 10) -> list[str]:
+    async def get_wallets_for_onchain_check(self, limit: int = 20) -> list[str]:
+        """Wallets que nunca se chequearon o hace más de 24h."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT address FROM wallets
-                WHERE on_chain_first_tx IS NULL AND total_trades >= 3
-                ORDER BY total_volume DESC
+                WHERE (on_chain_checked_at IS NULL
+                       OR on_chain_checked_at < NOW() - INTERVAL '24 hours')
+                  AND total_trades >= 1
+                ORDER BY
+                    on_chain_checked_at IS NULL DESC,
+                    total_volume DESC
                 LIMIT $1
             """, limit)
             return [r["address"] for r in rows]

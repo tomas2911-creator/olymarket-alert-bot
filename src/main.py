@@ -106,7 +106,11 @@ class PolymarketAlertBot:
                     if self._watchlist:
                         print(f"Watchlist actualizado: {len(self._watchlist)} wallets", flush=True)
 
-                # Cada 60 ciclos (~1h): health check + coordination + on-chain
+                # Cada 15 ciclos (~15 min): on-chain check (20 wallets por batch)
+                if cycle % 15 == 0:
+                    await self.check_onchain_wallets()
+
+                # Cada 60 ciclos (~1h): health check + coordination
                 if cycle % 60 == 0:
                     await self.send_health_check()
                     try:
@@ -115,7 +119,6 @@ class PolymarketAlertBot:
                             print(f"Coordinacion detectada: {coord_count} pares", flush=True)
                     except Exception as e:
                         print(f"Error en coordinacion: {e}", flush=True)
-                    await self.check_onchain_wallets()
 
             except Exception as e:
                 print(f"Error en ciclo polling: {e}", flush=True)
@@ -316,7 +319,7 @@ class PolymarketAlertBot:
         if not config.POLYGONSCAN_API_KEY:
             return
         try:
-            wallets = await self.db.get_wallets_for_onchain_check(limit=5)
+            wallets = await self.db.get_wallets_for_onchain_check(limit=20)
             for addr in wallets:
                 info = await get_wallet_onchain_info(addr)
                 # Guardar si hay al menos algún dato útil
