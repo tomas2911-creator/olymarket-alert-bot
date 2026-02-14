@@ -105,6 +105,7 @@ class CryptoArbBacktester:
     ) -> BacktestResult:
         """Ejecutar backtest sobre mercados crypto up/down resueltos."""
         self._running = True
+        self._last_result = None  # Limpiar resultado anterior para evitar cache
         coins = coins or ["BTC", "ETH", "SOL"]
         coin_names = {
             "BTC": "Bitcoin", "ETH": "Ethereum", "SOL": "Solana",
@@ -551,6 +552,8 @@ class CryptoArbBacktester:
 
     def get_last_result(self) -> Optional[dict]:
         """Último resultado de backtest."""
+        if self._running:
+            return None  # Backtest en progreso, no devolver cache viejo
         if self._last_result:
             return self._last_result.to_dict()
         return None

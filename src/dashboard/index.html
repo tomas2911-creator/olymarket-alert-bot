@@ -1610,27 +1610,32 @@ async function runBacktest(){
         max_odds:parseFloat(document.getElementById('bt-odds').value.replace(',','.'))||0.65,
     };
     await fetch('/api/crypto-arb/backtest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    // Poll para resultado
+    // Poll para resultado — esperar a que termine (status != running)
     let tries=0;
     const poll=setInterval(async()=>{
         tries++;
         const r=await fetchJson('/api/crypto-arb/backtest');
-        if(r&&r.total_trades!==undefined&&r.status!=='no_data'){
-            clearInterval(poll);
-            loading.classList.add('hidden');
-            btn.disabled=false;btn.textContent='Ejecutar Backtest';
-            if(r.total_trades>0){
-                showBacktestResults(r);
-            }else{
+        if(!r)return;
+        // Si sigue corriendo, seguir polleando
+        if(r.status==='running'||r.status==='no_data'){
+            if(tries>60){
+                clearInterval(poll);
+                loading.classList.add('hidden');
+                btn.disabled=false;btn.textContent='Ejecutar Backtest';
                 results.classList.remove('hidden');
-                results.innerHTML='<div class="text-center py-8 text-gray-400"><p class="text-lg mb-2">No se encontraron mercados crypto up/down resueltos</p><p class="text-xs">Probá con más días (14 o 30) para ampliar la búsqueda</p></div>';
+                results.innerHTML='<div class="text-center py-8 text-yellow-400">Timeout — el backtest sigue corriendo en background. Recargá la página en unos segundos.</div>';
             }
-        }else if(tries>40){
-            clearInterval(poll);
-            loading.classList.add('hidden');
-            btn.disabled=false;btn.textContent='Ejecutar Backtest';
+            return;
+        }
+        // Resultado listo
+        clearInterval(poll);
+        loading.classList.add('hidden');
+        btn.disabled=false;btn.textContent='Ejecutar Backtest';
+        if(r.total_trades>0){
+            showBacktestResults(r);
+        }else{
             results.classList.remove('hidden');
-            results.innerHTML='<div class="text-center py-8 text-yellow-400">Timeout — el backtest sigue corriendo en background. Recargá la página en unos segundos.</div>';
+            results.innerHTML='<div class="text-center py-8 text-gray-400"><p class="text-lg mb-2">No se encontraron mercados crypto up/down resueltos</p><p class="text-xs">Probá con más días (14 o 30) para ampliar la búsqueda</p></div>';
         }
     },3000);
 }

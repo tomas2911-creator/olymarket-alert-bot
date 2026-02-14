@@ -507,6 +507,8 @@ async def get_backtest_result(request: Request):
     bot = request.app.state.bot
     if not bot or not hasattr(bot, "backtester"):
         return {"error": "Backtester no disponible"}
+    if bot.backtester._running:
+        return {"status": "running"}
     result = bot.backtester.get_last_result()
     if result:
         return result
