@@ -63,19 +63,22 @@
         <h3 class="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-4">Configuracion del Bot</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
-                <label class="text-xs text-gray-400">Min Trade Size (USD)</label>
-                <input type="range" id="cfg-min-size" min="10" max="5000" step="10" class="w-full mt-1">
-                <div class="text-sm font-mono text-purple-300 mt-1">$<span id="cfg-min-size-val">50</span></div>
+                <label class="text-xs text-gray-400 mb-1 block">Min Trade Size (USD)</label>
+                <div class="flex items-center gap-1">
+                    <span class="text-purple-300 text-sm">$</span>
+                    <input type="number" id="cfg-min-size" min="0" step="1" value="50" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+                </div>
             </div>
             <div>
-                <label class="text-xs text-gray-400">Large Trade Size (USD)</label>
-                <input type="range" id="cfg-large-size" min="100" max="10000" step="50" class="w-full mt-1">
-                <div class="text-sm font-mono text-purple-300 mt-1">$<span id="cfg-large-size-val">500</span></div>
+                <label class="text-xs text-gray-400 mb-1 block">Large Trade Size (USD)</label>
+                <div class="flex items-center gap-1">
+                    <span class="text-purple-300 text-sm">$</span>
+                    <input type="number" id="cfg-large-size" min="0" step="1" value="500" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+                </div>
             </div>
             <div>
-                <label class="text-xs text-gray-400">Alert Threshold (Score)</label>
-                <input type="range" id="cfg-threshold" min="3" max="10" step="1" class="w-full mt-1">
-                <div class="text-sm font-mono text-purple-300 mt-1"><span id="cfg-threshold-val">5</span> puntos</div>
+                <label class="text-xs text-gray-400 mb-1 block">Alert Threshold (Score min)</label>
+                <input type="number" id="cfg-threshold" min="1" max="20" step="1" value="5" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
             </div>
         </div>
         <div class="mt-4">
@@ -314,12 +317,9 @@ function toggleConfig(){document.getElementById('config-panel').classList.toggle
 
 async function loadConfig(){
     const c=await fetchJson('/api/config');if(!c)return;
-    const ms=document.getElementById('cfg-min-size'),ls=document.getElementById('cfg-large-size'),th=document.getElementById('cfg-threshold');
-    ms.value=c.min_size_usd;ls.value=c.large_size_usd;th.value=c.alert_threshold;
-    document.getElementById('cfg-min-size-val').textContent=c.min_size_usd;
-    document.getElementById('cfg-large-size-val').textContent=c.large_size_usd;
-    document.getElementById('cfg-threshold-val').textContent=c.alert_threshold;
-    // Categories
+    document.getElementById('cfg-min-size').value=c.min_size_usd;
+    document.getElementById('cfg-large-size').value=c.large_size_usd;
+    document.getElementById('cfg-threshold').value=c.alert_threshold;
     const excluded=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase());
     const cont=document.getElementById('cfg-categories');
     cont.innerHTML=ALL_CATEGORIES.map(cat=>{
@@ -340,20 +340,14 @@ async function saveConfig(){
     const checks=document.querySelectorAll('.cat-check');
     const excluded=[...checks].filter(c=>c.checked).map(c=>c.dataset.cat).join(',');
     const body={
-        min_size_usd:parseInt(document.getElementById('cfg-min-size').value),
-        large_size_usd:parseInt(document.getElementById('cfg-large-size').value),
-        alert_threshold:parseInt(document.getElementById('cfg-threshold').value),
+        min_size_usd:parseInt(document.getElementById('cfg-min-size').value)||50,
+        large_size_usd:parseInt(document.getElementById('cfg-large-size').value)||500,
+        alert_threshold:parseInt(document.getElementById('cfg-threshold').value)||5,
         excluded_categories:excluded
     };
     await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const st=document.getElementById('cfg-status');st.classList.remove('hidden');setTimeout(()=>st.classList.add('hidden'),2000);
 }
-
-// Slider live values
-['cfg-min-size','cfg-large-size','cfg-threshold'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el)el.addEventListener('input',()=>{document.getElementById(id+'-val').textContent=el.value;});
-});
 
 // ── Load Stats ──
 async function loadStats(){
