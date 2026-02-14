@@ -1,10 +1,18 @@
 """Backtester para la estrategia crypto arb.
 
 Descarga datos históricos de mercados crypto up/down resueltos en Polymarket
-y simula qué habría pasado si hubiéramos seguido las señales.
+y simula qué habría pasado usando datos REALES de Binance (precios spot)
+y Polymarket (resolución). NO usa random ni datos inventados.
+
+Método:
+1. Para cada mercado cerrado, parsea el tiempo de inicio/fin del window
+2. Obtiene klines de Binance para ese window exacto
+3. Simula la lógica del detector: analiza momentum del spot a mitad del window
+4. Compara predicción con resolución real de Polymarket
+5. Calcula PnL con entry_odds = 0.50 (mercados abren ~50/50)
 """
 import asyncio
-import random
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -292,7 +300,9 @@ class CryptoArbBacktester:
                     markets.append({
                         "condition_id": cid,
                         "question": m.get("question", ""),
+                        "slug": m.get("slug", ""),
                         "closed_time": closed_time,
+                        "end_date": m.get("endDate", ""),
                         "outcome_prices": m.get("outcomePrices", ""),
                     })
 
@@ -306,13 +316,105 @@ class CryptoArbBacktester:
 
         return markets
 
+    def _parse_market_window(self, market: dict) -> Optional[tuple[datetime, datetime, str]]:
+        """Parsear inicio y fin del window de un mercado crypto up/down.
+
+        Retorna (start_dt, end_dt, binance_pair) o None si no se puede parsear.
+        Los slugs tienen formato: btc-updown-15m-{start_timestamp}
+        """
+        slug = market.get("slug", "").lower()
+        coin = market.get("_coin", "")
+
+        # Mapeo de moneda a par de Binance
+        pair_map = {"BTC": "BTCUSDT", "ETH": "ETHUSDT", "SOL": "SOLUSDT"}
+        binance_pair = pair_map.get(coin)
+        if not binance_pair:
+            return None
+
+        # Intentar parsear desde slug: btc-updown-15m-{start_ts}
+        slug_match = re.search(r'updown-(\d+[hm])-(\d{10,})', slug)
+        if slug_match:
+            duration_str = slug_match.group(1)
+            start_ts = int(slug_match.group(2))
+            start_dt = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+
+            # Parsear duración
+            if duration_str.endswith('m'):
+                minutes = int(duration_str[:-1])
+            elif duration_str.endswith('h'):
+                minutes = int(duration_str[:-1]) * 60
+            else:
+                minutes = 15  # default
+
+            end_dt = start_dt + timedelta(minutes=minutes)
+            return (start_dt, end_dt, binance_pair)
+
+        # Fallback: usar endDate y estimar start desde la pregunta
+        end_str = market.get("end_date") or market.get("closed_time")
+        if end_str:
+            try:
+                end_dt = datetime.fromisoformat(
+                    str(end_str).replace("Z", "+00:00"))
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=timezone.utc)
+                # Estimar 15 min de duración por defecto
+                start_dt = end_dt - timedelta(minutes=15)
+                return (start_dt, end_dt, binance_pair)
+            except Exception:
+                pass
+
+        return None
+
+    async def _get_binance_klines(self, client: httpx.AsyncClient,
+                                   symbol: str, start_dt: datetime,
+                                   end_dt: datetime) -> list[dict]:
+        """Obtener klines de 1 minuto de Binance para un rango de tiempo."""
+        try:
+            start_ms = int(start_dt.timestamp() * 1000)
+            end_ms = int(end_dt.timestamp() * 1000)
+            resp = await client.get(
+                "https://api.binance.com/api/v3/klines",
+                params={
+                    "symbol": symbol,
+                    "interval": "1m",
+                    "startTime": str(start_ms),
+                    "endTime": str(end_ms),
+                    "limit": "500",
+                },
+            )
+            if resp.status_code != 200:
+                return []
+            raw = resp.json()
+            return [
+                {
+                    "ts": k[0] / 1000,  # Unix seconds
+                    "open": float(k[1]),
+                    "high": float(k[2]),
+                    "low": float(k[3]),
+                    "close": float(k[4]),
+                }
+                for k in raw
+            ]
+        except Exception as e:
+            print(f"[Backtest] Error klines {symbol}: {e}", flush=True)
+            return []
+
     async def _simulate_trade(self, client: httpx.AsyncClient, market: dict,
                                coin: str, bet_size: float,
                                max_odds: float) -> Optional[BacktestTrade]:
-        """Simular un trade en un mercado resuelto."""
+        """Simular un trade usando datos REALES.
+
+        1. Obtiene resolución real de Polymarket (quién ganó: Up o Down)
+        2. Obtiene precios reales de Binance para el window del mercado
+        3. Simula la lógica del detector: a mitad del window, ¿el precio sube o baja?
+        4. Compara predicción del detector vs resolución real
+        5. Calcula PnL con entry_odds = 0.50 (mercados abren ~50/50)
+        """
         cid = market["condition_id"]
+        market["_coin"] = coin  # Para _parse_market_window
+
         try:
-            # Obtener resolución del mercado via CLOB
+            # 1. Obtener resolución real via CLOB API
             resp = await client.get(f"{config.CLOB_API_URL}/markets/{cid}")
             if resp.status_code != 200:
                 return None
@@ -322,46 +424,78 @@ class CryptoArbBacktester:
             if not tokens:
                 return None
 
-            # Encontrar ganador
             winner = None
             for tok in tokens:
                 if tok.get("winner") is True:
                     winner = tok.get("outcome", "").lower()
                     break
-
             if not winner:
                 return None
 
-            # Simular: habríamos comprado el outcome más probable basado en momentum
-            # Para backtest, asumimos que siempre compramos el ganador
-            # con odds entre 0.50 y max_odds (simulando entrada temprana)
-            # Esto es una aproximación — el backtest real necesitaría datos de precios históricos
+            # 2. Parsear window de tiempo del mercado
+            window = self._parse_market_window(market)
+            if not window:
+                print(f"[Backtest] No se pudo parsear window: {market.get('slug','')}", flush=True)
+                return None
 
-            # Simular odds de entrada aleatorios pero realistas
-            # 70% de las veces acertamos la dirección (basado en datos de bots reales)
-            correct = random.random() < 0.75
-            entry_odds = random.uniform(0.45, max_odds)
+            start_dt, end_dt, binance_pair = window
+
+            # 3. Obtener klines reales de Binance
+            klines = await self._get_binance_klines(client, binance_pair, start_dt, end_dt)
+            if len(klines) < 2:
+                print(f"[Backtest] Sin klines para {binance_pair} {start_dt}", flush=True)
+                return None
+
+            # 4. Simular lógica del detector
+            # Precio de apertura del window (referencia)
+            open_price = klines[0]["open"]
+
+            # Precio a mitad del window (cuando el detector tomaría la decisión)
+            mid_idx = len(klines) // 2
+            if mid_idx < 1:
+                mid_idx = 1
+            mid_price = klines[mid_idx]["close"]
+
+            # El detector predice: si el precio está arriba de la apertura → UP, sino → DOWN
+            spot_change_pct = ((mid_price - open_price) / open_price) * 100
+
+            # Solo entrar si hay movimiento suficiente (min_price_move_pct)
+            min_move = config.CRYPTO_ARB_MIN_MOVE_PCT
+            if abs(spot_change_pct) < min_move:
+                # Sin movimiento suficiente → el detector NO entraría
+                return None
+
+            # Dirección predicha por el detector
+            predicted_direction = "up" if spot_change_pct > 0 else "down"
+
+            # 5. Comparar con resolución real
+            correct = (predicted_direction == winner)
+
+            # 6. Calcular PnL
+            # Entry odds: mercados abren ~50/50, pero si ya vemos momentum,
+            # el precio se habría movido ligeramente. Estimamos entry basado
+            # en cuánto se movió el spot (más movimiento → odds menos favorables)
+            # Fórmula: base 0.50 + ajuste por momentum ya visible
+            momentum_adj = min(abs(spot_change_pct) * 0.02, 0.10)  # máx +0.10
+            entry_odds = 0.50 + momentum_adj
+
+            # Respetar max_odds del usuario
+            if entry_odds > max_odds:
+                return None  # Odds demasiado altas, no entraríamos
 
             if correct:
-                direction = winner
-                pnl = bet_size * (1 - entry_odds)  # Ganamos: pagamos entry, recibimos 1
+                pnl = bet_size * (1 - entry_odds)
                 result = "win"
             else:
-                direction = "down" if winner == "up" else "up"
-                pnl = -bet_size * entry_odds  # Perdemos lo apostado
+                pnl = -bet_size * entry_odds
                 result = "loss"
 
-            closed_time = market.get("closed_time")
-            ts = datetime.now(timezone.utc)
-            if closed_time:
-                try:
-                    ts = datetime.fromisoformat(closed_time.replace("Z", "+00:00"))
-                except Exception:
-                    pass
+            # Timestamp del trade
+            ts = end_dt
 
             return BacktestTrade(
                 coin=coin,
-                direction=direction,
+                direction=predicted_direction,
                 entry_odds=round(entry_odds, 3),
                 result=result,
                 pnl=round(pnl, 2),
