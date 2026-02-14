@@ -9,365 +9,567 @@
     <script>
         tailwind.config = {
             darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        dark: { 800: '#1a1a2e', 900: '#0f0f1a', 700: '#252542' },
-                        accent: { 500: '#6c5ce7', 400: '#a29bfe' },
-                    }
-                }
-            }
+            theme: { extend: { colors: {
+                dark: { 800: '#1a1a2e', 900: '#0f0f1a', 700: '#252542' },
+                accent: { 500: '#6c5ce7', 400: '#a29bfe' },
+            }}}
         }
     </script>
     <style>
         body { background: #0f0f1a; font-family: 'Inter', system-ui, sans-serif; }
-        .glass { background: rgba(26, 26, 46, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(108, 92, 231, 0.15); }
-        .glow { box-shadow: 0 0 20px rgba(108, 92, 231, 0.1); }
-        .score-bar { background: linear-gradient(90deg, #6c5ce7 0%, #a29bfe 50%, #fd79a8 100%); }
-        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .glass { background: rgba(26,26,46,0.8); backdrop-filter: blur(10px); border: 1px solid rgba(108,92,231,0.15); }
+        .glow { box-shadow: 0 0 20px rgba(108,92,231,0.1); }
+        @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
         .live-dot { animation: pulse-dot 2s infinite; }
         .fade-in { animation: fadeIn 0.3s ease-in; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0f0f1a; }
         ::-webkit-scrollbar-thumb { background: #6c5ce7; border-radius: 3px; }
+        .tab-btn { transition: all 0.2s; }
+        .tab-btn.active { border-color: #6c5ce7; color: #a29bfe; }
+        .tab-btn:not(.active) { border-color: transparent; color: #9ca3af; }
+        .modal-bg { background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
+        input[type=range] { accent-color: #6c5ce7; }
+        .explorer-link { transition: color 0.15s; }
+        .explorer-link:hover { color: #a29bfe; }
     </style>
 </head>
 <body class="text-gray-200 min-h-screen">
-    <!-- Header -->
-    <header class="glass sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-            <span class="text-2xl">🔍</span>
-            <h1 class="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Polymarket Insider Alert
-            </h1>
-        </div>
-        <div class="flex items-center gap-4 text-sm">
-            <span class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-green-400 live-dot"></span>
-                <span id="uptime" class="text-gray-400">Conectando...</span>
-            </span>
-            <span id="last-update" class="text-gray-500"></span>
-        </div>
-    </header>
 
-    <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        <!-- Stats Cards -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="stats-grid">
-            <div class="glass glow rounded-xl p-4 fade-in">
-                <div class="text-gray-400 text-xs uppercase tracking-wider">Alertas Totales</div>
-                <div class="text-3xl font-bold mt-1" id="stat-total-alerts">-</div>
+<!-- Header -->
+<header class="glass sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+        <span class="text-2xl">🔍</span>
+        <h1 class="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            Polymarket Insider Alert
+        </h1>
+    </div>
+    <div class="flex items-center gap-4 text-sm">
+        <button onclick="toggleConfig()" class="px-3 py-1.5 rounded-lg bg-purple-900/40 text-purple-300 hover:bg-purple-900/60 transition text-xs font-medium">
+            ⚙️ Config
+        </button>
+        <span class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-green-400 live-dot"></span>
+            <span id="uptime" class="text-gray-400">Conectando...</span>
+        </span>
+        <span id="last-update" class="text-gray-500 text-xs"></span>
+    </div>
+</header>
+
+<!-- Config Panel (hidden by default) -->
+<div id="config-panel" class="hidden max-w-7xl mx-auto px-4 pt-4">
+    <div class="glass glow rounded-xl p-5 fade-in">
+        <h3 class="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-4">Configuracion del Bot</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+                <label class="text-xs text-gray-400">Min Trade Size (USD)</label>
+                <input type="range" id="cfg-min-size" min="10" max="5000" step="10" class="w-full mt-1">
+                <div class="text-sm font-mono text-purple-300 mt-1">$<span id="cfg-min-size-val">50</span></div>
             </div>
-            <div class="glass glow rounded-xl p-4 fade-in">
-                <div class="text-gray-400 text-xs uppercase tracking-wider">Alertas 24h</div>
-                <div class="text-3xl font-bold mt-1 text-purple-400" id="stat-alerts-24h">-</div>
+            <div>
+                <label class="text-xs text-gray-400">Large Trade Size (USD)</label>
+                <input type="range" id="cfg-large-size" min="100" max="10000" step="50" class="w-full mt-1">
+                <div class="text-sm font-mono text-purple-300 mt-1">$<span id="cfg-large-size-val">500</span></div>
             </div>
-            <div class="glass glow rounded-xl p-4 fade-in">
-                <div class="text-gray-400 text-xs uppercase tracking-wider">Hit Rate</div>
-                <div class="text-3xl font-bold mt-1" id="stat-hit-rate">-</div>
-                <div class="text-xs text-gray-500 mt-1" id="stat-resolved-detail"></div>
-            </div>
-            <div class="glass glow rounded-xl p-4 fade-in">
-                <div class="text-gray-400 text-xs uppercase tracking-wider">Score Promedio</div>
-                <div class="text-3xl font-bold mt-1 text-pink-400" id="stat-avg-score">-</div>
-            </div>
-            <div class="glass glow rounded-xl p-4 fade-in">
-                <div class="text-gray-400 text-xs uppercase tracking-wider">Trades Procesados</div>
-                <div class="text-3xl font-bold mt-1" id="stat-trades">-</div>
-            </div>
-            <div class="glass glow rounded-xl p-4 fade-in">
-                <div class="text-gray-400 text-xs uppercase tracking-wider">Wallets Flaggeadas</div>
-                <div class="text-3xl font-bold mt-1 text-yellow-400" id="stat-wallets">-</div>
-            </div>
-            <div class="glass glow rounded-xl p-4 fade-in">
-                <div class="text-gray-400 text-xs uppercase tracking-wider">Resueltas Correctas</div>
-                <div class="text-3xl font-bold mt-1 text-green-400" id="stat-correct">-</div>
-            </div>
-            <div class="glass glow rounded-xl p-4 fade-in">
-                <div class="text-gray-400 text-xs uppercase tracking-wider">Sesión</div>
-                <div class="text-lg font-bold mt-1" id="stat-session">-</div>
+            <div>
+                <label class="text-xs text-gray-400">Alert Threshold (Score)</label>
+                <input type="range" id="cfg-threshold" min="3" max="10" step="1" class="w-full mt-1">
+                <div class="text-sm font-mono text-purple-300 mt-1"><span id="cfg-threshold-val">5</span> puntos</div>
             </div>
         </div>
+        <div class="mt-4">
+            <label class="text-xs text-gray-400 mb-2 block">Categorias Excluidas</label>
+            <div id="cfg-categories" class="flex flex-wrap gap-2"></div>
+        </div>
+        <div class="mt-4 flex gap-3">
+            <button onclick="saveConfig()" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">
+                Guardar
+            </button>
+            <button onclick="toggleConfig()" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition">
+                Cerrar
+            </button>
+            <span id="cfg-status" class="text-xs text-green-400 self-center hidden">Guardado!</span>
+        </div>
+    </div>
+</div>
 
-        <!-- Charts -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="glass glow rounded-xl p-5">
-                <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Alertas por Día</h3>
-                <canvas id="chart-alerts-day" height="200"></canvas>
-            </div>
-            <div class="glass glow rounded-xl p-5">
-                <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Distribución de Scores</h3>
-                <canvas id="chart-scores" height="200"></canvas>
-            </div>
+<main class="max-w-7xl mx-auto px-4 py-4 space-y-4">
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Alertas Totales</div><div class="text-2xl font-bold mt-1" id="stat-total-alerts">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Alertas 24h</div><div class="text-2xl font-bold mt-1 text-purple-400" id="stat-alerts-24h">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Hit Rate</div><div class="text-2xl font-bold mt-1" id="stat-hit-rate">-</div><div class="text-xs text-gray-500" id="stat-resolved-detail"></div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Score Promedio</div><div class="text-2xl font-bold mt-1 text-pink-400" id="stat-avg-score">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Trades Procesados</div><div class="text-2xl font-bold mt-1" id="stat-trades">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Wallets Flaggeadas</div><div class="text-2xl font-bold mt-1 text-yellow-400" id="stat-wallets">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Correctas</div><div class="text-2xl font-bold mt-1 text-green-400" id="stat-correct">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Sesion</div><div class="text-lg font-bold mt-1" id="stat-session">-</div></div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="glass glow rounded-xl p-4">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Alertas por Dia</h3>
+            <canvas id="chart-alerts-day" height="180"></canvas>
+        </div>
+        <div class="glass glow rounded-xl p-4">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Distribucion de Scores</h3>
+            <canvas id="chart-scores" height="180"></canvas>
+        </div>
+        <div class="glass glow rounded-xl p-4">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Categorias</h3>
+            <canvas id="chart-categories" height="180"></canvas>
+        </div>
+    </div>
+
+    <!-- Main Tabs -->
+    <div class="glass glow rounded-xl overflow-hidden">
+        <div class="flex border-b border-gray-700/50 overflow-x-auto">
+            <button onclick="showTab('alerts')" id="tab-alerts" class="tab-btn active px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">🚨 Alertas</button>
+            <button onclick="showTab('wallets')" id="tab-wallets" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">👛 Wallets</button>
+            <button onclick="showTab('markets')" id="tab-markets" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">📊 Mercados</button>
+            <button onclick="showTab('feed')" id="tab-feed" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">⚡ Feed</button>
         </div>
 
-        <!-- Tabs -->
-        <div class="glass glow rounded-xl overflow-hidden">
-            <div class="flex border-b border-gray-700/50">
-                <button onclick="showTab('alerts')" id="tab-alerts"
-                    class="px-6 py-3 text-sm font-medium border-b-2 border-purple-500 text-purple-400">
-                    🚨 Alertas Recientes
-                </button>
-                <button onclick="showTab('wallets')" id="tab-wallets"
-                    class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
-                    👛 Top Wallets
-                </button>
+        <!-- Alerts Panel -->
+        <div id="panel-alerts">
+            <div class="px-4 py-2 flex gap-2 items-center border-b border-gray-800/50">
+                <input type="text" id="alert-search" placeholder="Buscar mercado o wallet..." class="bg-gray-800/50 rounded px-3 py-1.5 text-xs text-gray-200 w-64 focus:outline-none focus:ring-1 focus:ring-purple-500" oninput="filterAlerts()">
+                <select id="alert-score-filter" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none" onchange="filterAlerts()">
+                    <option value="0">Todos los scores</option>
+                    <option value="5">Score >= 5</option>
+                    <option value="7">Score >= 7</option>
+                    <option value="9">Score >= 9</option>
+                </select>
             </div>
-
-            <!-- Alerts Table -->
-            <div id="panel-alerts" class="overflow-x-auto">
+            <div class="overflow-x-auto">
                 <table class="w-full text-sm">
-                    <thead>
-                        <tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-                            <th class="px-4 py-3 text-left">Fecha</th>
-                            <th class="px-4 py-3 text-left">Mercado</th>
-                            <th class="px-4 py-3 text-center">Apuesta</th>
-                            <th class="px-4 py-3 text-right">Size</th>
-                            <th class="px-4 py-3 text-center">Score</th>
-                            <th class="px-4 py-3 text-left">Wallet</th>
-                            <th class="px-4 py-3 text-center">Estado</th>
-                        </tr>
-                    </thead>
+                    <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
+                        <th class="px-4 py-2 text-left">Fecha</th>
+                        <th class="px-4 py-2 text-left">Mercado</th>
+                        <th class="px-4 py-2 text-center">Apuesta</th>
+                        <th class="px-4 py-2 text-right">Size</th>
+                        <th class="px-4 py-2 text-center">Score</th>
+                        <th class="px-4 py-2 text-left">Wallet</th>
+                        <th class="px-4 py-2 text-center">Estado</th>
+                    </tr></thead>
                     <tbody id="alerts-body"></tbody>
                 </table>
-                <div id="alerts-empty" class="hidden text-center py-12 text-gray-500">
-                    No hay alertas aún. El bot está monitoreando...
-                </div>
-            </div>
-
-            <!-- Wallets Table -->
-            <div id="panel-wallets" class="hidden overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-                            <th class="px-4 py-3 text-left">Wallet</th>
-                            <th class="px-4 py-3 text-right">Alertas</th>
-                            <th class="px-4 py-3 text-right">Trades</th>
-                            <th class="px-4 py-3 text-right">Volumen</th>
-                            <th class="px-4 py-3 text-center">Max Score</th>
-                            <th class="px-4 py-3 text-center">Hit Rate</th>
-                        </tr>
-                    </thead>
-                    <tbody id="wallets-body"></tbody>
-                </table>
-                <div id="wallets-empty" class="hidden text-center py-12 text-gray-500">
-                    Sin datos de wallets aún.
-                </div>
+                <div id="alerts-empty" class="hidden text-center py-10 text-gray-500">No hay alertas aun. El bot esta monitoreando...</div>
             </div>
         </div>
-    </main>
 
-    <footer class="text-center text-gray-600 text-xs py-6">
-        Polymarket Insider Alert Bot v2.0 — Anomaly detection only. DYOR.
-    </footer>
+        <!-- Wallets Panel -->
+        <div id="panel-wallets" class="hidden overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
+                    <th class="px-4 py-2 text-left">Wallet</th>
+                    <th class="px-4 py-2 text-left">Nombre</th>
+                    <th class="px-4 py-2 text-right">Alertas</th>
+                    <th class="px-4 py-2 text-right">Trades</th>
+                    <th class="px-4 py-2 text-right">Volumen</th>
+                    <th class="px-4 py-2 text-center">Max Score</th>
+                    <th class="px-4 py-2 text-center">Hit Rate</th>
+                    <th class="px-4 py-2 text-center">Explorar</th>
+                </tr></thead>
+                <tbody id="wallets-body"></tbody>
+            </table>
+            <div id="wallets-empty" class="hidden text-center py-10 text-gray-500">Sin datos de wallets aun.</div>
+        </div>
 
-    <script>
-        let alertsChart = null;
-        let scoresChart = null;
+        <!-- Markets Panel -->
+        <div id="panel-markets" class="hidden overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
+                    <th class="px-4 py-2 text-left">Mercado</th>
+                    <th class="px-4 py-2 text-center">Categoria</th>
+                    <th class="px-4 py-2 text-right">Trades</th>
+                    <th class="px-4 py-2 text-right">Volumen</th>
+                    <th class="px-4 py-2 text-center">Alertas</th>
+                    <th class="px-4 py-2 text-center">Cierre</th>
+                    <th class="px-4 py-2 text-center">Estado</th>
+                </tr></thead>
+                <tbody id="markets-body"></tbody>
+            </table>
+            <div id="markets-empty" class="hidden text-center py-10 text-gray-500">Sin mercados trackeados aun.</div>
+        </div>
 
-        // ── Tabs ──
-        function showTab(tab) {
-            document.getElementById('panel-alerts').classList.toggle('hidden', tab !== 'alerts');
-            document.getElementById('panel-wallets').classList.toggle('hidden', tab !== 'wallets');
-            document.getElementById('tab-alerts').classList.toggle('border-purple-500', tab === 'alerts');
-            document.getElementById('tab-alerts').classList.toggle('text-purple-400', tab === 'alerts');
-            document.getElementById('tab-alerts').classList.toggle('border-transparent', tab !== 'alerts');
-            document.getElementById('tab-alerts').classList.toggle('text-gray-400', tab !== 'alerts');
-            document.getElementById('tab-wallets').classList.toggle('border-purple-500', tab === 'wallets');
-            document.getElementById('tab-wallets').classList.toggle('text-purple-400', tab === 'wallets');
-            document.getElementById('tab-wallets').classList.toggle('border-transparent', tab !== 'wallets');
-            document.getElementById('tab-wallets').classList.toggle('text-gray-400', tab !== 'wallets');
-        }
+        <!-- Feed Panel -->
+        <div id="panel-feed" class="hidden overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
+                    <th class="px-4 py-2 text-left">Hora</th>
+                    <th class="px-4 py-2 text-left">Mercado</th>
+                    <th class="px-4 py-2 text-center">Side</th>
+                    <th class="px-4 py-2 text-right">Size</th>
+                    <th class="px-4 py-2 text-right">Precio</th>
+                    <th class="px-4 py-2 text-left">Wallet</th>
+                    <th class="px-4 py-2 text-center">Cat.</th>
+                </tr></thead>
+                <tbody id="feed-body"></tbody>
+            </table>
+            <div id="feed-empty" class="hidden text-center py-10 text-gray-500">Sin trades aun.</div>
+        </div>
+    </div>
+</main>
 
-        // ── Fetch helpers ──
-        async function fetchJson(url) {
-            try {
-                const r = await fetch(url);
-                return r.ok ? await r.json() : null;
-            } catch { return null; }
-        }
+<!-- Wallet Detail Modal -->
+<div id="wallet-modal" class="hidden fixed inset-0 z-[100] modal-bg flex items-start justify-center pt-16 px-4" onclick="if(event.target===this)closeWalletModal()">
+    <div class="glass rounded-2xl w-full max-w-4xl max-h-[80vh] overflow-y-auto p-6 fade-in">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <img id="wm-avatar" src="" class="w-10 h-10 rounded-full bg-gray-700 hidden">
+                <div>
+                    <h2 class="text-lg font-bold" id="wm-name">Wallet</h2>
+                    <div class="font-mono text-xs text-gray-400" id="wm-address"></div>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <a id="wm-link-poly" href="#" target="_blank" class="px-3 py-1 rounded bg-purple-900/50 text-purple-300 text-xs hover:bg-purple-800/50 transition">Polymarket</a>
+                <a id="wm-link-scan" href="#" target="_blank" class="px-3 py-1 rounded bg-blue-900/50 text-blue-300 text-xs hover:bg-blue-800/50 transition">Polygonscan</a>
+                <button onclick="closeWalletModal()" class="px-3 py-1 rounded bg-gray-700 text-gray-300 text-xs hover:bg-gray-600 transition">Cerrar</button>
+            </div>
+        </div>
+        <!-- Wallet Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+            <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Trades</div><div class="text-lg font-bold" id="wm-trades">-</div></div>
+            <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Volumen</div><div class="text-lg font-bold" id="wm-volume">-</div></div>
+            <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Avg Size</div><div class="text-lg font-bold" id="wm-avg">-</div></div>
+            <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Hit Rate</div><div class="text-lg font-bold" id="wm-hitrate">-</div></div>
+            <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Mercados</div><div class="text-lg font-bold" id="wm-markets">-</div></div>
+        </div>
+        <!-- Wallet Trades -->
+        <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Trades Recientes</h3>
+        <div class="overflow-x-auto mb-4">
+            <table class="w-full text-xs">
+                <thead><tr class="text-gray-500 uppercase border-b border-gray-700/50">
+                    <th class="px-3 py-2 text-left">Fecha</th>
+                    <th class="px-3 py-2 text-left">Mercado</th>
+                    <th class="px-3 py-2 text-center">Side</th>
+                    <th class="px-3 py-2 text-right">Size</th>
+                    <th class="px-3 py-2 text-right">Precio</th>
+                    <th class="px-3 py-2 text-center">TX</th>
+                </tr></thead>
+                <tbody id="wm-trades-body"></tbody>
+            </table>
+        </div>
+        <!-- Wallet Alerts -->
+        <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Alertas de esta Wallet</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+                <thead><tr class="text-gray-500 uppercase border-b border-gray-700/50">
+                    <th class="px-3 py-2 text-left">Fecha</th>
+                    <th class="px-3 py-2 text-left">Mercado</th>
+                    <th class="px-3 py-2 text-right">Size</th>
+                    <th class="px-3 py-2 text-center">Score</th>
+                    <th class="px-3 py-2 text-left">Triggers</th>
+                    <th class="px-3 py-2 text-center">Resultado</th>
+                </tr></thead>
+                <tbody id="wm-alerts-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-        function fmt(n) { return n != null ? n.toLocaleString() : '-'; }
-        function fmtUsd(n) { return n != null ? '$' + n.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'; }
+<footer class="text-center text-gray-600 text-xs py-4">
+    Polymarket Insider Alert Bot v2.1 — Anomaly detection only. DYOR.
+</footer>
 
-        function shortWallet(addr) {
-            if (!addr || addr.length < 10) return addr || '?';
-            return addr.slice(0, 6) + '...' + addr.slice(-4);
-        }
+<script>
+// ── State ──
+let alertsChart=null, scoresChart=null, catChart=null;
+let allAlerts = [];
+const ALL_CATEGORIES = ['politics','sports','nba','nfl','nhl','mlb','mls','soccer','esports','crypto-prices','crypto-price','updown','entertainment','science','technology','business','culture','pop-culture'];
 
-        function scoreColor(score) {
-            if (score >= 8) return 'text-red-400';
-            if (score >= 6) return 'text-orange-400';
-            if (score >= 5) return 'text-yellow-400';
-            return 'text-gray-400';
-        }
+// ── Helpers ──
+async function fetchJson(url){try{const r=await fetch(url);return r.ok?await r.json():null}catch{return null}}
+function fmt(n){return n!=null?n.toLocaleString():'-'}
+function fmtUsd(n){return n!=null?'$'+n.toLocaleString(undefined,{maximumFractionDigits:0}):'-'}
+function shortW(a){return !a||a.length<10?a||'?':a.slice(0,6)+'...'+a.slice(-4)}
+function scoreC(s){return s>=8?'text-red-400':s>=6?'text-orange-400':s>=5?'text-yellow-400':'text-gray-400'}
+function fmtDate(iso){if(!iso)return'-';const d=new Date(iso);return d.toLocaleDateString('es',{month:'short',day:'numeric'})+' '+d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}
+function fmtTime(iso){if(!iso)return'-';return new Date(iso).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+function statusBadge(a){
+    if(!a.resolved)return'<span class="px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-400">Pendiente</span>';
+    return a.was_correct?'<span class="px-2 py-0.5 rounded-full text-xs bg-green-900/50 text-green-400">Correcto</span>':'<span class="px-2 py-0.5 rounded-full text-xs bg-red-900/50 text-red-400">Incorrecto</span>';
+}
+function polyLink(slug){return slug?`https://polymarket.com/event/${slug}`:'#'}
+function scanLink(addr){return`https://polygonscan.com/address/${addr}`}
+function polyProfile(addr){return`https://polymarket.com/profile/${addr}`}
+function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
-        function statusBadge(alert) {
-            if (!alert.resolved) return '<span class="px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-400">Pendiente</span>';
-            if (alert.was_correct) return '<span class="px-2 py-0.5 rounded-full text-xs bg-green-900/50 text-green-400">✅ Correcto</span>';
-            return '<span class="px-2 py-0.5 rounded-full text-xs bg-red-900/50 text-red-400">❌ Incorrecto</span>';
-        }
+// ── Tabs ──
+function showTab(t){
+    ['alerts','wallets','markets','feed'].forEach(id=>{
+        document.getElementById('panel-'+id).classList.toggle('hidden',id!==t);
+        document.getElementById('tab-'+id).classList.toggle('active',id===t);
+    });
+    if(t==='markets')loadMarkets();
+    if(t==='feed')loadFeed();
+}
 
-        function formatDate(iso) {
-            if (!iso) return '-';
-            const d = new Date(iso);
-            return d.toLocaleDateString('es', {month:'short', day:'numeric'}) + ' ' +
-                   d.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'});
-        }
+// ── Config ──
+function toggleConfig(){document.getElementById('config-panel').classList.toggle('hidden')}
 
-        // ── Load Stats ──
-        async function loadStats() {
-            const s = await fetchJson('/api/stats');
-            if (!s) return;
-            document.getElementById('stat-total-alerts').textContent = fmt(s.total_alerts);
-            document.getElementById('stat-alerts-24h').textContent = fmt(s.alerts_last_24h);
-            const hr = s.hit_rate;
-            const hrEl = document.getElementById('stat-hit-rate');
-            hrEl.textContent = hr > 0 ? hr.toFixed(1) + '%' : '-';
-            hrEl.className = 'text-3xl font-bold mt-1 ' + (hr >= 50 ? 'text-green-400' : hr > 0 ? 'text-red-400' : '');
-            document.getElementById('stat-resolved-detail').textContent =
-                s.resolved_alerts > 0 ? `${s.correct_alerts}/${s.resolved_alerts} resueltas` : '';
-            document.getElementById('stat-avg-score').textContent = s.avg_score > 0 ? s.avg_score.toFixed(1) : '-';
-            document.getElementById('stat-trades').textContent = fmt(s.total_trades_processed);
-            document.getElementById('stat-wallets').textContent = fmt(s.unique_wallets_flagged);
-            document.getElementById('stat-correct').textContent = fmt(s.correct_alerts);
-            document.getElementById('uptime').textContent = s.uptime || 'Activo';
-            const session = [];
-            if (s.trades_this_session) session.push(`${fmt(s.trades_this_session)} trades`);
-            if (s.alerts_this_session) session.push(`${fmt(s.alerts_this_session)} alertas`);
-            document.getElementById('stat-session').textContent = session.join(' / ') || '-';
-            document.getElementById('last-update').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es');
-        }
+async function loadConfig(){
+    const c=await fetchJson('/api/config');if(!c)return;
+    const ms=document.getElementById('cfg-min-size'),ls=document.getElementById('cfg-large-size'),th=document.getElementById('cfg-threshold');
+    ms.value=c.min_size_usd;ls.value=c.large_size_usd;th.value=c.alert_threshold;
+    document.getElementById('cfg-min-size-val').textContent=c.min_size_usd;
+    document.getElementById('cfg-large-size-val').textContent=c.large_size_usd;
+    document.getElementById('cfg-threshold-val').textContent=c.alert_threshold;
+    // Categories
+    const excluded=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase());
+    const cont=document.getElementById('cfg-categories');
+    cont.innerHTML=ALL_CATEGORIES.map(cat=>{
+        const checked=excluded.includes(cat);
+        return`<label class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer transition ${checked?'bg-red-900/40 text-red-300':'bg-green-900/40 text-green-300'}">
+            <input type="checkbox" class="cat-check" data-cat="${cat}" ${checked?'checked':''} onchange="toggleCatStyle(this)"> ${cat}
+        </label>`;
+    }).join('');
+}
 
-        // ── Load Alerts ──
-        async function loadAlerts() {
-            const alerts = await fetchJson('/api/alerts?limit=50');
-            const body = document.getElementById('alerts-body');
-            const empty = document.getElementById('alerts-empty');
-            if (!alerts || alerts.length === 0) {
-                body.innerHTML = '';
-                empty.classList.remove('hidden');
-                return;
-            }
-            empty.classList.add('hidden');
-            body.innerHTML = alerts.map(a => `
-                <tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                    <td class="px-4 py-3 text-gray-400 whitespace-nowrap">${formatDate(a.created_at)}</td>
-                    <td class="px-4 py-3 max-w-xs truncate">
-                        ${a.market_slug ?
-                            `<a href="https://polymarket.com/event/${a.market_slug}" target="_blank" class="hover:text-purple-400 transition-colors">${(a.market_question||'').slice(0,60)}${(a.market_question||'').length>60?'...':''}</a>` :
-                            (a.market_question||'').slice(0,60)
-                        }
-                    </td>
-                    <td class="px-4 py-3 text-center">
-                        <span class="px-2 py-0.5 rounded text-xs font-medium ${a.outcome==='Yes'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">
-                            ${a.outcome||''} ${a.side||''}
-                        </span>
-                    </td>
-                    <td class="px-4 py-3 text-right font-mono">${fmtUsd(a.size)}</td>
-                    <td class="px-4 py-3 text-center">
-                        <span class="font-bold ${scoreColor(a.score)}">${a.score}</span>
-                    </td>
-                    <td class="px-4 py-3 font-mono text-xs text-gray-400">${shortWallet(a.wallet_address)}</td>
-                    <td class="px-4 py-3 text-center">${statusBadge(a)}</td>
-                </tr>
-            `).join('');
-        }
+function toggleCatStyle(el){
+    const l=el.parentElement;
+    if(el.checked){l.className='flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer transition bg-red-900/40 text-red-300';}
+    else{l.className='flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer transition bg-green-900/40 text-green-300';}
+}
 
-        // ── Load Wallets ──
-        async function loadWallets() {
-            const wallets = await fetchJson('/api/wallets?limit=20');
-            const body = document.getElementById('wallets-body');
-            const empty = document.getElementById('wallets-empty');
-            if (!wallets || wallets.length === 0) {
-                body.innerHTML = '';
-                empty.classList.remove('hidden');
-                return;
-            }
-            empty.classList.add('hidden');
-            body.innerHTML = wallets.map(w => {
-                const total = (w.win_count||0) + (w.loss_count||0);
-                const hr = total > 0 ? ((w.win_count/total)*100).toFixed(0) + '%' : '-';
-                return `
-                    <tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                        <td class="px-4 py-3 font-mono text-xs">${shortWallet(w.address)}</td>
-                        <td class="px-4 py-3 text-right font-bold text-purple-400">${w.alert_count}</td>
-                        <td class="px-4 py-3 text-right">${fmt(w.total_trades)}</td>
-                        <td class="px-4 py-3 text-right font-mono">${fmtUsd(w.total_volume)}</td>
-                        <td class="px-4 py-3 text-center"><span class="font-bold ${scoreColor(w.max_score)}">${w.max_score}</span></td>
-                        <td class="px-4 py-3 text-center ${total>0?(w.win_count/total>=0.5?'text-green-400':'text-red-400'):''}">${hr}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
+async function saveConfig(){
+    const checks=document.querySelectorAll('.cat-check');
+    const excluded=[...checks].filter(c=>c.checked).map(c=>c.dataset.cat).join(',');
+    const body={
+        min_size_usd:parseInt(document.getElementById('cfg-min-size').value),
+        large_size_usd:parseInt(document.getElementById('cfg-large-size').value),
+        alert_threshold:parseInt(document.getElementById('cfg-threshold').value),
+        excluded_categories:excluded
+    };
+    await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const st=document.getElementById('cfg-status');st.classList.remove('hidden');setTimeout(()=>st.classList.add('hidden'),2000);
+}
 
-        // ── Charts ──
-        const chartDefaults = {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#666', font: { size: 10 } } },
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#666', font: { size: 10 } } },
-            }
-        };
+// Slider live values
+['cfg-min-size','cfg-large-size','cfg-threshold'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.addEventListener('input',()=>{document.getElementById(id+'-val').textContent=el.value;});
+});
 
-        async function loadCharts() {
-            // Alerts by day
-            const dayData = await fetchJson('/api/charts/alerts-by-day?days=30');
-            if (dayData && dayData.length > 0) {
-                const ctx1 = document.getElementById('chart-alerts-day').getContext('2d');
-                if (alertsChart) alertsChart.destroy();
-                alertsChart = new Chart(ctx1, {
-                    type: 'bar',
-                    data: {
-                        labels: dayData.map(d => d.day.slice(5)),
-                        datasets: [{
-                            data: dayData.map(d => d.count),
-                            backgroundColor: 'rgba(108, 92, 231, 0.6)',
-                            borderColor: 'rgba(108, 92, 231, 1)',
-                            borderWidth: 1, borderRadius: 4,
-                        }]
-                    },
-                    options: { ...chartDefaults }
-                });
-            }
+// ── Load Stats ──
+async function loadStats(){
+    const s=await fetchJson('/api/stats');if(!s)return;
+    document.getElementById('stat-total-alerts').textContent=fmt(s.total_alerts);
+    document.getElementById('stat-alerts-24h').textContent=fmt(s.alerts_last_24h);
+    const hr=s.hit_rate;const hrEl=document.getElementById('stat-hit-rate');
+    hrEl.textContent=hr>0?hr.toFixed(1)+'%':'-';
+    hrEl.className='text-2xl font-bold mt-1 '+(hr>=50?'text-green-400':hr>0?'text-red-400':'');
+    document.getElementById('stat-resolved-detail').textContent=s.resolved_alerts>0?`${s.correct_alerts}/${s.resolved_alerts} resueltas`:'';
+    document.getElementById('stat-avg-score').textContent=s.avg_score>0?s.avg_score.toFixed(1):'-';
+    document.getElementById('stat-trades').textContent=fmt(s.total_trades_processed);
+    document.getElementById('stat-wallets').textContent=fmt(s.unique_wallets_flagged);
+    document.getElementById('stat-correct').textContent=fmt(s.correct_alerts);
+    document.getElementById('uptime').textContent=s.uptime||'Activo';
+    const sess=[];
+    if(s.trades_this_session)sess.push(`${fmt(s.trades_this_session)} trades`);
+    if(s.alerts_this_session)sess.push(`${fmt(s.alerts_this_session)} alertas`);
+    document.getElementById('stat-session').textContent=sess.join(' / ')||'-';
+    document.getElementById('last-update').textContent='Actualizado: '+new Date().toLocaleTimeString('es');
+}
 
-            // Score distribution
-            const scoreData = await fetchJson('/api/charts/score-distribution');
-            if (scoreData && scoreData.length > 0) {
-                const ctx2 = document.getElementById('chart-scores').getContext('2d');
-                if (scoresChart) scoresChart.destroy();
-                scoresChart = new Chart(ctx2, {
-                    type: 'doughnut',
-                    data: {
-                        labels: scoreData.map(d => `Score ${d.score}`),
-                        datasets: [{
-                            data: scoreData.map(d => d.count),
-                            backgroundColor: [
-                                '#6c5ce7', '#a29bfe', '#fd79a8', '#e17055',
-                                '#00b894', '#fdcb6e', '#0984e3', '#636e72',
-                                '#d63031', '#e84393', '#00cec9', '#fab1a0'
-                            ],
-                            borderWidth: 0,
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: { position: 'right', labels: { color: '#999', font: { size: 11 } } }
-                        }
-                    }
-                });
-            }
-        }
+// ── Load Alerts ──
+async function loadAlerts(){
+    allAlerts=await fetchJson('/api/alerts?limit=100')||[];
+    filterAlerts();
+}
+function filterAlerts(){
+    const q=(document.getElementById('alert-search').value||'').toLowerCase();
+    const minScore=parseInt(document.getElementById('alert-score-filter').value)||0;
+    const filtered=allAlerts.filter(a=>{
+        if(minScore&&a.score<minScore)return false;
+        if(q&&!(a.market_question||'').toLowerCase().includes(q)&&!(a.wallet_address||'').toLowerCase().includes(q))return false;
+        return true;
+    });
+    const body=document.getElementById('alerts-body'),empty=document.getElementById('alerts-empty');
+    if(filtered.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    empty.classList.add('hidden');
+    body.innerHTML=filtered.map(a=>`
+        <tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+            <td class="px-4 py-2 text-gray-400 whitespace-nowrap text-xs">${fmtDate(a.created_at)}</td>
+            <td class="px-4 py-2 max-w-xs truncate text-xs">
+                <a href="${polyLink(a.market_slug)}" target="_blank" class="hover:text-purple-400 transition">${(a.market_question||'').slice(0,55)}${(a.market_question||'').length>55?'...':''}</a>
+            </td>
+            <td class="px-4 py-2 text-center">
+                <span class="px-2 py-0.5 rounded text-xs font-medium ${a.outcome==='Yes'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">${a.outcome||''} ${a.side||''}</span>
+            </td>
+            <td class="px-4 py-2 text-right font-mono text-xs">${fmtUsd(a.size)}</td>
+            <td class="px-4 py-2 text-center"><span class="font-bold ${scoreC(a.score)}">${a.score}</span></td>
+            <td class="px-4 py-2 font-mono text-xs">
+                <button onclick="openWallet('${a.wallet_address}')" class="text-purple-400 hover:text-purple-300 transition">${shortW(a.wallet_address)}</button>
+            </td>
+            <td class="px-4 py-2 text-center">${statusBadge(a)}</td>
+        </tr>
+    `).join('');
+}
 
-        // ── Init ──
-        async function refresh() {
-            await Promise.all([loadStats(), loadAlerts(), loadWallets(), loadCharts()]);
-        }
+// ── Load Wallets ──
+async function loadWallets(){
+    const wallets=await fetchJson('/api/wallets?limit=30');
+    const body=document.getElementById('wallets-body'),empty=document.getElementById('wallets-empty');
+    if(!wallets||wallets.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    empty.classList.add('hidden');
+    body.innerHTML=wallets.map(w=>{
+        const total=(w.win_count||0)+(w.loss_count||0);
+        const hr=total>0?((w.win_count/total)*100).toFixed(0)+'%':'-';
+        return`<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+            <td class="px-4 py-2 font-mono text-xs">
+                <button onclick="openWallet('${w.address}')" class="text-purple-400 hover:text-purple-300 transition">${shortW(w.address)}</button>
+            </td>
+            <td class="px-4 py-2 text-xs text-gray-300">${w.name||w.pseudonym||'-'}</td>
+            <td class="px-4 py-2 text-right font-bold text-purple-400">${w.alert_count}</td>
+            <td class="px-4 py-2 text-right">${fmt(w.total_trades)}</td>
+            <td class="px-4 py-2 text-right font-mono text-xs">${fmtUsd(w.total_volume)}</td>
+            <td class="px-4 py-2 text-center"><span class="font-bold ${scoreC(w.max_score)}">${w.max_score}</span></td>
+            <td class="px-4 py-2 text-center ${total>0?(w.win_count/total>=0.5?'text-green-400':'text-red-400'):''}">${hr}</td>
+            <td class="px-4 py-2 text-center flex gap-1 justify-center">
+                <a href="${polyProfile(w.address)}" target="_blank" class="explorer-link text-xs text-purple-400" title="Polymarket">PM</a>
+                <a href="${scanLink(w.address)}" target="_blank" class="explorer-link text-xs text-blue-400" title="Polygonscan">PS</a>
+            </td>
+        </tr>`;
+    }).join('');
+}
 
-        refresh();
-        setInterval(refresh, 30000); // Refrescar cada 30s
-    </script>
+// ── Load Markets ──
+async function loadMarkets(){
+    const markets=await fetchJson('/api/markets?limit=50');
+    const body=document.getElementById('markets-body'),empty=document.getElementById('markets-empty');
+    if(!markets||markets.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    empty.classList.add('hidden');
+    body.innerHTML=markets.map(m=>{
+        const end=m.end_date?new Date(m.end_date):null;
+        const daysLeft=end?Math.max(0,Math.ceil((end-Date.now())/86400000)):null;
+        const catBadge=m.category?`<span class="px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-300">${m.category}</span>`:'';
+        const statusBg=m.resolved?'bg-green-900/40 text-green-400':'bg-gray-700 text-gray-400';
+        return`<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+            <td class="px-4 py-2 max-w-xs truncate text-xs">
+                <a href="${polyLink(m.slug)}" target="_blank" class="hover:text-purple-400 transition">${(m.question||'').slice(0,60)}</a>
+            </td>
+            <td class="px-4 py-2 text-center">${catBadge}</td>
+            <td class="px-4 py-2 text-right text-xs">${fmt(m.trade_count)}</td>
+            <td class="px-4 py-2 text-right font-mono text-xs">${fmtUsd(m.total_volume)}</td>
+            <td class="px-4 py-2 text-center font-bold text-purple-400">${m.alert_count||0}</td>
+            <td class="px-4 py-2 text-center text-xs">${daysLeft!==null?(daysLeft<=3?`<span class="text-red-400">${daysLeft}d</span>`:daysLeft+'d'):'-'}</td>
+            <td class="px-4 py-2 text-center"><span class="px-2 py-0.5 rounded-full text-xs ${statusBg}">${m.resolved?(m.resolution||'Resuelto'):'Activo'}</span></td>
+        </tr>`;
+    }).join('');
+}
+
+// ── Load Feed ──
+async function loadFeed(){
+    const trades=await fetchJson('/api/trades/recent?limit=100');
+    const body=document.getElementById('feed-body'),empty=document.getElementById('feed-empty');
+    if(!trades||trades.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    empty.classList.add('hidden');
+    body.innerHTML=trades.map(t=>`
+        <tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+            <td class="px-4 py-2 text-xs text-gray-400 whitespace-nowrap">${fmtTime(t.timestamp)}</td>
+            <td class="px-4 py-2 max-w-xs truncate text-xs">
+                <a href="${polyLink(t.market_slug)}" target="_blank" class="hover:text-purple-400 transition">${(t.market_question||'').slice(0,50)}</a>
+            </td>
+            <td class="px-4 py-2 text-center">
+                <span class="px-2 py-0.5 rounded text-xs ${t.side==='BUY'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">${t.side} ${t.outcome||''}</span>
+            </td>
+            <td class="px-4 py-2 text-right font-mono text-xs">${fmtUsd(t.size)}</td>
+            <td class="px-4 py-2 text-right font-mono text-xs text-gray-400">${t.price?t.price.toFixed(2):'-'}</td>
+            <td class="px-4 py-2 font-mono text-xs">
+                <button onclick="openWallet('${t.wallet_address}')" class="text-purple-400 hover:text-purple-300 transition">${t.wallet_name||t.wallet_pseudonym||shortW(t.wallet_address)}</button>
+            </td>
+            <td class="px-4 py-2 text-center"><span class="px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-300">${t.market_category||'-'}</span></td>
+        </tr>
+    `).join('');
+}
+
+// ── Wallet Modal ──
+async function openWallet(addr){
+    if(!addr)return;
+    document.getElementById('wallet-modal').classList.remove('hidden');
+    document.getElementById('wm-address').textContent=addr;
+    document.getElementById('wm-name').textContent='Cargando...';
+    document.getElementById('wm-link-poly').href=polyProfile(addr);
+    document.getElementById('wm-link-scan').href=scanLink(addr);
+
+    const data=await fetchJson('/api/wallets/'+addr);
+    if(!data||data.error){document.getElementById('wm-name').textContent='No encontrada';return;}
+
+    const w=data.wallet;
+    document.getElementById('wm-name').textContent=w.pseudonym||w.name||shortW(w.address);
+    const avatar=document.getElementById('wm-avatar');
+    if(w.profile_image){avatar.src=w.profile_image;avatar.classList.remove('hidden');}else{avatar.classList.add('hidden');}
+
+    const total=(w.win_count||0)+(w.loss_count||0);
+    const hr=total>0?((w.win_count/total)*100).toFixed(0)+'%':'-';
+    document.getElementById('wm-trades').textContent=fmt(w.total_trades);
+    document.getElementById('wm-volume').textContent=fmtUsd(w.total_volume);
+    document.getElementById('wm-avg').textContent=fmtUsd(w.avg_trade_size);
+    document.getElementById('wm-hitrate').textContent=hr;
+    document.getElementById('wm-markets').textContent=fmt(data.markets?.length||0);
+
+    // Trades
+    document.getElementById('wm-trades-body').innerHTML=(data.trades||[]).map(t=>`
+        <tr class="border-b border-gray-800/30">
+            <td class="px-3 py-1.5 text-gray-400">${fmtDate(t.timestamp)}</td>
+            <td class="px-3 py-1.5 max-w-xs truncate"><a href="${polyLink(t.market_slug)}" target="_blank" class="hover:text-purple-400">${(t.market_question||'').slice(0,45)}</a></td>
+            <td class="px-3 py-1.5 text-center"><span class="px-1.5 py-0.5 rounded text-xs ${t.side==='BUY'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">${t.side} ${t.outcome||''}</span></td>
+            <td class="px-3 py-1.5 text-right font-mono">${fmtUsd(t.size)}</td>
+            <td class="px-3 py-1.5 text-right font-mono text-gray-400">${t.price?t.price.toFixed(2):'-'}</td>
+            <td class="px-3 py-1.5 text-center"><a href="${txLink(t.transaction_hash)}" target="_blank" class="text-blue-400 hover:text-blue-300">TX</a></td>
+        </tr>
+    `).join('');
+
+    // Alerts
+    document.getElementById('wm-alerts-body').innerHTML=(data.alerts||[]).map(a=>`
+        <tr class="border-b border-gray-800/30">
+            <td class="px-3 py-1.5 text-gray-400">${fmtDate(a.created_at)}</td>
+            <td class="px-3 py-1.5 max-w-xs truncate"><a href="${polyLink(a.market_slug)}" target="_blank" class="hover:text-purple-400">${(a.market_question||'').slice(0,40)}</a></td>
+            <td class="px-3 py-1.5 text-right font-mono">${fmtUsd(a.size)}</td>
+            <td class="px-3 py-1.5 text-center"><span class="font-bold ${scoreC(a.score)}">${a.score}</span></td>
+            <td class="px-3 py-1.5 text-gray-300 max-w-xs truncate">${(a.triggers||'').replace(/,/g,', ')}</td>
+            <td class="px-3 py-1.5 text-center">${a.was_correct===true?'<span class="text-green-400">Correcto</span>':a.was_correct===false?'<span class="text-red-400">Incorrecto</span>':'<span class="text-gray-500">-</span>'}</td>
+        </tr>
+    `).join('');
+}
+function closeWalletModal(){document.getElementById('wallet-modal').classList.add('hidden')}
+
+// ── Charts ──
+const chartDef={responsive:true,plugins:{legend:{display:false}},scales:{
+    x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#666',font:{size:10}}},
+    y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#666',font:{size:10}}}
+}};
+
+async function loadCharts(){
+    const dayData=await fetchJson('/api/charts/alerts-by-day?days=30');
+    if(dayData&&dayData.length>0){
+        const ctx=document.getElementById('chart-alerts-day').getContext('2d');
+        if(alertsChart)alertsChart.destroy();
+        alertsChart=new Chart(ctx,{type:'bar',data:{labels:dayData.map(d=>d.day.slice(5)),datasets:[{data:dayData.map(d=>d.count),backgroundColor:'rgba(108,92,231,0.6)',borderColor:'rgba(108,92,231,1)',borderWidth:1,borderRadius:4}]},options:{...chartDef}});
+    }
+    const scoreData=await fetchJson('/api/charts/score-distribution');
+    if(scoreData&&scoreData.length>0){
+        const ctx=document.getElementById('chart-scores').getContext('2d');
+        if(scoresChart)scoresChart.destroy();
+        scoresChart=new Chart(ctx,{type:'doughnut',data:{labels:scoreData.map(d=>`Score ${d.score}`),datasets:[{data:scoreData.map(d=>d.count),backgroundColor:['#6c5ce7','#a29bfe','#fd79a8','#e17055','#00b894','#fdcb6e','#0984e3','#636e72','#d63031','#e84393','#00cec9','#fab1a0'],borderWidth:0}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{color:'#999',font:{size:10}}}}}});
+    }
+    const catData=await fetchJson('/api/categories');
+    if(catData&&catData.length>0){
+        const ctx=document.getElementById('chart-categories').getContext('2d');
+        if(catChart)catChart.destroy();
+        catChart=new Chart(ctx,{type:'doughnut',data:{labels:catData.map(d=>d.category),datasets:[{data:catData.map(d=>d.trade_count),backgroundColor:['#6c5ce7','#fd79a8','#00b894','#fdcb6e','#0984e3','#e17055','#a29bfe','#636e72','#d63031','#e84393'],borderWidth:0}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{color:'#999',font:{size:10}}}}}});
+    }
+}
+
+// ── Init ──
+async function refresh(){await Promise.all([loadStats(),loadAlerts(),loadWallets(),loadCharts()]);}
+loadConfig();refresh();
+setInterval(refresh,30000);
+</script>
 </body>
 </html>

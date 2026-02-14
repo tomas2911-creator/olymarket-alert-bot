@@ -44,7 +44,15 @@ class Database:
                     avg_trade_size DOUBLE PRECISION DEFAULT 0,
                     markets_traded INTEGER DEFAULT 0,
                     win_count      INTEGER DEFAULT 0,
-                    loss_count     INTEGER DEFAULT 0
+                    loss_count     INTEGER DEFAULT 0,
+                    name           TEXT,
+                    pseudonym      TEXT,
+                    profile_image  TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS bot_config (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS trades (
@@ -113,7 +121,20 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_alerts_created    ON alerts(created_at);
                 CREATE INDEX IF NOT EXISTS idx_alerts_resolved   ON alerts(resolved);
                 CREATE INDEX IF NOT EXISTS idx_markets_resolved  ON markets_tracked(resolved);
+                CREATE INDEX IF NOT EXISTS idx_trades_category   ON trades(market_category);
             """)
+            # Migraciones seguras para columnas nuevas
+            migrations = [
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS name TEXT",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS pseudonym TEXT",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS profile_image TEXT",
+                "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS market_category TEXT",
+            ]
+            for m in migrations:
+                try:
+                    await conn.execute(m)
+                except Exception:
+                    pass
 
     # ── Wallet Stats ──────────────────────────────────────────────────
 
@@ -141,14 +162,19 @@ class Database:
         now = datetime.now()
         async with self._pool.acquire() as conn:
             await conn.execute("""
-                INSERT INTO wallets (address, total_trades, first_seen, last_seen, total_volume, avg_trade_size)
-                VALUES ($1, 1, $2, $2, $3, $3)
+                INSERT INTO wallets (address, total_trades, first_seen, last_seen,
+                    total_volume, avg_trade_size, name, pseudonym, profile_image)
+                VALUES ($1, 1, $2, $2, $3, $3, $4, $5, $6)
                 ON CONFLICT (address) DO UPDATE SET
                     total_trades = wallets.total_trades + 1,
                     last_seen = $2,
                     total_volume = wallets.total_volume + $3,
-                    avg_trade_size = (wallets.total_volume + $3) / (wallets.total_trades + 1)
-            """, addr, now, trade.size)
+                    avg_trade_size = (wallets.total_volume + $3) / (wallets.total_trades + 1),
+                    name = COALESCE(EXCLUDED.name, wallets.name),
+                    pseudonym = COALESCE(EXCLUDED.pseudonym, wallets.pseudonym),
+                    profile_image = COALESCE(EXCLUDED.profile_image, wallets.profile_image)
+            """, addr, now, trade.size,
+                trade.trader_name, trade.trader_pseudonym, trade.trader_profile_image)
 
     async def update_wallet_markets_count(self, address: str):
         """Actualizar cantidad de mercados distintos."""
@@ -442,3 +468,149 @@ class Database:
                         d[k] = v.isoformat()
                 result.append(d)
             return result
+
+    # ── Config Persistente ─────────────────────────────────────────────
+
+    async def get_config(self) -> dict:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("SELECT key, value FROM bot_config")
+            return {r["key"]: r["value"] for r in rows}
+
+    async def set_config(self, key: str, value: str):
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO bot_config (key, value) VALUES ($1, $2)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+            """, key, value)
+
+    async def set_config_bulk(self, data: dict):
+        async with self._pool.acquire() as conn:
+            for k, v in data.items():
+                await conn.execute("""
+                    INSERT INTO bot_config (key, value) VALUES ($1, $2)
+                    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                """, k, str(v))
+
+    # ── Wallet Detail ──────────────────────────────────────────────────
+
+    async def get_wallet_detail(self, address: str) -> Optional[dict]:
+        addr = address.lower()
+        async with self._pool.acquire() as conn:
+            wallet = await conn.fetchrow("SELECT * FROM wallets WHERE address = $1", addr)
+            if not wallet:
+                return None
+
+            trades = await conn.fetch("""
+                SELECT transaction_hash, market_id, market_question, market_slug,
+                       side, outcome, size, price, timestamp, market_category
+                FROM trades WHERE wallet_address = $1
+                ORDER BY timestamp DESC LIMIT 100
+            """, addr)
+
+            alerts = await conn.fetch("""
+                SELECT id, market_question, market_slug, side, outcome,
+                       size, score, triggers, was_correct, created_at
+                FROM alerts WHERE wallet_address = $1
+                ORDER BY created_at DESC LIMIT 50
+            """, addr)
+
+            # Mercados únicos
+            markets = await conn.fetch("""
+                SELECT market_id, market_question, market_slug,
+                       COUNT(*) as trade_count, SUM(size) as total_size
+                FROM trades WHERE wallet_address = $1
+                GROUP BY market_id, market_question, market_slug
+                ORDER BY total_size DESC LIMIT 20
+            """, addr)
+
+            w = dict(wallet)
+            for k, v in w.items():
+                if isinstance(v, datetime):
+                    w[k] = v.isoformat()
+
+            return {
+                "wallet": w,
+                "trades": [_serialize_row(t) for t in trades],
+                "alerts": [_serialize_row(a) for a in alerts],
+                "markets": [dict(m) for m in markets],
+            }
+
+    # ── Markets List ───────────────────────────────────────────────────
+
+    async def get_tracked_markets(self, limit: int = 50) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT m.condition_id, m.question, m.slug, m.end_date,
+                       m.category, m.resolved, m.resolution,
+                       COUNT(DISTINCT a.id) as alert_count,
+                       COUNT(DISTINCT t.transaction_hash) as trade_count,
+                       COALESCE(SUM(t.size), 0) as total_volume
+                FROM markets_tracked m
+                LEFT JOIN alerts a ON a.market_id = m.condition_id
+                LEFT JOIN trades t ON t.market_id = m.condition_id
+                GROUP BY m.condition_id, m.question, m.slug, m.end_date,
+                         m.category, m.resolved, m.resolution
+                ORDER BY alert_count DESC, total_volume DESC
+                LIMIT $1
+            """, limit)
+            return [_serialize_row(r) for r in rows]
+
+    # ── Category Distribution ──────────────────────────────────────────
+
+    async def get_category_distribution(self) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT COALESCE(market_category, 'unknown') as category,
+                       COUNT(*) as trade_count,
+                       SUM(size) as total_volume,
+                       COUNT(DISTINCT wallet_address) as unique_wallets
+                FROM trades
+                WHERE market_category IS NOT NULL
+                GROUP BY market_category
+                ORDER BY trade_count DESC
+            """)
+            return [dict(r) for r in rows]
+
+    async def get_alert_category_distribution(self) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT COALESCE(t.market_category, 'unknown') as category,
+                       COUNT(DISTINCT a.id) as alert_count,
+                       AVG(a.score) as avg_score
+                FROM alerts a
+                LEFT JOIN trades t ON t.transaction_hash = (
+                    SELECT transaction_hash FROM trades
+                    WHERE market_id = a.market_id AND wallet_address = a.wallet_address
+                    LIMIT 1
+                )
+                GROUP BY t.market_category
+                ORDER BY alert_count DESC
+            """)
+            return [{"category": r["category"], "alert_count": r["alert_count"],
+                     "avg_score": round(float(r["avg_score"] or 0), 1)} for r in rows]
+
+    # ── Recent Trades Feed ─────────────────────────────────────────────
+
+    async def get_recent_trades_feed(self, limit: int = 100) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT t.transaction_hash, t.market_id, t.market_question,
+                       t.market_slug, t.wallet_address, t.side, t.outcome,
+                       t.size, t.price, t.timestamp, t.market_category,
+                       w.total_trades as wallet_trades, w.name as wallet_name,
+                       w.pseudonym as wallet_pseudonym
+                FROM trades t
+                LEFT JOIN wallets w ON w.address = t.wallet_address
+                ORDER BY t.created_at DESC
+                LIMIT $1
+            """, limit)
+            return [_serialize_row(r) for r in rows]
+
+
+def _serialize_row(row) -> dict:
+    """Convertir asyncpg Record a dict serializando datetimes."""
+    d = dict(row)
+    for k, v in d.items():
+        if isinstance(v, datetime):
+            d[k] = v.isoformat()
+    return d

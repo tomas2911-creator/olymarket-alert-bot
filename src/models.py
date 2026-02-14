@@ -35,6 +35,9 @@ class Trade:
     outcome: str        # "Yes" / "No"
     market_end_date: Optional[datetime] = None
     market_category: Optional[str] = None
+    trader_name: Optional[str] = None
+    trader_pseudonym: Optional[str] = None
+    trader_profile_image: Optional[str] = None
 
     @property
     def size_usd(self) -> float:

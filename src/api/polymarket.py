@@ -259,6 +259,9 @@ class PolymarketClient:
                 outcome=item.get("outcome", "Yes"),
                 market_end_date=market_data.get("end_date"),
                 market_category=market_data.get("category"),
+                trader_name=item.get("name") or None,
+                trader_pseudonym=item.get("pseudonym") or None,
+                trader_profile_image=item.get("profileImage") or item.get("profileImageOptimized") or None,
             )
         except Exception as e:
             logger.warning("error_parse_trade", error=str(e))
