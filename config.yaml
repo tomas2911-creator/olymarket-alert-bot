@@ -8,7 +8,7 @@ features:
   market_classification: true     # Clasificar mercados nicho vs mainstream
   wallet_baskets: false           # Grupos de wallets por tema (requiere datos históricos)
   sniper_dbscan: false            # Clustering avanzado DBSCAN
-  crypto_arb: false               # Bot de arbitraje crypto 15-min up/down
+  crypto_arb: true                # Bot de arbitraje crypto 15-min up/down
 
 # ══════════════════════════════════════════════════════════════
 # POLLING
