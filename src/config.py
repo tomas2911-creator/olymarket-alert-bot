@@ -70,6 +70,8 @@ PROVEN_WINNER_MIN_PCT = _scoring.get("proven_winner_min_pct", 65)
 PROVEN_WINNER_POINTS = _scoring.get("proven_winner_points", 3)
 MULTI_SMART_POINTS = _scoring.get("multi_smart_points", 3)
 LATE_INSIDER_POINTS = _scoring.get("late_insider_points", 2)
+EXIT_ALERT_MIN_RESOLVED = _scoring.get("exit_alert_min_resolved", 3)
+EXIT_ALERT_MIN_PCT = _scoring.get("exit_alert_min_pct", 60)
 EXIT_ALERT_POINTS = _scoring.get("exit_alert_points", 2)
 CROSS_BASKET_EXTRA_POINTS = _scoring.get("cross_basket_extra_points", 2)
 
@@ -183,6 +185,8 @@ def restore_from_db(saved: dict):
     cfg.PROVEN_WINNER_POINTS = _int("proven_winner_points", cfg.PROVEN_WINNER_POINTS)
     cfg.MULTI_SMART_POINTS = _int("multi_smart_points", cfg.MULTI_SMART_POINTS)
     cfg.LATE_INSIDER_POINTS = _int("late_insider_points", cfg.LATE_INSIDER_POINTS)
+    cfg.EXIT_ALERT_MIN_RESOLVED = _int("exit_alert_min_resolved", cfg.EXIT_ALERT_MIN_RESOLVED)
+    cfg.EXIT_ALERT_MIN_PCT = _int("exit_alert_min_pct", cfg.EXIT_ALERT_MIN_PCT)
     cfg.EXIT_ALERT_POINTS = _int("exit_alert_points", cfg.EXIT_ALERT_POINTS)
     cfg.CROSS_BASKET_EXTRA_POINTS = _int("cross_basket_extra_points", cfg.CROSS_BASKET_EXTRA_POINTS)
 

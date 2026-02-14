@@ -94,4 +94,5 @@ class AlertCandidate:
 
     @property
     def should_alert(self) -> bool:
-        return self.score >= 5
+        from src import config
+        return self.score >= config.ALERT_THRESHOLD

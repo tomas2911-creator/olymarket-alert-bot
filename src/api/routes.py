@@ -160,6 +160,8 @@ class ConfigUpdate(BaseModel):
     proven_winner_points: int | None = None
     multi_smart_points: int | None = None
     late_insider_points: int | None = None
+    exit_alert_min_resolved: int | None = None
+    exit_alert_min_pct: int | None = None
     exit_alert_points: int | None = None
     cross_basket_extra_points: int | None = None
     # Módulos
@@ -206,6 +208,8 @@ _CONFIG_MAP = {
     "proven_winner_points": ("proven_winner_points", "PROVEN_WINNER_POINTS"),
     "multi_smart_points": ("multi_smart_points", "MULTI_SMART_POINTS"),
     "late_insider_points": ("late_insider_points", "LATE_INSIDER_POINTS"),
+    "exit_alert_min_resolved": ("exit_alert_min_resolved", "EXIT_ALERT_MIN_RESOLVED"),
+    "exit_alert_min_pct": ("exit_alert_min_pct", "EXIT_ALERT_MIN_PCT"),
     "exit_alert_points": ("exit_alert_points", "EXIT_ALERT_POINTS"),
     "cross_basket_extra_points": ("cross_basket_extra_points", "CROSS_BASKET_EXTRA_POINTS"),
     "orderbook_depth_points": ("orderbook_depth_points", "ORDERBOOK_DEPTH_POINTS"),
@@ -256,6 +260,8 @@ async def get_config(request: Request):
         "proven_winner_points": config.PROVEN_WINNER_POINTS,
         "multi_smart_points": config.MULTI_SMART_POINTS,
         "late_insider_points": config.LATE_INSIDER_POINTS,
+        "exit_alert_min_resolved": config.EXIT_ALERT_MIN_RESOLVED,
+        "exit_alert_min_pct": config.EXIT_ALERT_MIN_PCT,
         "exit_alert_points": config.EXIT_ALERT_POINTS,
         "cross_basket_extra_points": config.CROSS_BASKET_EXTRA_POINTS,
         # Módulos

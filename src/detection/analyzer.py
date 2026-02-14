@@ -13,7 +13,7 @@ class AnomalyAnalyzer:
     """Analiza trades buscando patrones sospechosos y asigna scores."""
 
     def __init__(self):
-        self.alert_threshold = config.ALERT_THRESHOLD
+        pass
 
     def analyze(
         self,
@@ -134,7 +134,7 @@ class AnomalyAnalyzer:
         # 14. EXIT ALERT: smart money vendiendo (SELL)
         if trade.side == "SELL" and wallet_stats:
             resolved = wallet_stats.win_count + wallet_stats.loss_count
-            if resolved >= 3 and wallet_stats.hit_rate >= 60:
+            if resolved >= config.EXIT_ALERT_MIN_RESOLVED and wallet_stats.hit_rate >= config.EXIT_ALERT_MIN_PCT:
                 score += config.EXIT_ALERT_POINTS
                 triggers.append(f"🚪 Exit (smart money vende)")
 

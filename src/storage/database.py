@@ -1141,15 +1141,16 @@ class Database:
                     )
                     AND m.category IS NOT NULL
                     GROUP BY t.wallet_address
-                    HAVING COUNT(*) >= 5
+                    HAVING COUNT(*) >= $4
                 )
                 SELECT wallet_address, total_trades, cat_trades,
                        ROUND(cat_trades::numeric / NULLIF(total_trades, 0) * 100, 1) as cat_pct
                 FROM wallet_trades
-                WHERE cat_trades::float / NULLIF(total_trades, 0) < 0.15
+                WHERE cat_trades::float / NULLIF(total_trades, 0) < $5
                 ORDER BY total_trades DESC
                 LIMIT 20
-            """, market_id, market_category.lower() if market_category else "", str(window_hours))
+            """, market_id, market_category.lower() if market_category else "", str(window_hours),
+                config.BASKET_MIN_WALLET_TRADES, config.BASKET_CATEGORY_SHIFT_THRESHOLD)
             return [dict(r) for r in rows]
 
     # ── Sniper DBSCAN ────────────────────────────────────────────────

@@ -123,20 +123,25 @@ class TelegramNotifier:
             market_url = f"https://polymarket.com/event/{trade.market_slug}" if trade.market_slug else ""
             poly_profile = f"https://polymarket.com/profile/{trade.wallet_address}"
 
+            max_score = self._calc_max_score()
+            bar_len = 12
+            filled = min(int(candidate.score / max(max_score, 1) * bar_len), bar_len)
+            score_bar = "█" * filled + "░" * (bar_len - filled)
+
             message = (
                 f"⭐ <b>Smart Money Alert — Copy Trade</b>\n\n"
                 f"<b>Mercado:</b> {trade.market_question[:80]}\n"
                 f"<b>Apuesta:</b> {trade.outcome} {trade.side} | "
                 f"<b>Size:</b> ${trade.size:,.0f} | <b>Precio:</b> {trade.price:.2f}\n\n"
                 f"<b>Wallet:</b> <code>{wallet_short}</code>\n"
-                f"<b>Score:</b> {candidate.score}/12\n\n"
+                f"<b>Score:</b> [{score_bar}] {candidate.score}/{max_score}\n\n"
                 f"<b>Señales:</b>\n{triggers_text}\n"
             )
             if candidate.wallet_hit_rate is not None:
                 message += f"\n📈 Hit rate: {candidate.wallet_hit_rate:.0f}%"
             if market_url:
-                message += f"\n🔗 <a href=\"{market_url}\">Polymarket</a>"
-                message += f" | <a href=\"{poly_profile}\">Perfil Trader</a>"
+                message += f'\n🔗 <a href="{market_url}">Polymarket</a>'
+                message += f' | <a href="{poly_profile}">Perfil Trader</a>'
             message += "\n\n💡 <i>Wallet en watchlist por rendimiento histórico.</i>"
 
             sent = await self._send_to_all(message, disable_preview=True)
@@ -183,6 +188,23 @@ class TelegramNotifier:
             print(f"Error enviando crypto signal: {e}", flush=True)
             return False
 
+    def _calc_max_score(self) -> int:
+        """Calcular máximo score posible sumando todas las señales configuradas."""
+        return (
+            config.FRESH_WALLET_POINTS + config.LARGE_SIZE_POINTS +
+            config.MARKET_ANOMALY_POINTS + config.WALLET_SHIFT_POINTS +
+            config.CONCENTRATION_POINTS + config.TIME_PROXIMITY_POINTS +
+            config.CLUSTER_POINTS + config.HIT_RATE_POINTS +
+            config.CONTRARIAN_POINTS + config.ACCUMULATION_POINTS +
+            config.PROVEN_WINNER_POINTS + config.MULTI_SMART_POINTS +
+            config.LATE_INSIDER_POINTS + config.EXIT_ALERT_POINTS +
+            # Señales opcionales (módulos)
+            (config.ORDERBOOK_DEPTH_POINTS if config.FEATURE_ORDERBOOK_DEPTH else 0) +
+            (config.NICHE_MARKET_POINTS if config.FEATURE_MARKET_CLASSIFICATION else 0) +
+            (config.BASKET_POINTS + config.CROSS_BASKET_EXTRA_POINTS if config.FEATURE_WALLET_BASKETS else 0) +
+            (config.SNIPER_POINTS if config.FEATURE_SNIPER_DBSCAN else 0)
+        )
+
     def _format_message(self, candidate: AlertCandidate) -> str:
         trade = candidate.trade
         wallet_short = f"{trade.wallet_address[:6]}...{trade.wallet_address[-4:]}"
@@ -191,15 +213,7 @@ class TelegramNotifier:
         wallet_trades = candidate.wallet_stats.total_trades if candidate.wallet_stats else 0
 
         # Score bar visual — máximo dinámico basado en señales configuradas
-        max_score = (
-            config.FRESH_WALLET_POINTS + config.LARGE_SIZE_POINTS +
-            config.MARKET_ANOMALY_POINTS + config.WALLET_SHIFT_POINTS +
-            config.CONCENTRATION_POINTS + config.TIME_PROXIMITY_POINTS +
-            config.CLUSTER_POINTS + config.HIT_RATE_POINTS +
-            config.CONTRARIAN_POINTS + config.ACCUMULATION_POINTS +
-            config.PROVEN_WINNER_POINTS + config.MULTI_SMART_POINTS +
-            config.LATE_INSIDER_POINTS + config.EXIT_ALERT_POINTS
-        )
+        max_score = self._calc_max_score()
         bar_len = 12
         filled = min(int(candidate.score / max(max_score, 1) * bar_len), bar_len)
         score_bar = "█" * filled + "░" * (bar_len - filled)
