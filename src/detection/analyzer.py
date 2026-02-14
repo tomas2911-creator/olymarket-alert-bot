@@ -1,4 +1,4 @@
-"""Detección de anomalías y scoring para trades."""
+"""Detección de anomalías y scoring para trades — v4.0 con 14 señales."""
 from datetime import datetime
 from typing import Optional
 import structlog
@@ -21,11 +21,17 @@ class AnomalyAnalyzer:
         wallet_stats: Optional[WalletStats],
         market_baseline: Optional[MarketBaseline],
         cluster_wallets: Optional[list[str]] = None,
+        # Nuevos contextos para v4.0
+        accumulation_info: Optional[dict] = None,
+        market_price: Optional[float] = None,
+        smart_cluster_count: int = 0,
     ) -> AlertCandidate:
         score = 0
         triggers: list[str] = []
         days_to_close: Optional[float] = None
         wallet_hr: Optional[float] = None
+
+        # ── Señales originales (1-8) ──────────────────────────────────
 
         # 1. Wallet nueva
         if self._is_fresh_wallet(wallet_stats):
@@ -41,22 +47,21 @@ class AnomalyAnalyzer:
         # 3. Anomalía vs mercado
         if self._is_market_anomaly(trade, market_baseline):
             score += config.MARKET_ANOMALY_POINTS
-            p95 = market_baseline.p95_trade_size if market_baseline else 0
-            triggers.append(f"📊 Anomalía mercado")
+            triggers.append("📊 Anomalía mercado")
 
         # 4. Cambio de comportamiento de wallet
         if self._is_wallet_shift(trade, wallet_stats):
             score += config.WALLET_SHIFT_POINTS
             avg = wallet_stats.avg_trade_size if wallet_stats else 0
             mult = trade.size / avg if avg > 0 else 0
-            triggers.append(f"🔄 {mult:.1f}x su promedio")
+            triggers.append(f"🔄 {mult:.1f}x promedio")
 
         # 5. Alta concentración en mercado
         if self._is_high_concentration(trade, market_baseline):
             score += config.CONCENTRATION_POINTS
             triggers.append("🎯 Alta concentración")
 
-        # 6. NUEVO: Proximidad al cierre del mercado
+        # 6. Proximidad al cierre del mercado
         if trade.market_end_date:
             delta = trade.market_end_date - datetime.now()
             days_to_close = max(delta.total_seconds() / 86400, 0)
@@ -67,17 +72,63 @@ class AnomalyAnalyzer:
                 else:
                     triggers.append(f"⏰ Cierra {days_to_close:.0f}d")
 
-        # 7. NUEVO: Clustering de wallets
+        # 7. Clustering de wallets
         if cluster_wallets and len(cluster_wallets) >= 3:
             score += config.CLUSTER_POINTS
             triggers.append(f"👥 Cluster {len(cluster_wallets)}w")
 
-        # 8. NUEVO: Hit rate de la wallet (bonus informativo)
+        # 8. Hit rate de la wallet
         if wallet_stats and (wallet_stats.win_count + wallet_stats.loss_count) >= 3:
             wallet_hr = wallet_stats.hit_rate
             if wallet_hr >= 70:
                 score += 2
             triggers.append(f"🏆 {wallet_hr:.0f}% win")
+
+        # ── Nuevas señales v4.0 (9-14) ───────────────────────────────
+
+        # 9. CONTRARIAN: smart money apuesta contra el consenso del mercado
+        if market_price is not None and market_price > 0:
+            is_contrarian = False
+            if trade.outcome == "Yes" and trade.side == "BUY" and market_price < 0.20:
+                is_contrarian = True  # Compra Yes cuando mercado dice 80%+ No
+            elif trade.outcome == "No" and trade.side == "BUY" and market_price > 0.80:
+                is_contrarian = True  # Compra No cuando mercado dice 80%+ Yes
+            elif trade.outcome == "Yes" and trade.side == "SELL" and market_price > 0.80:
+                is_contrarian = True  # Vende Yes cuando mercado dice 80%+ Yes
+            if is_contrarian:
+                score += 3
+                triggers.append(f"🔥 Contrarian (precio {market_price:.0%})")
+
+        # 10. ACUMULACIÓN: wallet comprando repetidamente el mismo outcome
+        if accumulation_info and accumulation_info.get("count", 0) >= 2:
+            acc_count = accumulation_info["count"]
+            acc_total = accumulation_info.get("total_size", 0)
+            score += 2
+            triggers.append(f"📈 Acumula ({acc_count}x, total ${acc_total:,.0f})")
+
+        # 11. PROVEN WINNER: wallet con historial ganador verificado
+        if wallet_stats and (wallet_stats.win_count + wallet_stats.loss_count) >= 5:
+            if wallet_stats.hit_rate >= 65:
+                score += 3
+                triggers.append(f"✅ Ganador probado ({wallet_stats.win_count}W/{wallet_stats.loss_count}L)")
+
+        # 12. MULTI-SMART CONFIRMATION: múltiples wallets inteligentes en el mismo lado
+        if smart_cluster_count >= 2:
+            score += 3
+            triggers.append(f"🧠 {smart_cluster_count} smart wallets mismo lado")
+
+        # 13. LATE INSIDER: trade grande cerca del cierre + wallet nueva
+        if days_to_close is not None and days_to_close <= 2 and trade.size >= config.LARGE_SIZE_USD:
+            if self._is_fresh_wallet(wallet_stats):
+                score += 2
+                triggers.append("🕵️ Late insider")
+
+        # 14. EXIT ALERT: smart money vendiendo (SELL)
+        if trade.side == "SELL" and wallet_stats:
+            resolved = wallet_stats.win_count + wallet_stats.loss_count
+            if resolved >= 3 and wallet_stats.hit_rate >= 60:
+                score += 2
+                triggers.append(f"🚪 Exit (smart money vende)")
 
         return AlertCandidate(
             trade=trade,

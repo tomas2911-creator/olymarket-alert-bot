@@ -186,10 +186,14 @@ class PolymarketClient:
             return self._market_cache[condition_id]
         try:
             response = await self.client.get(
-                f"{config.GAMMA_API_URL}/markets/{condition_id}",
+                f"{config.GAMMA_API_URL}/markets",
+                params={"condition_id": condition_id},
             )
             if response.status_code == 200:
-                item = response.json()
+                data = response.json()
+                item = data[0] if isinstance(data, list) and len(data) > 0 else data if isinstance(data, dict) else None
+                if not item:
+                    return None
                 end_str = item.get("endDate") or item.get("end_date_iso")
                 end_date = None
                 if end_str:
@@ -198,14 +202,14 @@ class PolymarketClient:
                     except Exception:
                         pass
                 tags = item.get("tags", [])
-                data = {
+                market_info = {
                     "question": item.get("question", ""),
                     "slug": item.get("slug", ""),
                     "end_date": end_date,
                     "category": tags[0] if tags else None,
                 }
-                self._market_cache[condition_id] = data
-                return data
+                self._market_cache[condition_id] = market_info
+                return market_info
         except Exception:
             pass
         return None
@@ -213,17 +217,42 @@ class PolymarketClient:
     async def check_market_resolution(self, condition_id: str) -> Optional[str]:
         """Verificar si un mercado se resolvió. Devuelve 'Yes'/'No'/None."""
         try:
+            # Gamma API usa query params, devuelve array
             response = await self.client.get(
-                f"{config.GAMMA_API_URL}/markets/{condition_id}",
+                f"{config.GAMMA_API_URL}/markets",
+                params={"condition_id": condition_id},
             )
             if response.status_code == 200:
-                item = response.json()
-                if item.get("closed") or item.get("resolved"):
-                    outcome = item.get("outcome", item.get("resolution", ""))
+                data = response.json()
+                # Puede ser array o dict
+                item = data[0] if isinstance(data, list) and len(data) > 0 else data if isinstance(data, dict) else None
+                if not item:
+                    return None
+                is_resolved = item.get("resolved") == True or item.get("closed") == True
+                if is_resolved:
+                    # Buscar resultado en varios campos posibles
+                    outcome = (
+                        item.get("outcome") or
+                        item.get("resolution") or
+                        item.get("winningOutcome") or
+                        ""
+                    )
                     if outcome:
                         return str(outcome)
-        except Exception:
-            pass
+                    # Si está cerrado pero sin outcome explícito, intentar con outcomePrices
+                    prices_str = item.get("outcomePrices", "")
+                    if prices_str:
+                        try:
+                            prices = json.loads(prices_str) if isinstance(prices_str, str) else prices_str
+                            if isinstance(prices, list) and len(prices) >= 2:
+                                if float(prices[0]) >= 0.95:
+                                    return "Yes"
+                                elif float(prices[1]) >= 0.95:
+                                    return "No"
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.warning("error_check_resolution", condition_id=condition_id[:20], error=str(e))
         return None
 
     # ── Market Price (para price impact) ─────────────────────────────
@@ -232,10 +261,14 @@ class PolymarketClient:
         """Obtener precio actual de un outcome en un mercado."""
         try:
             response = await self.client.get(
-                f"{config.GAMMA_API_URL}/markets/{condition_id}",
+                f"{config.GAMMA_API_URL}/markets",
+                params={"condition_id": condition_id},
             )
             if response.status_code == 200:
-                item = response.json()
+                data = response.json()
+                item = data[0] if isinstance(data, list) and len(data) > 0 else data if isinstance(data, dict) else None
+                if not item:
+                    return None
                 # outcomePrices es un string como "[0.65, 0.35]"
                 prices_str = item.get("outcomePrices", "")
                 if prices_str:

@@ -383,10 +383,14 @@ class Database:
                 WHERE condition_id = $2
             """, resolution, condition_id)
 
-            # Actualizar alertas de este mercado
+            # Actualizar alertas de este mercado (BUY: outcome=resolution, SELL: outcome!=resolution)
             await conn.execute("""
                 UPDATE alerts SET resolved = TRUE, resolution = $1,
-                    was_correct = (outcome = $1)
+                    was_correct = CASE
+                        WHEN side = 'BUY' THEN (outcome = $1)
+                        WHEN side = 'SELL' THEN (outcome != $1)
+                        ELSE FALSE
+                    END
                 WHERE market_id = $2 AND resolved = FALSE
             """, resolution, condition_id)
 
@@ -462,6 +466,83 @@ class Database:
                 ORDER BY wallet_address
             """, market_id, side, outcome, cutoff, min_size)
             return [r["wallet_address"] for r in rows]
+
+    # ── Accumulation Detection ─────────────────────────────────────
+
+    async def get_accumulation_info(self, wallet: str, market_id: str,
+                                     outcome: str, hours: int = 24) -> dict:
+        """Detectar si una wallet está acumulando posición en un mercado."""
+        addr = wallet.lower()
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as total_size
+                FROM trades
+                WHERE wallet_address = $1 AND market_id = $2
+                  AND outcome = $3 AND side = 'BUY'
+                  AND timestamp > NOW() - ($4 || ' hours')::INTERVAL
+            """, addr, market_id, outcome, str(hours))
+            return {"count": row["count"] or 0, "total_size": float(row["total_size"] or 0)}
+
+    # ── Smart Cluster Count ────────────────────────────────────────
+
+    async def count_smart_wallets_same_side(self, market_id: str, side: str,
+                                             outcome: str, exclude_wallet: str,
+                                             hours: int = 24) -> int:
+        """Contar wallets con buen win rate que apostaron al mismo lado recientemente."""
+        async with self._pool.acquire() as conn:
+            count = await conn.fetchval("""
+                SELECT COUNT(DISTINCT t.wallet_address)
+                FROM trades t
+                JOIN wallets w ON w.address = t.wallet_address
+                WHERE t.market_id = $1 AND t.side = $2 AND t.outcome = $3
+                  AND t.wallet_address != $4
+                  AND t.timestamp > NOW() - ($5 || ' hours')::INTERVAL
+                  AND (w.win_count + w.loss_count) >= 3
+                  AND w.win_count::float / NULLIF(w.win_count + w.loss_count, 0) >= 0.55
+            """, market_id, side, outcome, exclude_wallet.lower(), str(hours))
+            return count or 0
+
+    # ── Category Edge Analysis ─────────────────────────────────────
+
+    async def get_category_edge(self) -> list[dict]:
+        """Analizar win rate por categoría para detectar dónde el bot tiene más edge."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT t.market_category as category,
+                       COUNT(DISTINCT a.id) as total_alerts,
+                       COUNT(DISTINCT CASE WHEN a.was_correct THEN a.id END) as correct,
+                       COUNT(DISTINCT CASE WHEN a.resolved THEN a.id END) as resolved,
+                       AVG(a.score) as avg_score,
+                       SUM(a.size) as total_size
+                FROM alerts a
+                LEFT JOIN trades t ON t.transaction_hash = (
+                    SELECT transaction_hash FROM trades
+                    WHERE market_id = a.market_id AND wallet_address = a.wallet_address
+                    LIMIT 1
+                )
+                WHERE t.market_category IS NOT NULL
+                GROUP BY t.market_category
+                HAVING COUNT(DISTINCT a.id) >= 3
+                ORDER BY
+                    CASE WHEN COUNT(DISTINCT CASE WHEN a.resolved THEN a.id END) > 0
+                         THEN COUNT(DISTINCT CASE WHEN a.was_correct THEN a.id END)::float /
+                              COUNT(DISTINCT CASE WHEN a.resolved THEN a.id END)
+                         ELSE 0 END DESC
+            """)
+            result = []
+            for r in rows:
+                resolved = r["resolved"] or 0
+                correct = r["correct"] or 0
+                result.append({
+                    "category": r["category"],
+                    "total_alerts": r["total_alerts"],
+                    "correct": correct,
+                    "resolved": resolved,
+                    "win_rate": round(correct / resolved * 100, 1) if resolved > 0 else 0,
+                    "avg_score": round(float(r["avg_score"] or 0), 1),
+                    "total_size": float(r["total_size"] or 0),
+                })
+            return result
 
     # ── Dashboard Queries ─────────────────────────────────────────────
 

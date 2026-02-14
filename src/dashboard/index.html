@@ -456,7 +456,7 @@ async function loadStats(){
 
 // ── Load Alerts ──
 async function loadAlerts(){
-    allAlerts=await fetchJson('/api/alerts?limit=100')||[];
+    allAlerts=await fetchJson('/api/alerts?limit=200')||[];
     filterAlerts();
 }
 function filterAlerts(){
@@ -561,7 +561,7 @@ async function loadMarkets(){
 // ── Load Feed ──
 let allFeedTrades = [];
 async function loadFeed(){
-    allFeedTrades=await fetchJson('/api/trades/recent?limit=200')||[];
+    allFeedTrades=await fetchJson('/api/trades/recent?limit=500')||[];
     filterFeed();
 }
 function filterFeed(){

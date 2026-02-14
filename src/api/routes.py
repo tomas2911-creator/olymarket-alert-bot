@@ -177,6 +177,14 @@ async def get_wallet_coordination(request: Request, address: str):
     return await db.get_wallet_coordination(address)
 
 
+# ── Category Edge ───────────────────────────────────────────────────
+
+@router.get("/api/category-edge")
+async def category_edge(request: Request):
+    db = request.app.state.db
+    return await db.get_category_edge()
+
+
 # ── Health ───────────────────────────────────────────────────────────
 
 @router.get("/api/health")

@@ -191,8 +191,26 @@ class PolymarketAlertBot:
             if market_data and market_data.get("end_date"):
                 trade.market_end_date = market_data["end_date"]
 
-        # Analizar
-        candidate = self.analyzer.analyze(trade, wallet_stats, market_baseline, cluster)
+        # v4.0: Contexto adicional para nuevas señales
+        accumulation_info = None
+        market_price = None
+        smart_cluster_count = 0
+        try:
+            accumulation_info = await self.db.get_accumulation_info(
+                trade.wallet_address, trade.market_id, trade.outcome)
+            market_price = await client.get_market_price(trade.market_id, "Yes")
+            smart_cluster_count = await self.db.count_smart_wallets_same_side(
+                trade.market_id, trade.side, trade.outcome, trade.wallet_address)
+        except Exception:
+            pass  # No bloquear análisis si falla algún contexto extra
+
+        # Analizar con todas las señales (v4.0)
+        candidate = self.analyzer.analyze(
+            trade, wallet_stats, market_baseline, cluster,
+            accumulation_info=accumulation_info,
+            market_price=market_price,
+            smart_cluster_count=smart_cluster_count,
+        )
 
         # Copy-trade: si wallet está en watchlist, alertar aunque score sea bajo
         is_copy = trade.wallet_address.lower() in self._watchlist
@@ -230,7 +248,7 @@ class PolymarketAlertBot:
                 cluster_wallets=candidate.cluster_wallets,
                 days_to_close=candidate.days_to_resolution,
                 wallet_hit_rate=candidate.wallet_hit_rate,
-                price_at_alert=trade.price,
+                price_at_alert=market_price or trade.price,
                 is_copy_trade=is_copy,
             )
             logger.info("alerta_enviada",
