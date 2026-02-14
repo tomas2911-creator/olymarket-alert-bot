@@ -166,6 +166,13 @@
                 </table>
                 <div id="alerts-empty" class="hidden text-center py-10 text-gray-500">No hay alertas aun. El bot esta monitoreando...</div>
             </div>
+            <div id="alerts-pagination" class="hidden flex items-center justify-between px-4 py-2 border-t border-gray-800/50">
+                <span id="alerts-page-info" class="text-xs text-gray-500"></span>
+                <div class="flex gap-1">
+                    <button onclick="alertsPageChange(-1)" id="alerts-prev" class="px-3 py-1 rounded bg-gray-800/60 text-xs text-gray-300 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition">← Anterior</button>
+                    <button onclick="alertsPageChange(1)" id="alerts-next" class="px-3 py-1 rounded bg-gray-800/60 text-xs text-gray-300 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition">Siguiente →</button>
+                </div>
+            </div>
         </div>
 
         <!-- Leaderboard Panel -->
@@ -280,6 +287,13 @@
                 <tbody id="feed-body"></tbody>
             </table>
             <div id="feed-empty" class="hidden text-center py-10 text-gray-500">Sin trades aun.</div>
+            </div>
+            <div id="feed-pagination" class="hidden flex items-center justify-between px-4 py-2 border-t border-gray-800/50">
+                <span id="feed-page-info" class="text-xs text-gray-500"></span>
+                <div class="flex gap-1">
+                    <button onclick="feedPageChange(-1)" id="feed-prev" class="px-3 py-1 rounded bg-gray-800/60 text-xs text-gray-300 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition">← Anterior</button>
+                    <button onclick="feedPageChange(1)" id="feed-next" class="px-3 py-1 rounded bg-gray-800/60 text-xs text-gray-300 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition">Siguiente →</button>
+                </div>
             </div>
         </div>
     </div>
@@ -454,29 +468,39 @@ async function loadStats(){
     document.getElementById('last-update').textContent='Actualizado: '+new Date().toLocaleTimeString('es');
 }
 
-// ── Load Alerts ──
+// ── Load Alerts (con paginación) ──
+let alertsPage=0, alertsPerPage=25, alertsFiltered=[];
 async function loadAlerts(){
-    allAlerts=await fetchJson('/api/alerts?limit=200')||[];
+    allAlerts=await fetchJson('/api/alerts?limit=5000')||[];
+    alertsPage=0;
     filterAlerts();
 }
 function filterAlerts(){
     const q=(document.getElementById('alert-search').value||'').toLowerCase();
     const minScore=parseInt(document.getElementById('alert-score-filter').value)||0;
-    const filtered=allAlerts.filter(a=>{
+    alertsFiltered=allAlerts.filter(a=>{
         if(minScore&&a.score<minScore)return false;
         if(q&&!(a.market_question||'').toLowerCase().includes(q)&&!(a.wallet_address||'').toLowerCase().includes(q))return false;
         return true;
     });
+    alertsPage=0;
+    renderAlertsPage();
+}
+function alertsPageChange(dir){alertsPage+=dir;renderAlertsPage();}
+function renderAlertsPage(){
     const body=document.getElementById('alerts-body'),empty=document.getElementById('alerts-empty');
-    if(filtered.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    const pgn=document.getElementById('alerts-pagination');
+    if(alertsFiltered.length===0){body.innerHTML='';empty.classList.remove('hidden');pgn.classList.add('hidden');return;}
     empty.classList.add('hidden');
-    body.innerHTML=filtered.map(a=>{
-        // Triggers / señales (separados por ||)
+    const totalPages=Math.ceil(alertsFiltered.length/alertsPerPage);
+    if(alertsPage>=totalPages)alertsPage=totalPages-1;
+    if(alertsPage<0)alertsPage=0;
+    const start=alertsPage*alertsPerPage;
+    const page=alertsFiltered.slice(start,start+alertsPerPage);
+    body.innerHTML=page.map(a=>{
         const triggers=(a.triggers||'').split('||').filter(Boolean).map(t=>t.trim());
         const triggerHtml=triggers.length>0?`<div class="flex flex-col gap-0.5">${triggers.slice(0,4).map(t=>`<span class="text-[10px] text-gray-300">${t}</span>`).join('')}</div>`:'<span class="text-gray-600 text-[10px]">-</span>';
-        // Copy-trade badge
         const copyBadge=a.is_copy_trade?'<span class="text-yellow-400 text-xs" title="Copy-Trade Alert">⭐</span> ':'';
-        // Price impact
         let piHtml='-';
         if(a.price_at_alert!=null){
             const parts=[];
@@ -504,6 +528,11 @@ function filterAlerts(){
             <td class="px-4 py-2 text-center">${statusBadge(a)}</td>
         </tr>`;
     }).join('');
+    // Controles de paginación
+    pgn.classList.remove('hidden');
+    document.getElementById('alerts-page-info').textContent=`Página ${alertsPage+1} de ${totalPages} (${alertsFiltered.length} alertas)`;
+    document.getElementById('alerts-prev').disabled=alertsPage<=0;
+    document.getElementById('alerts-next').disabled=alertsPage>=totalPages-1;
 }
 
 // ── Load Wallets ──
@@ -558,25 +587,37 @@ async function loadMarkets(){
     }).join('');
 }
 
-// ── Load Feed ──
-let allFeedTrades = [];
+// ── Load Feed (con paginación) ──
+let allFeedTrades=[], feedPage=0, feedPerPage=50, feedFiltered=[];
 async function loadFeed(){
-    allFeedTrades=await fetchJson('/api/trades/recent?limit=500')||[];
+    allFeedTrades=await fetchJson('/api/trades/recent?limit=5000')||[];
+    feedPage=0;
     filterFeed();
 }
 function filterFeed(){
     const minSize=parseInt(document.getElementById('feed-min-size').value)||0;
     const q=(document.getElementById('feed-search').value||'').toLowerCase();
-    const filtered=allFeedTrades.filter(t=>{
+    feedFiltered=allFeedTrades.filter(t=>{
         if(minSize&&(t.size||0)<minSize)return false;
         if(q&&!(t.market_question||'').toLowerCase().includes(q)&&!(t.wallet_address||'').toLowerCase().includes(q)&&!(t.wallet_name||'').toLowerCase().includes(q))return false;
         return true;
     });
+    feedPage=0;
+    renderFeedPage();
+}
+function feedPageChange(dir){feedPage+=dir;renderFeedPage();}
+function renderFeedPage(){
     const body=document.getElementById('feed-body'),empty=document.getElementById('feed-empty');
-    document.getElementById('feed-count').textContent=`${filtered.length}/${allFeedTrades.length} trades`;
-    if(filtered.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    const pgn=document.getElementById('feed-pagination');
+    document.getElementById('feed-count').textContent=`${feedFiltered.length}/${allFeedTrades.length} trades`;
+    if(feedFiltered.length===0){body.innerHTML='';empty.classList.remove('hidden');pgn.classList.add('hidden');return;}
     empty.classList.add('hidden');
-    body.innerHTML=filtered.map(t=>`
+    const totalPages=Math.ceil(feedFiltered.length/feedPerPage);
+    if(feedPage>=totalPages)feedPage=totalPages-1;
+    if(feedPage<0)feedPage=0;
+    const start=feedPage*feedPerPage;
+    const page=feedFiltered.slice(start,start+feedPerPage);
+    body.innerHTML=page.map(t=>`
         <tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
             <td class="px-4 py-2 text-xs text-gray-400 whitespace-nowrap">${fmtTime(t.timestamp)}</td>
             <td class="px-4 py-2 max-w-xs truncate text-xs">
@@ -593,6 +634,11 @@ function filterFeed(){
             <td class="px-4 py-2 text-center"><span class="px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-300">${t.market_category||'-'}</span></td>
         </tr>
     `).join('');
+    // Controles de paginación
+    pgn.classList.remove('hidden');
+    document.getElementById('feed-page-info').textContent=`Página ${feedPage+1} de ${totalPages} (${feedFiltered.length} trades)`;
+    document.getElementById('feed-prev').disabled=feedPage<=0;
+    document.getElementById('feed-next').disabled=feedPage>=totalPages-1;
 }
 
 // ── Leaderboard ──
