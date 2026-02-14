@@ -272,6 +272,35 @@ class PolymarketAlertBot:
         if not should_alert:
             return
 
+        # Filtrar por categorías excluidas
+        try:
+            saved_cfg = await self.db.get_config()
+            excluded_str = saved_cfg.get("excluded_categories", "")
+            if excluded_str:
+                excluded_cats = {c.strip().lower() for c in excluded_str.split(",") if c.strip()}
+                market_cat = (trade.market_category or "").lower()
+                market_tags = []
+                if hasattr(trade, "market_tags") and trade.market_tags:
+                    market_tags = [t.lower() for t in trade.market_tags]
+                # También extraer palabras del slug como fallback
+                market_slug_lower = (trade.market_slug or "").lower()
+                # Verificar si alguna categoría excluida coincide
+                if market_cat and market_cat in excluded_cats:
+                    return
+                if any(t in excluded_cats for t in market_tags):
+                    return
+                # Fallback: verificar si el slug contiene la categoría
+                if any(cat in market_slug_lower for cat in excluded_cats if len(cat) > 2):
+                    return
+                # Fallback: verificar en la pregunta del mercado
+                q_lower = (trade.market_question or "").lower()
+                sport_keywords = {"nba", "nfl", "nhl", "mlb", "mls", "soccer", "football", "basketball", "baseball", "hockey", "esports"}
+                matched_keywords = excluded_cats & sport_keywords
+                if any(kw in q_lower for kw in matched_keywords):
+                    return
+        except Exception as e:
+            print(f"Error filtrando categorías: {e}", flush=True)
+
         # Cooldown
         if not await self.db.should_alert(trade.wallet_address, trade.market_id, config.COOLDOWN_HOURS):
             return
