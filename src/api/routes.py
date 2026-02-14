@@ -35,6 +35,7 @@ async def get_stats(request: Request):
         stats["uptime"] = f"{hours}h {minutes}m"
         stats["trades_this_session"] = bot.trades_processed
         stats["alerts_this_session"] = bot.alerts_sent
+        stats["watchlist_count"] = len(bot._watchlist)
     return stats
 
 

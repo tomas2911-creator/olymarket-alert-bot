@@ -99,7 +99,7 @@
 
 <main class="max-w-7xl mx-auto px-4 py-4 space-y-4">
     <!-- Stats Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div class="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Alertas Totales</div><div class="text-2xl font-bold mt-1" id="stat-total-alerts">-</div></div>
         <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Alertas 24h</div><div class="text-2xl font-bold mt-1 text-purple-400" id="stat-alerts-24h">-</div></div>
         <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Hit Rate</div><div class="text-2xl font-bold mt-1" id="stat-hit-rate">-</div><div class="text-xs text-gray-500" id="stat-resolved-detail"></div></div>
@@ -107,6 +107,7 @@
         <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Trades Procesados</div><div class="text-2xl font-bold mt-1" id="stat-trades">-</div></div>
         <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Wallets Flaggeadas</div><div class="text-2xl font-bold mt-1 text-yellow-400" id="stat-wallets">-</div></div>
         <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Correctas</div><div class="text-2xl font-bold mt-1 text-green-400" id="stat-correct">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Watchlist</div><div class="text-2xl font-bold mt-1 text-yellow-400" id="stat-watchlist">-</div></div>
         <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Sesion</div><div class="text-lg font-bold mt-1" id="stat-session">-</div></div>
     </div>
 
@@ -156,7 +157,9 @@
                         <th class="px-4 py-2 text-center">Apuesta</th>
                         <th class="px-4 py-2 text-right">Size</th>
                         <th class="px-4 py-2 text-center">Score</th>
+                        <th class="px-4 py-2 text-left">Señales</th>
                         <th class="px-4 py-2 text-left">Wallet</th>
+                        <th class="px-4 py-2 text-center">Price Impact</th>
                         <th class="px-4 py-2 text-center">Estado</th>
                     </tr></thead>
                     <tbody id="alerts-body"></tbody>
@@ -434,6 +437,7 @@ async function loadStats(){
     document.getElementById('stat-trades').textContent=fmt(s.total_trades_processed);
     document.getElementById('stat-wallets').textContent=fmt(s.unique_wallets_flagged);
     document.getElementById('stat-correct').textContent=fmt(s.correct_alerts);
+    document.getElementById('stat-watchlist').textContent=fmt(s.watchlist_count||0);
     document.getElementById('uptime').textContent=s.uptime||'Activo';
     const sess=[];
     if(s.trades_this_session)sess.push(`${fmt(s.trades_this_session)} trades`);
@@ -458,23 +462,40 @@ function filterAlerts(){
     const body=document.getElementById('alerts-body'),empty=document.getElementById('alerts-empty');
     if(filtered.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
     empty.classList.add('hidden');
-    body.innerHTML=filtered.map(a=>`
-        <tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+    body.innerHTML=filtered.map(a=>{
+        // Triggers / señales
+        const triggers=(a.triggers||'').split(',').filter(Boolean).map(t=>t.trim());
+        const triggerHtml=triggers.length>0?triggers.slice(0,3).map(t=>`<span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-700 text-gray-300">${t}</span>`).join(' '):'<span class="text-gray-600 text-[10px]">-</span>';
+        // Copy-trade badge
+        const copyBadge=a.is_copy_trade?'<span class="text-yellow-400 text-xs" title="Copy-Trade Alert">⭐</span> ':'';
+        // Price impact
+        let piHtml='-';
+        if(a.price_at_alert!=null){
+            const parts=[];
+            if(a.price_1h!=null){const d=((a.price_1h-a.price_at_alert)/a.price_at_alert*100);parts.push(`<span class="${d>0?'text-green-400':'text-red-400'}">${d>0?'+':''}${d.toFixed(1)}%</span>`);}
+            if(a.price_6h!=null){const d=((a.price_6h-a.price_at_alert)/a.price_at_alert*100);parts.push(`<span class="${d>0?'text-green-400':'text-red-400'}">${d>0?'+':''}${d.toFixed(1)}%</span>`);}
+            if(a.price_24h!=null){const d=((a.price_24h-a.price_at_alert)/a.price_at_alert*100);parts.push(`<span class="${d>0?'text-green-400':'text-red-400'}">${d>0?'+':''}${d.toFixed(1)}%</span>`);}
+            if(parts.length>0)piHtml=`<div class="text-[10px]">${parts.join(' / ')}</div><div class="text-[9px] text-gray-600">1h/6h/24h</div>`;
+            else piHtml=`<span class="text-[10px] text-gray-600">${a.price_at_alert.toFixed(2)} (esperando)</span>`;
+        }
+        return`<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
             <td class="px-4 py-2 text-gray-400 whitespace-nowrap text-xs">${fmtDate(a.created_at)}</td>
             <td class="px-4 py-2 max-w-xs truncate text-xs">
-                <a href="${polyLink(a.market_slug)}" target="_blank" class="hover:text-purple-400 transition">${(a.market_question||'').slice(0,55)}${(a.market_question||'').length>55?'...':''}</a>
+                ${copyBadge}<a href="${polyLink(a.market_slug)}" target="_blank" class="hover:text-purple-400 transition">${(a.market_question||'').slice(0,50)}${(a.market_question||'').length>50?'...':''}</a>
             </td>
             <td class="px-4 py-2 text-center">
                 <span class="px-2 py-0.5 rounded text-xs font-medium ${a.outcome==='Yes'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">${a.outcome||''} ${a.side||''}</span>
             </td>
             <td class="px-4 py-2 text-right font-mono text-xs">${fmtUsd(a.size)}</td>
             <td class="px-4 py-2 text-center"><span class="font-bold ${scoreC(a.score)}">${a.score}</span></td>
+            <td class="px-4 py-2 text-xs">${triggerHtml}</td>
             <td class="px-4 py-2 font-mono text-xs">
                 <button onclick="openWallet('${a.wallet_address}')" class="text-purple-400 hover:text-purple-300 transition">${shortW(a.wallet_address)}</button>
             </td>
+            <td class="px-4 py-2 text-center">${piHtml}</td>
             <td class="px-4 py-2 text-center">${statusBadge(a)}</td>
-        </tr>
-    `).join('');
+        </tr>`;
+    }).join('');
 }
 
 // ── Load Wallets ──
