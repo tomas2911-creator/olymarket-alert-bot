@@ -48,6 +48,23 @@ async def get_alerts(request: Request, limit: int = 50):
     return await db.get_recent_alerts(limit=limit)
 
 
+@router.delete("/api/alerts")
+async def delete_alerts(request: Request, older_than_hours: int = 24):
+    """Borrar alertas más viejas que N horas."""
+    db = request.app.state.db
+    try:
+        from datetime import timedelta
+        cutoff = datetime.now() - timedelta(hours=older_than_hours)
+        async with db._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM alerts WHERE created_at < $1", cutoff
+            )
+            deleted = int(result.split(" ")[-1]) if result else 0
+        return {"status": "ok", "deleted": deleted, "older_than_hours": older_than_hours}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @router.get("/api/alerts/market/{market_id:path}")
 async def get_market_alerts(request: Request, market_id: str):
     db = request.app.state.db
