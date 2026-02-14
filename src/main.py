@@ -318,6 +318,7 @@ class PolymarketAlertBot:
                 ("price_6h", 6, 48),
                 ("price_24h", 24, 72),
             ]
+            updated = 0
             async with PolymarketClient() as client:
                 for field, min_h, max_h in checks:
                     alerts = await self.db.get_alerts_needing_price_check(field, min_h, max_h)
@@ -325,8 +326,11 @@ class PolymarketAlertBot:
                         price = await client.get_market_price(
                             alert["market_id"], alert.get("outcome", "Yes")
                         )
-                        if price and price > 0:
+                        if price is not None:
                             await self.db.update_alert_price_impact(alert["id"], field, price)
+                            updated += 1
+            if updated:
+                print(f"Price impact: {updated} alertas actualizadas", flush=True)
         except Exception as e:
             print(f"Error en price impact check: {e}", flush=True)
 
