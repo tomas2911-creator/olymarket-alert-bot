@@ -100,8 +100,12 @@ class BinanceFeed:
                     return
             # Si en 15s no llegó nada, cancelar WS y usar polling
             ws_task.cancel()
+            try:
+                await ws_task
+            except (asyncio.CancelledError, Exception):
+                pass
             print("[BinanceFeed] WebSocket sin datos en 15s, cambiando a HTTP polling", flush=True)
-        except Exception as e:
+        except (asyncio.CancelledError, Exception) as e:
             print(f"[BinanceFeed] WebSocket falló: {e}, cambiando a HTTP polling", flush=True)
         await self._run_polling()
 

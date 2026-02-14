@@ -168,7 +168,7 @@ class AnomalyAnalyzer:
         # 18. SNIPER DBSCAN: cluster de wallets operando en ventana temporal muy estrecha
         if config.FEATURE_SNIPER_DBSCAN and sniper_cluster_size >= config.SNIPER_MIN_CLUSTER_SIZE:
             score += config.SNIPER_POINTS
-            triggers.append(f"🎯 Sniper cluster ({sniper_cluster_size}w en <{config.SNIPER_TIME_WINDOW_SEC}s)")
+            triggers.append(f"🔫 Sniper cluster ({sniper_cluster_size}w en <{config.SNIPER_TIME_WINDOW_SEC}s)")
 
         return AlertCandidate(
             trade=trade,
@@ -182,7 +182,7 @@ class AnomalyAnalyzer:
         )
 
     def should_alert(self, candidate: AlertCandidate) -> bool:
-        return candidate.score >= self.alert_threshold
+        return candidate.score >= config.ALERT_THRESHOLD
 
     def _is_fresh_wallet(self, ws: Optional[WalletStats]) -> bool:
         if ws is None:

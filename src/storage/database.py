@@ -1103,11 +1103,11 @@ class Database:
         """Obtener el perfil de categorías de una wallet (en qué categorías suele operar)."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT m.category, COUNT(*) as trade_count, SUM(t.size) as total_vol
+                SELECT LOWER(m.category) as category, COUNT(*) as trade_count, SUM(t.size) as total_vol
                 FROM trades t
                 JOIN markets m ON m.condition_id = t.market_id
                 WHERE t.wallet_address = $1 AND m.category IS NOT NULL
-                GROUP BY m.category
+                GROUP BY LOWER(m.category)
                 ORDER BY trade_count DESC
             """, address.lower())
             total = sum(r["trade_count"] for r in rows) or 1
@@ -1131,7 +1131,7 @@ class Database:
             rows = await conn.fetch("""
                 WITH wallet_trades AS (
                     SELECT t.wallet_address, COUNT(*) as total_trades,
-                           COUNT(CASE WHEN m.category = $2 THEN 1 END) as cat_trades
+                           COUNT(CASE WHEN LOWER(m.category) = LOWER($2) THEN 1 END) as cat_trades
                     FROM trades t
                     JOIN markets m ON m.condition_id = t.market_id
                     WHERE t.wallet_address IN (

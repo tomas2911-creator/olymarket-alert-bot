@@ -191,6 +191,10 @@ async def update_config(request: Request, body: ConfigUpdate):
         config.ALERT_THRESHOLD = body.alert_threshold
     if body.excluded_categories is not None:
         data["excluded_categories"] = body.excluded_categories
+        # Actualizar cache en el bot
+        bot = request.app.state.bot
+        if bot:
+            bot._excluded_categories = {c.strip().lower() for c in body.excluded_categories.split(",") if c.strip()}
     if body.poll_interval is not None:
         config.POLL_INTERVAL = body.poll_interval
     if body.fresh_wallet_points is not None:
@@ -216,20 +220,28 @@ async def update_config(request: Request, body: ConfigUpdate):
     if body.max_markets is not None:
         config.MAX_MARKETS = body.max_markets
     if body.basket_min_trades is not None:
+        data["basket_min_trades"] = str(body.basket_min_trades)
         config.BASKET_MIN_WALLET_TRADES = body.basket_min_trades
     if body.basket_shift_threshold is not None:
+        data["basket_shift_threshold"] = str(body.basket_shift_threshold)
         config.BASKET_CATEGORY_SHIFT_THRESHOLD = body.basket_shift_threshold
     if body.basket_points is not None:
+        data["basket_points"] = str(body.basket_points)
         config.BASKET_POINTS = body.basket_points
     if body.basket_cross_min is not None:
+        data["basket_cross_min"] = str(body.basket_cross_min)
         config.BASKET_CROSS_MIN = body.basket_cross_min
     if body.sniper_time_window is not None:
+        data["sniper_time_window"] = str(body.sniper_time_window)
         config.SNIPER_TIME_WINDOW_SEC = body.sniper_time_window
     if body.sniper_min_cluster is not None:
+        data["sniper_min_cluster"] = str(body.sniper_min_cluster)
         config.SNIPER_MIN_CLUSTER_SIZE = body.sniper_min_cluster
     if body.sniper_min_size is not None:
+        data["sniper_min_size"] = str(body.sniper_min_size)
         config.SNIPER_MIN_TRADE_SIZE = body.sniper_min_size
     if body.sniper_points is not None:
+        data["sniper_points"] = str(body.sniper_points)
         config.SNIPER_POINTS = body.sniper_points
     if data:
         await db.set_config_bulk(data)

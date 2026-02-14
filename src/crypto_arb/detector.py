@@ -48,7 +48,7 @@ class CryptoSignal:
 #   "BTC above $X at 3:00 PM" / "Bitcoin Up or Down by 3:15 PM"
 #   "Will the price of Bitcoin..." / "Bitcoin 15-Minute..."
 CRYPTO_MARKET_RE = re.compile(
-    r"(Bitcoin|BTC|Ethereum|ETH|Solana|SOL)",
+    r"\b(Bitcoin|BTC|Ethereum|ETH|Solana|SOL)\b",
     re.IGNORECASE,
 )
 # Segundo filtro: debe ser un mercado de tipo up/down o precio
