@@ -319,9 +319,11 @@ class PolymarketAlertBot:
             wallets = await self.db.get_wallets_for_onchain_check(limit=5)
             for addr in wallets:
                 info = await get_wallet_onchain_info(addr)
-                if info["first_tx"] or info["funded_by"]:
-                    await self.db.update_wallet_onchain(addr, info["first_tx"], info["funded_by"])
-                await asyncio.sleep(1)  # Rate limit
+                # Guardar si hay al menos algún dato útil
+                has_data = any(v is not None for v in info.values())
+                if has_data:
+                    await self.db.update_wallet_onchain(addr, info)
+                await asyncio.sleep(2)  # Rate limit entre wallets
             if wallets:
                 print(f"On-chain check: {len(wallets)} wallets", flush=True)
         except Exception as e:

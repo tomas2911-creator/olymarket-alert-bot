@@ -556,8 +556,17 @@ async function loadLeaderboard(){
         const smClass=sm>=70?'text-yellow-400':sm>=50?'text-purple-400':sm>=30?'text-blue-400':'text-gray-500';
         const watchBadge=w.is_watchlisted?'<span class="text-yellow-400 ml-1" title="Watchlisted">⭐</span>':'';
         const name=w.pseudonym||w.name||shortW(w.address);
-        const chainAge=w.on_chain_first_tx?new Date(w.on_chain_first_tx).toLocaleDateString('es',{year:'2-digit',month:'short'}):'-';
-        const funder=w.on_chain_funded_by?`<span class="text-xs text-gray-500" title="${w.on_chain_funded_by}">${shortW(w.on_chain_funded_by)}</span>`:'<span class="text-gray-600">-</span>';
+        const ageDays=w.on_chain_age_days;
+        const ageStr=ageDays!=null?(ageDays>=365?Math.floor(ageDays/365)+'a':ageDays+'d'):'-';
+        const ageClass=ageDays!=null?(ageDays<30?'text-red-400':ageDays<180?'text-yellow-400':'text-green-400'):'text-gray-600';
+        const usdcIn=w.on_chain_usdc_in;
+        const usdcOut=w.on_chain_usdc_out;
+        const erc1155=w.on_chain_erc1155_transfers;
+        const chainInfo=ageDays!=null?
+            `<span class="${ageClass} font-bold">${ageStr}</span>`+
+            (usdcIn?` · <span class="text-green-400">↓${fmtUsd(usdcIn)}</span>`:'')+
+            (erc1155?` · <span class="text-purple-400">${erc1155}pos</span>`:'')
+            :'<span class="text-gray-600">-</span>';
         return`<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
             <td class="px-3 py-2 text-center text-gray-500 font-bold">${i+1}</td>
             <td class="px-3 py-2 text-xs">
@@ -570,7 +579,7 @@ async function loadLeaderboard(){
             <td class="px-3 py-2 text-center text-xs">${wr} <span class="text-gray-600">(${resolved})</span></td>
             <td class="px-3 py-2 text-right font-mono text-xs">${fmtUsd(w.total_volume)}</td>
             <td class="px-3 py-2 text-center text-xs">${w.correct_markets||0}/${resolved}</td>
-            <td class="px-3 py-2 text-center text-[10px]">${chainAge}<br>${funder}</td>
+            <td class="px-3 py-2 text-center text-[10px]">${chainInfo}</td>
             <td class="px-3 py-2 text-center flex gap-1 justify-center">
                 <a href="${polyProfile(w.address)}" target="_blank" class="explorer-link text-xs text-purple-400">PM</a>
                 <a href="${scanLink(w.address)}" target="_blank" class="explorer-link text-xs text-blue-400">PS</a>
@@ -648,9 +657,15 @@ async function openWallet(addr){
     smEl.className='text-lg font-bold '+(sm>=70?'text-yellow-400':sm>=50?'text-purple-400':sm>=30?'text-blue-400':'text-gray-500');
 
     const chainEl=document.getElementById('wm-onchain');
-    if(w.on_chain_first_tx){
-        const age=new Date(w.on_chain_first_tx).toLocaleDateString('es',{year:'numeric',month:'short',day:'numeric'});
-        chainEl.textContent=age;
+    if(w.on_chain_age_days!=null){
+        const ageDays=w.on_chain_age_days;
+        const ageStr=ageDays>=365?Math.floor(ageDays/365)+'a '+ageDays%365+'d':ageDays+'d';
+        let info=`<span class="${ageDays<30?'text-red-400':ageDays<180?'text-yellow-400':'text-green-400'}">${ageStr}</span>`;
+        if(w.on_chain_usdc_in)info+=`<br><span class="text-[10px] text-green-400">↓${fmtUsd(w.on_chain_usdc_in)}</span>`;
+        if(w.on_chain_usdc_out)info+=` <span class="text-[10px] text-red-400">↑${fmtUsd(w.on_chain_usdc_out)}</span>`;
+        if(w.on_chain_erc1155_transfers)info+=`<br><span class="text-[10px] text-purple-400">${w.on_chain_erc1155_transfers} posiciones</span>`;
+        if(w.on_chain_funded_by)info+=`<br><span class="text-[10px] text-gray-500">Funder: ${shortW(w.on_chain_funded_by)}</span>`;
+        chainEl.innerHTML=info;
     }else{chainEl.textContent='-'}
 
     // Trades

@@ -147,6 +147,13 @@ class Database:
                 "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS price_6h DOUBLE PRECISION",
                 "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS price_24h DOUBLE PRECISION",
                 "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS is_copy_trade BOOLEAN DEFAULT FALSE",
+                # Wallets: on-chain expandido
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS on_chain_age_days INTEGER",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS on_chain_tx_count INTEGER",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS on_chain_usdc_in DOUBLE PRECISION DEFAULT 0",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS on_chain_usdc_out DOUBLE PRECISION DEFAULT 0",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS on_chain_erc1155_transfers INTEGER DEFAULT 0",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS on_chain_checked_at TIMESTAMPTZ",
                 # Trades: PnL calculado
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS pnl DOUBLE PRECISION",
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS pnl_calculated BOOLEAN DEFAULT FALSE",
@@ -908,7 +915,10 @@ class Database:
                        total_pnl, total_cost, roi_pct,
                        smart_money_score, correct_markets,
                        is_watchlisted,
-                       on_chain_first_tx, on_chain_funded_by
+                       on_chain_first_tx, on_chain_funded_by,
+                       on_chain_age_days, on_chain_tx_count,
+                       on_chain_usdc_in, on_chain_usdc_out,
+                       on_chain_erc1155_transfers
                 FROM wallets
                 WHERE (win_count + loss_count) > 0
                 ORDER BY {order}
@@ -928,13 +938,30 @@ class Database:
             """, limit)
             return [r["address"] for r in rows]
 
-    async def update_wallet_onchain(self, address: str, first_tx: Optional[datetime],
-                                     funded_by: Optional[str]):
+    async def update_wallet_onchain(self, address: str, data: dict):
+        """Guardar datos on-chain expandidos de una wallet."""
         async with self._pool.acquire() as conn:
             await conn.execute("""
-                UPDATE wallets SET on_chain_first_tx = $1, on_chain_funded_by = $2
-                WHERE address = $3
-            """, first_tx, funded_by, address.lower())
+                UPDATE wallets SET
+                    on_chain_first_tx = COALESCE($1, on_chain_first_tx),
+                    on_chain_funded_by = COALESCE($2, on_chain_funded_by),
+                    on_chain_age_days = COALESCE($3, on_chain_age_days),
+                    on_chain_tx_count = COALESCE($4, on_chain_tx_count),
+                    on_chain_usdc_in = COALESCE($5, on_chain_usdc_in),
+                    on_chain_usdc_out = COALESCE($6, on_chain_usdc_out),
+                    on_chain_erc1155_transfers = COALESCE($7, on_chain_erc1155_transfers),
+                    on_chain_checked_at = NOW()
+                WHERE address = $8
+            """,
+                data.get("first_tx"),
+                data.get("funded_by"),
+                data.get("age_days"),
+                data.get("tx_count"),
+                data.get("usdc_in"),
+                data.get("usdc_out"),
+                data.get("erc1155_transfers"),
+                address.lower(),
+            )
 
 
 def _serialize_row(row) -> dict:
