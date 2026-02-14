@@ -908,9 +908,13 @@ class Database:
     # ── Coordination Detection ────────────────────────────────────────
 
     async def detect_coordination(self):
-        """Detectar pares de wallets que tradean coordinadamente."""
+        """Detectar pares de wallets que tradean coordinadamente (excluyendo crypto/sports)."""
         async with self._pool.acquire() as conn:
+            # Limpiar links viejos antes de recalcular
+            await conn.execute("DELETE FROM wallet_links WHERE updated_at < NOW() - INTERVAL '7 days'")
+
             # Encontrar pares que comparten 3+ mercados en el mismo lado
+            # EXCLUIR categorías de ruido: sports, crypto-prices, updown
             pairs = await conn.fetch("""
                 SELECT t1.wallet_address as wa, t2.wallet_address as wb,
                        COUNT(DISTINCT t1.market_id) as shared,
@@ -922,6 +926,11 @@ class Database:
                     AND t1.wallet_address < t2.wallet_address
                     AND ABS(EXTRACT(EPOCH FROM (t1.timestamp - t2.timestamp))) < 300
                 WHERE t1.timestamp > NOW() - INTERVAL '7 days'
+                  AND t1.size >= 100
+                  AND t2.size >= 100
+                  AND COALESCE(LOWER(t1.market_category), '') NOT IN
+                      ('sports','nba','nfl','nhl','mlb','mls','soccer','esports',
+                       'crypto-prices','crypto-price','updown')
                 GROUP BY t1.wallet_address, t2.wallet_address
                 HAVING COUNT(DISTINCT t1.market_id) >= 3
                 ORDER BY shared DESC
@@ -936,9 +945,16 @@ class Database:
                     FROM trades t1 JOIN trades t2
                         ON t1.market_id = t2.market_id
                         AND t1.wallet_address = $1 AND t2.wallet_address = $2
+                    WHERE t1.size >= 100 AND t2.size >= 100
                 """, p["wa"], p["wb"])
                 same_pct = (p["shared"] / total_shared * 100) if total_shared else 0
-                confidence = min(100, p["shared"] * 15 + (same_pct * 0.5))
+
+                # Confianza más gradual: shared markets (0-40) + same_side% (0-30) + timing (0-30)
+                shared_score = min(40, p["shared"] * 8)  # 5 markets = 40 pts max
+                side_score = max(0, (same_pct - 50) / 50 * 30)  # >50% same side = 0-30 pts
+                avg_diff = float(p["avg_diff"] or 300)
+                timing_score = max(0, (300 - avg_diff) / 300 * 30)  # <5min = 0-30 pts
+                confidence = min(100, shared_score + side_score + timing_score)
 
                 await conn.execute("""
                     INSERT INTO wallet_links (wallet_a, wallet_b, shared_markets,
@@ -951,7 +967,7 @@ class Database:
                         confidence = EXCLUDED.confidence,
                         updated_at = NOW()
                 """, p["wa"], p["wb"], p["shared"], same_pct,
-                    float(p["avg_diff"] or 0), confidence)
+                    avg_diff, confidence)
                 count += 1
             return count
 
