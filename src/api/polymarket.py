@@ -19,7 +19,12 @@ EXCLUDE_TAGS = {"sports", "nba", "nfl", "nhl", "mlb", "mls", "soccer", "esports"
 EXCLUDE_TITLE_RE = re.compile(
     r'\b(?:vs\.?|Spread:|Points|Goals|NBA|NFL|NHL|MLB|MLS|'
     r'Up or Down|updown|price of|above \$|below \$|close above|close below|'
-    r'all-time high|ATH)\b'
+    r'all-time high|ATH|Over/Under|O/U|Total Kills|'
+    r'win on \d{4}-\d{2}-\d{2}|FC\b|United\b|Wildcats|Panthers|'
+    r'Lakers|Warriors|Celtics|Cowboys|Eagles|Chiefs|'
+    r'Premier League|Champions League|La Liga|Serie A|Bundesliga|'
+    r'Ligue 1|World Cup|Copa America|Euro \d{4}|UFC|'
+    r'Grand Prix|Formula 1|F1\b|ATP|WTA|Open \d{4})\b'
     r'|\d+[AP]M.*ET',
     re.IGNORECASE,
 )
@@ -86,16 +91,20 @@ class PolymarketClient:
                         no_id += 1
                         continue
 
-                    # Filtrar por categoría usando market cache
+                    # Filtrar por categoría usando market cache o título del trade
                     market_data = self._market_cache.get(cid)
+                    filter_title = ""
+                    filter_tags = []
                     if market_data:
-                        title = market_data.get("question", "")
+                        filter_title = market_data.get("question", "")
                         cat = market_data.get("category", "")
-                        tags = [cat] if cat else []
-                        if not is_insider_relevant(title, tags):
-                            filtered_cat += 1
-                            continue
-                    # Si no hay cache, no filtrar (beneficio de la duda)
+                        filter_tags = [cat] if cat else []
+                    else:
+                        # Sin cache: usar título directo del trade (Data API lo incluye)
+                        filter_title = item.get("title", "")
+                    if filter_title and not is_insider_relevant(filter_title, filter_tags):
+                        filtered_cat += 1
+                        continue
 
                     trade = self._parse_trade(item)
                     if trade:
@@ -123,7 +132,7 @@ class PolymarketClient:
     async def get_markets(self, limit: int = 100, active_only: bool = True) -> list[Market]:
         """Obtener mercados desde Gamma API."""
         try:
-            params: dict = {"limit": limit, "_order": "volume24hr", "_sort": "desc"}
+            params: dict = {"limit": limit, "order": "volume24hr", "ascending": "false"}
             if active_only:
                 params["active"] = "true"
                 params["closed"] = "false"
