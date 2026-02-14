@@ -1,4 +1,4 @@
-"""Cliente de API de Polymarket para obtener mercados y trades."""
+"""Cliente de API de Polymarket — Gamma (mercados) + Data API (trades)."""
 import httpx
 import re
 from datetime import datetime
@@ -6,202 +6,250 @@ from typing import Optional
 import structlog
 
 from src.models import Market, Trade
+from src import config
 
 logger = structlog.get_logger()
 
-# URLs base de API
-GAMMA_API_URL = "https://gamma-api.polymarket.com"
-DATA_API_URL = "https://data-api.polymarket.com"
+# Tags de Gamma API que excluimos (deportes, crypto precio)
+EXCLUDE_TAGS = {"sports", "nba", "nfl", "nhl", "mlb", "mls", "soccer", "esports",
+                "crypto-prices", "crypto-price", "updown"}
 
-# Palabras clave para EXCLUIR (deportes, crypto)
-EXCLUDE_KEYWORDS = [
-    # Deportes
-    r'\bNBA\b', r'\bNFL\b', r'\bNHL\b', r'\bMLB\b', r'\bMLS\b',
-    r'\bvs\.?\b', r'\bSpread:', r'\bPoints\b', r'\bGoals\b',
-    r'Lakers', r'Warriors', r'Celtics', r'Knicks', r'Bulls', r'Heat',
-    r'Mavericks', r'Nuggets', r'Clippers', r'Nets', r'Hawks', r'Jazz',
-    r'Grizzlies', r'Pelicans', r'Cavaliers', r'Bucks', r'Pistons',
-    r'Chiefs', r'Eagles', r'Cowboys', r'Patriots', r'Packers',
-    r'Raiders', r'Broncos', r'Chargers', r'Ravens', r'Steelers',
-    r'49ers', r'Seahawks', r'Cardinals', r'Rams', r'Lions', r'Bears',
-    r'Vikings', r'Saints', r'Falcons', r'Panthers', r'Buccaneers',
-    r'Jets', r'Bills', r'Dolphins', r'Texans', r'Colts', r'Titans', r'Jaguars',
-    r'Commanders', r'Giants', r'Bengals', r'Browns', r'Red Sox', r'Yankees',
-    r'Blue Jackets', r'Golden Knights', r'Penguins', r'Bruins', r'Rangers',
-    r'Redhawks', r'Beavers', r'Raiders', r'Miners', r'Ole Miss', r'Miami vs',
-    r'Middle Tennessee', r'UTEP', r'Seattle Redhawks', r'Oregon State',
-    r'Tottenham', r'Champions League', r'Premier League', r'La Liga',
-    r'HLTV', r'esports', r'Awper',
-    # CRYPTO - todas las predicciones
-    r'\bBitcoin\b', r'\bBTC\b', r'\bEthereum\b', r'\bETH\b',
-    r'\bSolana\b', r'\bSOL\b', r'\bXRP\b', r'\bDogecoin\b', r'\bDOGE\b',
-    r'\bCardano\b', r'\bADA\b', r'\bPolkadot\b', r'\bDOT\b',
-    r'\bAvalanche\b', r'\bAVAX\b', r'\bChainlink\b', r'\bLINK\b',
-    r'\bPolygon\b', r'\bMATIC\b', r'\bLitecoin\b', r'\bLTC\b',
-    r'\bUniswap\b', r'\bUNI\b', r'\bShiba\b', r'\bSHIB\b',
-    r'\bPepe\b', r'\bMeme coin\b', r'\bcrypto\b', r'\bcryptocurrency\b',
-    r'Up or Down', r'updown', r'\d+PM.*ET', r'\d+AM.*ET',
-    r'price of', r'above \$', r'below \$', r'close above', r'close below',
-    r'all-time high', r'ATH', r'\bNFT\b', r'\bNFTs\b',
-]
+# Regex de respaldo para filtrar por título
+EXCLUDE_TITLE_RE = re.compile(
+    r'\b(?:vs\.?|Spread:|Points|Goals|NBA|NFL|NHL|MLB|MLS|'
+    r'Up or Down|updown|price of|above \$|below \$|close above|close below|'
+    r'all-time high|ATH)\b'
+    r'|\d+[AP]M.*ET',
+    re.IGNORECASE,
+)
 
-def is_insider_relevant(title: str) -> bool:
-    """Verifica si el mercado es relevante para insider info (no deportes/crypto corto plazo)."""
+
+def is_insider_relevant(title: str, tags: list[str] | None = None) -> bool:
+    """Verifica si el mercado es relevante para insider info."""
     if not title:
         return False
-    
-    title_upper = title.upper()
-    
-    for pattern in EXCLUDE_KEYWORDS:
-        if re.search(pattern, title, re.IGNORECASE):
+    if tags:
+        lower_tags = {t.lower() for t in tags}
+        if lower_tags & EXCLUDE_TAGS:
             return False
-    
+    if EXCLUDE_TITLE_RE.search(title):
+        return False
     return True
 
 
 class PolymarketClient:
-    """Cliente para interactuar con las APIs de Polymarket."""
-    
+    """Cliente para Gamma API (mercados) y Data API (trades)."""
+
     def __init__(self, timeout: float = 30.0):
         self.timeout = timeout
         self._client: Optional[httpx.AsyncClient] = None
-    
+        self._market_cache: dict[str, dict] = {}
+
     async def __aenter__(self):
         self._client = httpx.AsyncClient(timeout=self.timeout)
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self._client:
             await self._client.aclose()
-    
+
     @property
     def client(self) -> httpx.AsyncClient:
         if self._client is None:
             raise RuntimeError("Cliente no inicializado. Usa 'async with'.")
         return self._client
-    
-    async def get_recent_trades(self, limit: int = 100, filter_insider: bool = True) -> list[Trade]:
-        """Obtener trades recientes de toda la plataforma (endpoint público)."""
+
+    # ── Trades ────────────────────────────────────────────────────────
+
+    async def get_recent_trades(self, limit: int = 200) -> list[Trade]:
+        """Obtener trades recientes, filtrados y enriquecidos."""
         try:
-            # Pedimos más trades porque filtraremos muchos
-            fetch_limit = limit * 3 if filter_insider else limit
-            
+            fetch_limit = limit * 4
             response = await self.client.get(
-                f"{DATA_API_URL}/trades",
-                params={"limit": fetch_limit}
+                f"{config.DATA_API_URL}/trades",
+                params={"limit": fetch_limit},
             )
             response.raise_for_status()
             data = response.json()
-            
-            trades = []
-            filtered_count = 0
-            size_filtered = 0
-            MIN_SIZE_USD = 5000  # Mínimo $5000 USD
-            
+
+            trades: list[Trade] = []
+            filtered = 0
+            size_skip = 0
+
             for item in data:
                 try:
                     title = item.get("title", "")
                     size = float(item.get("size", 0))
-                    
-                    # Filtrar deportes y crypto
-                    if filter_insider and not is_insider_relevant(title):
-                        filtered_count += 1
+                    tags = item.get("tags", [])
+
+                    if not is_insider_relevant(title, tags):
+                        filtered += 1
                         continue
-                    
-                    # Filtrar trades menores a $5000
-                    if size < MIN_SIZE_USD:
-                        size_filtered += 1
+
+                    if size < config.MIN_SIZE_USD:
+                        size_skip += 1
                         continue
-                    
+
                     trade = self._parse_trade(item)
                     if trade:
                         trades.append(trade)
-                        
+
                     if len(trades) >= limit:
                         break
-                        
                 except Exception as e:
                     logger.warning("error_parseando_trade", error=str(e))
-            
-            print(f"Trades: {len(trades)} relevantes (>=$5k), {filtered_count} filtrados (categoria), {size_filtered} filtrados (<$5k)", flush=True)
+
+            print(
+                f"Trades: {len(trades)} relevantes (>=${config.MIN_SIZE_USD:,}), "
+                f"{filtered} filtrados (categoría), {size_skip} filtrados (size)",
+                flush=True,
+            )
             return trades
-            
+
         except httpx.HTTPError as e:
             logger.error("error_obteniendo_trades", error=str(e))
             return []
-    
+
+    # ── Markets ───────────────────────────────────────────────────────
+
     async def get_markets(self, limit: int = 100, active_only: bool = True) -> list[Market]:
-        """Obtener lista de mercados desde Gamma API."""
+        """Obtener mercados desde Gamma API."""
         try:
-            params = {"limit": limit}
+            params: dict = {"limit": limit, "_order": "volume24hr", "_sort": "desc"}
             if active_only:
                 params["active"] = "true"
                 params["closed"] = "false"
-            
+
             response = await self.client.get(
-                f"{GAMMA_API_URL}/markets",
-                params=params
+                f"{config.GAMMA_API_URL}/markets", params=params,
             )
             response.raise_for_status()
             data = response.json()
-            
-            markets = []
+
+            markets: list[Market] = []
             for item in data:
                 try:
+                    cid = item.get("conditionId", item.get("condition_id", ""))
+                    if not cid:
+                        continue
+                    end_str = item.get("endDate") or item.get("end_date_iso")
+                    end_date = None
+                    if end_str:
+                        try:
+                            end_date = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                        except Exception:
+                            pass
+
+                    tags = item.get("tags", [])
+                    category = tags[0] if tags else None
+
                     market = Market(
-                        condition_id=item.get("conditionId", item.get("condition_id", "")),
+                        condition_id=cid,
                         question=item.get("question", ""),
                         slug=item.get("slug", ""),
                         icon=item.get("icon"),
-                        active=item.get("active", True)
+                        end_date=end_date,
+                        active=item.get("active", True),
+                        category=category,
+                        volume_24h=float(item.get("volume24hr", 0) or 0),
+                        liquidity=float(item.get("liquidity", 0) or 0),
                     )
-                    if market.condition_id:
-                        markets.append(market)
+                    # Cache para enriquecer trades
+                    self._market_cache[cid] = {
+                        "question": market.question,
+                        "slug": market.slug,
+                        "end_date": market.end_date,
+                        "category": market.category,
+                    }
+                    markets.append(market)
                 except Exception as e:
                     logger.warning("error_parseando_mercado", error=str(e))
-            
+
             logger.info("mercados_obtenidos", count=len(markets))
             return markets
-            
+
         except httpx.HTTPError as e:
             logger.error("error_obteniendo_mercados", error=str(e))
             return []
-    
-    def _parse_trade(self, item: dict) -> Optional[Trade]:
-        """Parsear un trade desde la respuesta de la API."""
+
+    async def get_market_by_id(self, condition_id: str) -> Optional[dict]:
+        """Obtener datos de un mercado específico (con cache)."""
+        if condition_id in self._market_cache:
+            return self._market_cache[condition_id]
         try:
-            # Timestamp (viene como unix timestamp)
-            timestamp_val = item.get("timestamp")
-            if isinstance(timestamp_val, (int, float)):
-                timestamp = datetime.fromtimestamp(timestamp_val)
+            response = await self.client.get(
+                f"{config.GAMMA_API_URL}/markets/{condition_id}",
+            )
+            if response.status_code == 200:
+                item = response.json()
+                end_str = item.get("endDate") or item.get("end_date_iso")
+                end_date = None
+                if end_str:
+                    try:
+                        end_date = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+                tags = item.get("tags", [])
+                data = {
+                    "question": item.get("question", ""),
+                    "slug": item.get("slug", ""),
+                    "end_date": end_date,
+                    "category": tags[0] if tags else None,
+                }
+                self._market_cache[condition_id] = data
+                return data
+        except Exception:
+            pass
+        return None
+
+    async def check_market_resolution(self, condition_id: str) -> Optional[str]:
+        """Verificar si un mercado se resolvió. Devuelve 'Yes'/'No'/None."""
+        try:
+            response = await self.client.get(
+                f"{config.GAMMA_API_URL}/markets/{condition_id}",
+            )
+            if response.status_code == 200:
+                item = response.json()
+                if item.get("closed") or item.get("resolved"):
+                    outcome = item.get("outcome", item.get("resolution", ""))
+                    if outcome:
+                        return str(outcome)
+        except Exception:
+            pass
+        return None
+
+    # ── Parse ─────────────────────────────────────────────────────────
+
+    def _parse_trade(self, item: dict) -> Optional[Trade]:
+        try:
+            ts_val = item.get("timestamp")
+            if isinstance(ts_val, (int, float)):
+                timestamp = datetime.fromtimestamp(ts_val)
+            elif isinstance(ts_val, str):
+                try:
+                    timestamp = datetime.fromisoformat(ts_val.replace("Z", "+00:00"))
+                except Exception:
+                    timestamp = datetime.now()
             else:
                 timestamp = datetime.now()
-            
-            # Wallet address
-            wallet = item.get("proxyWallet", "unknown")
-            
-            # Size en USD
-            size = float(item.get("size", 0))
-            
-            # Price
-            price = float(item.get("price", 0))
-            
-            # Side (BUY/SELL -> YES/NO)
-            side = item.get("side", "BUY")
-            outcome = item.get("outcome", "Yes")
-            
+
+            cid = item.get("conditionId", "")
+            market_data = self._market_cache.get(cid, {})
+
             return Trade(
-                transaction_hash=item.get("transactionHash", ""),
-                market_id=item.get("conditionId", ""),
-                market_question=item.get("title", ""),
-                market_slug=item.get("eventSlug", item.get("slug", "")),
-                wallet_address=wallet,
-                side=side,
-                size=size,
-                price=price,
+                transaction_hash=item.get("transactionHash", item.get("id", "")),
+                market_id=cid,
+                market_question=item.get("title", market_data.get("question", "")),
+                market_slug=item.get("eventSlug", item.get("slug", market_data.get("slug", ""))),
+                wallet_address=item.get("proxyWallet", item.get("maker_address", "unknown")),
+                side=item.get("side", "BUY"),
+                size=float(item.get("size", 0)),
+                price=float(item.get("price", 0)),
                 timestamp=timestamp,
-                outcome=outcome
+                outcome=item.get("outcome", "Yes"),
+                market_end_date=market_data.get("end_date"),
+                market_category=market_data.get("category"),
             )
         except Exception as e:
-            logger.warning("error_parse_trade", error=str(e), item=item)
+            logger.warning("error_parse_trade", error=str(e))
             return None

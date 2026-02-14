@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polymarket Insider Alert Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { 800: '#1a1a2e', 900: '#0f0f1a', 700: '#252542' },
+                        accent: { 500: '#6c5ce7', 400: '#a29bfe' },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background: #0f0f1a; font-family: 'Inter', system-ui, sans-serif; }
+        .glass { background: rgba(26, 26, 46, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(108, 92, 231, 0.15); }
+        .glow { box-shadow: 0 0 20px rgba(108, 92, 231, 0.1); }
+        .score-bar { background: linear-gradient(90deg, #6c5ce7 0%, #a29bfe 50%, #fd79a8 100%); }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .live-dot { animation: pulse-dot 2s infinite; }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f0f1a; }
+        ::-webkit-scrollbar-thumb { background: #6c5ce7; border-radius: 3px; }
+    </style>
+</head>
+<body class="text-gray-200 min-h-screen">
+    <!-- Header -->
+    <header class="glass sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <span class="text-2xl">🔍</span>
+            <h1 class="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Polymarket Insider Alert
+            </h1>
+        </div>
+        <div class="flex items-center gap-4 text-sm">
+            <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-green-400 live-dot"></span>
+                <span id="uptime" class="text-gray-400">Conectando...</span>
+            </span>
+            <span id="last-update" class="text-gray-500"></span>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="stats-grid">
+            <div class="glass glow rounded-xl p-4 fade-in">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Alertas Totales</div>
+                <div class="text-3xl font-bold mt-1" id="stat-total-alerts">-</div>
+            </div>
+            <div class="glass glow rounded-xl p-4 fade-in">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Alertas 24h</div>
+                <div class="text-3xl font-bold mt-1 text-purple-400" id="stat-alerts-24h">-</div>
+            </div>
+            <div class="glass glow rounded-xl p-4 fade-in">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Hit Rate</div>
+                <div class="text-3xl font-bold mt-1" id="stat-hit-rate">-</div>
+                <div class="text-xs text-gray-500 mt-1" id="stat-resolved-detail"></div>
+            </div>
+            <div class="glass glow rounded-xl p-4 fade-in">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Score Promedio</div>
+                <div class="text-3xl font-bold mt-1 text-pink-400" id="stat-avg-score">-</div>
+            </div>
+            <div class="glass glow rounded-xl p-4 fade-in">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Trades Procesados</div>
+                <div class="text-3xl font-bold mt-1" id="stat-trades">-</div>
+            </div>
+            <div class="glass glow rounded-xl p-4 fade-in">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Wallets Flaggeadas</div>
+                <div class="text-3xl font-bold mt-1 text-yellow-400" id="stat-wallets">-</div>
+            </div>
+            <div class="glass glow rounded-xl p-4 fade-in">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Resueltas Correctas</div>
+                <div class="text-3xl font-bold mt-1 text-green-400" id="stat-correct">-</div>
+            </div>
+            <div class="glass glow rounded-xl p-4 fade-in">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Sesión</div>
+                <div class="text-lg font-bold mt-1" id="stat-session">-</div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="glass glow rounded-xl p-5">
+                <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Alertas por Día</h3>
+                <canvas id="chart-alerts-day" height="200"></canvas>
+            </div>
+            <div class="glass glow rounded-xl p-5">
+                <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Distribución de Scores</h3>
+                <canvas id="chart-scores" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="glass glow rounded-xl overflow-hidden">
+            <div class="flex border-b border-gray-700/50">
+                <button onclick="showTab('alerts')" id="tab-alerts"
+                    class="px-6 py-3 text-sm font-medium border-b-2 border-purple-500 text-purple-400">
+                    🚨 Alertas Recientes
+                </button>
+                <button onclick="showTab('wallets')" id="tab-wallets"
+                    class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                    👛 Top Wallets
+                </button>
+            </div>
+
+            <!-- Alerts Table -->
+            <div id="panel-alerts" class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
+                            <th class="px-4 py-3 text-left">Fecha</th>
+                            <th class="px-4 py-3 text-left">Mercado</th>
+                            <th class="px-4 py-3 text-center">Apuesta</th>
+                            <th class="px-4 py-3 text-right">Size</th>
+                            <th class="px-4 py-3 text-center">Score</th>
+                            <th class="px-4 py-3 text-left">Wallet</th>
+                            <th class="px-4 py-3 text-center">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="alerts-body"></tbody>
+                </table>
+                <div id="alerts-empty" class="hidden text-center py-12 text-gray-500">
+                    No hay alertas aún. El bot está monitoreando...
+                </div>
+            </div>
+
+            <!-- Wallets Table -->
+            <div id="panel-wallets" class="hidden overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
+                            <th class="px-4 py-3 text-left">Wallet</th>
+                            <th class="px-4 py-3 text-right">Alertas</th>
+                            <th class="px-4 py-3 text-right">Trades</th>
+                            <th class="px-4 py-3 text-right">Volumen</th>
+                            <th class="px-4 py-3 text-center">Max Score</th>
+                            <th class="px-4 py-3 text-center">Hit Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody id="wallets-body"></tbody>
+                </table>
+                <div id="wallets-empty" class="hidden text-center py-12 text-gray-500">
+                    Sin datos de wallets aún.
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="text-center text-gray-600 text-xs py-6">
+        Polymarket Insider Alert Bot v2.0 — Anomaly detection only. DYOR.
+    </footer>
+
+    <script>
+        let alertsChart = null;
+        let scoresChart = null;
+
+        // ── Tabs ──
+        function showTab(tab) {
+            document.getElementById('panel-alerts').classList.toggle('hidden', tab !== 'alerts');
+            document.getElementById('panel-wallets').classList.toggle('hidden', tab !== 'wallets');
+            document.getElementById('tab-alerts').classList.toggle('border-purple-500', tab === 'alerts');
+            document.getElementById('tab-alerts').classList.toggle('text-purple-400', tab === 'alerts');
+            document.getElementById('tab-alerts').classList.toggle('border-transparent', tab !== 'alerts');
+            document.getElementById('tab-alerts').classList.toggle('text-gray-400', tab !== 'alerts');
+            document.getElementById('tab-wallets').classList.toggle('border-purple-500', tab === 'wallets');
+            document.getElementById('tab-wallets').classList.toggle('text-purple-400', tab === 'wallets');
+            document.getElementById('tab-wallets').classList.toggle('border-transparent', tab !== 'wallets');
+            document.getElementById('tab-wallets').classList.toggle('text-gray-400', tab !== 'wallets');
+        }
+
+        // ── Fetch helpers ──
+        async function fetchJson(url) {
+            try {
+                const r = await fetch(url);
+                return r.ok ? await r.json() : null;
+            } catch { return null; }
+        }
+
+        function fmt(n) { return n != null ? n.toLocaleString() : '-'; }
+        function fmtUsd(n) { return n != null ? '$' + n.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'; }
+
+        function shortWallet(addr) {
+            if (!addr || addr.length < 10) return addr || '?';
+            return addr.slice(0, 6) + '...' + addr.slice(-4);
+        }
+
+        function scoreColor(score) {
+            if (score >= 8) return 'text-red-400';
+            if (score >= 6) return 'text-orange-400';
+            if (score >= 5) return 'text-yellow-400';
+            return 'text-gray-400';
+        }
+
+        function statusBadge(alert) {
+            if (!alert.resolved) return '<span class="px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-400">Pendiente</span>';
+            if (alert.was_correct) return '<span class="px-2 py-0.5 rounded-full text-xs bg-green-900/50 text-green-400">✅ Correcto</span>';
+            return '<span class="px-2 py-0.5 rounded-full text-xs bg-red-900/50 text-red-400">❌ Incorrecto</span>';
+        }
+
+        function formatDate(iso) {
+            if (!iso) return '-';
+            const d = new Date(iso);
+            return d.toLocaleDateString('es', {month:'short', day:'numeric'}) + ' ' +
+                   d.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'});
+        }
+
+        // ── Load Stats ──
+        async function loadStats() {
+            const s = await fetchJson('/api/stats');
+            if (!s) return;
+            document.getElementById('stat-total-alerts').textContent = fmt(s.total_alerts);
+            document.getElementById('stat-alerts-24h').textContent = fmt(s.alerts_last_24h);
+            const hr = s.hit_rate;
+            const hrEl = document.getElementById('stat-hit-rate');
+            hrEl.textContent = hr > 0 ? hr.toFixed(1) + '%' : '-';
+            hrEl.className = 'text-3xl font-bold mt-1 ' + (hr >= 50 ? 'text-green-400' : hr > 0 ? 'text-red-400' : '');
+            document.getElementById('stat-resolved-detail').textContent =
+                s.resolved_alerts > 0 ? `${s.correct_alerts}/${s.resolved_alerts} resueltas` : '';
+            document.getElementById('stat-avg-score').textContent = s.avg_score > 0 ? s.avg_score.toFixed(1) : '-';
+            document.getElementById('stat-trades').textContent = fmt(s.total_trades_processed);
+            document.getElementById('stat-wallets').textContent = fmt(s.unique_wallets_flagged);
+            document.getElementById('stat-correct').textContent = fmt(s.correct_alerts);
+            document.getElementById('uptime').textContent = s.uptime || 'Activo';
+            const session = [];
+            if (s.trades_this_session) session.push(`${fmt(s.trades_this_session)} trades`);
+            if (s.alerts_this_session) session.push(`${fmt(s.alerts_this_session)} alertas`);
+            document.getElementById('stat-session').textContent = session.join(' / ') || '-';
+            document.getElementById('last-update').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es');
+        }
+
+        // ── Load Alerts ──
+        async function loadAlerts() {
+            const alerts = await fetchJson('/api/alerts?limit=50');
+            const body = document.getElementById('alerts-body');
+            const empty = document.getElementById('alerts-empty');
+            if (!alerts || alerts.length === 0) {
+                body.innerHTML = '';
+                empty.classList.remove('hidden');
+                return;
+            }
+            empty.classList.add('hidden');
+            body.innerHTML = alerts.map(a => `
+                <tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+                    <td class="px-4 py-3 text-gray-400 whitespace-nowrap">${formatDate(a.created_at)}</td>
+                    <td class="px-4 py-3 max-w-xs truncate">
+                        ${a.market_slug ?
+                            `<a href="https://polymarket.com/event/${a.market_slug}" target="_blank" class="hover:text-purple-400 transition-colors">${(a.market_question||'').slice(0,60)}${(a.market_question||'').length>60?'...':''}</a>` :
+                            (a.market_question||'').slice(0,60)
+                        }
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                        <span class="px-2 py-0.5 rounded text-xs font-medium ${a.outcome==='Yes'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">
+                            ${a.outcome||''} ${a.side||''}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-right font-mono">${fmtUsd(a.size)}</td>
+                    <td class="px-4 py-3 text-center">
+                        <span class="font-bold ${scoreColor(a.score)}">${a.score}</span>
+                    </td>
+                    <td class="px-4 py-3 font-mono text-xs text-gray-400">${shortWallet(a.wallet_address)}</td>
+                    <td class="px-4 py-3 text-center">${statusBadge(a)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // ── Load Wallets ──
+        async function loadWallets() {
+            const wallets = await fetchJson('/api/wallets?limit=20');
+            const body = document.getElementById('wallets-body');
+            const empty = document.getElementById('wallets-empty');
+            if (!wallets || wallets.length === 0) {
+                body.innerHTML = '';
+                empty.classList.remove('hidden');
+                return;
+            }
+            empty.classList.add('hidden');
+            body.innerHTML = wallets.map(w => {
+                const total = (w.win_count||0) + (w.loss_count||0);
+                const hr = total > 0 ? ((w.win_count/total)*100).toFixed(0) + '%' : '-';
+                return `
+                    <tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+                        <td class="px-4 py-3 font-mono text-xs">${shortWallet(w.address)}</td>
+                        <td class="px-4 py-3 text-right font-bold text-purple-400">${w.alert_count}</td>
+                        <td class="px-4 py-3 text-right">${fmt(w.total_trades)}</td>
+                        <td class="px-4 py-3 text-right font-mono">${fmtUsd(w.total_volume)}</td>
+                        <td class="px-4 py-3 text-center"><span class="font-bold ${scoreColor(w.max_score)}">${w.max_score}</span></td>
+                        <td class="px-4 py-3 text-center ${total>0?(w.win_count/total>=0.5?'text-green-400':'text-red-400'):''}">${hr}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ── Charts ──
+        const chartDefaults = {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#666', font: { size: 10 } } },
+                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#666', font: { size: 10 } } },
+            }
+        };
+
+        async function loadCharts() {
+            // Alerts by day
+            const dayData = await fetchJson('/api/charts/alerts-by-day?days=30');
+            if (dayData && dayData.length > 0) {
+                const ctx1 = document.getElementById('chart-alerts-day').getContext('2d');
+                if (alertsChart) alertsChart.destroy();
+                alertsChart = new Chart(ctx1, {
+                    type: 'bar',
+                    data: {
+                        labels: dayData.map(d => d.day.slice(5)),
+                        datasets: [{
+                            data: dayData.map(d => d.count),
+                            backgroundColor: 'rgba(108, 92, 231, 0.6)',
+                            borderColor: 'rgba(108, 92, 231, 1)',
+                            borderWidth: 1, borderRadius: 4,
+                        }]
+                    },
+                    options: { ...chartDefaults }
+                });
+            }
+
+            // Score distribution
+            const scoreData = await fetchJson('/api/charts/score-distribution');
+            if (scoreData && scoreData.length > 0) {
+                const ctx2 = document.getElementById('chart-scores').getContext('2d');
+                if (scoresChart) scoresChart.destroy();
+                scoresChart = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: scoreData.map(d => `Score ${d.score}`),
+                        datasets: [{
+                            data: scoreData.map(d => d.count),
+                            backgroundColor: [
+                                '#6c5ce7', '#a29bfe', '#fd79a8', '#e17055',
+                                '#00b894', '#fdcb6e', '#0984e3', '#636e72',
+                                '#d63031', '#e84393', '#00cec9', '#fab1a0'
+                            ],
+                            borderWidth: 0,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'right', labels: { color: '#999', font: { size: 11 } } }
+                        }
+                    }
+                });
+            }
+        }
+
+        // ── Init ──
+        async function refresh() {
+            await Promise.all([loadStats(), loadAlerts(), loadWallets(), loadCharts()]);
+        }
+
+        refresh();
+        setInterval(refresh, 30000); // Refrescar cada 30s
+    </script>
+</body>
+</html>

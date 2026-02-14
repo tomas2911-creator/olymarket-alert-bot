@@ -1,113 +1,73 @@
-# Polymarket Insider-Move Alert Bot
+# Polymarket Insider-Move Alert Bot v2.0
 
-Detects abnormal wallet activity on Polymarket prediction markets and sends alerts to Telegram.
+Detecta actividad anómala de wallets en Polymarket y envía alertas a Telegram + dashboard web en tiempo real.
 
 ## Features
 
-- 🔍 **Anomaly Detection**: Identifies suspicious trading patterns
-- 💰 **Size Anomalies**: Flags unusually large trades
-- 🆕 **Fresh Wallet Detection**: Tracks new wallets making big bets
-- 📊 **Behavior Shift**: Detects when wallets deviate from their normal patterns
-- 📱 **Telegram Alerts**: Real-time notifications with context
+- 🔍 **Detección de anomalías** — patrones sospechosos de trading
+- 💰 **Trades grandes** — montos inusualmente altos
+- 🆕 **Wallets nuevas** — wallets con pocas transacciones haciendo apuestas grandes
+- � **Cambio de comportamiento** — wallets que se desvían de su patrón normal
+- ⏰ **Proximidad al cierre** — trades grandes cerca de la resolución del mercado
+- 👥 **Clustering** — múltiples wallets apostando al mismo lado simultáneamente
+- 🏆 **Hit rate tracking** — seguimiento de aciertos de wallets alertadas
+- 📱 **Alertas Telegram** — notificaciones en tiempo real con contexto
+- 🌐 **Dashboard web** — visualización completa de alertas, wallets y métricas
+- 🗄️ **PostgreSQL** — datos persistentes entre redeploys
 
-## Scoring System
+## Sistema de Scoring
 
-| Signal | Points | Description |
-|--------|--------|-------------|
-| Fresh wallet | 2 | Wallet with ≤5 trades |
-| Large absolute size | 2 | Trade ≥ $2,000 |
-| Market size anomaly | 2 | Trade ≥ 95th percentile for market |
-| Wallet behavior shift | 3 | Trade ≥ 5x wallet's average |
-| High concentration | 3 | Trade ≥ 10% of market volume |
+| Señal | Puntos | Descripción |
+|-------|--------|-------------|
+| Wallet nueva | 2 | ≤5 trades o <30 días |
+| Trade grande | 2 | ≥ $5,000 |
+| Anomalía de mercado | 2 | ≥ percentil 95 del mercado |
+| Cambio de comportamiento | 3 | ≥ 5x promedio de la wallet |
+| Alta concentración | 3 | ≥ 10% del volumen del mercado |
+| Proximidad al cierre | 3 | Mercado cierra en ≤7 días |
+| Cluster de wallets | 3 | ≥3 wallets mismo lado en 30min |
+| Hit rate alto | 2 | Wallet con ≥70% de aciertos |
 
-Alert triggers when **score ≥ 5**.
+Alerta se dispara cuando **score ≥ 5**.
 
 ## Setup
 
-### 1. Clone and Install
+### Variables de entorno
+
+```
+TELEGRAM_BOT_TOKEN=tu_token_de_bot
+TELEGRAM_CHAT_IDS=chat_id_1,chat_id_2
+DATABASE_URL=postgresql://user:pass@host:port/dbname
+```
+
+### Deploy en Railway
+
+1. Push a GitHub
+2. Crear proyecto en [Railway](https://railway.app)
+3. Agregar addon PostgreSQL
+4. Conectar repo de GitHub
+5. Agregar variables de entorno (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_IDS`)
+6. Railway provee `DATABASE_URL` automáticamente
+7. Deploy!
+
+El dashboard estará disponible en la URL que Railway asigne.
+
+### Local
 
 ```bash
-git clone https://github.com/yourusername/polymarket-alert-bot.git
-cd polymarket-alert-bot
 pip install -r requirements.txt
-```
-
-### 2. Create Telegram Bot
-
-1. Message [@BotFather](https://t.me/BotFather) on Telegram
-2. Send `/newbot` and follow instructions
-3. Copy the bot token
-
-### 3. Get Chat ID
-
-1. Message your new bot
-2. Visit `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
-3. Find your `chat_id` in the response
-
-### 4. Configure Environment
-
-```bash
 cp .env.example .env
+# Editar .env con tus valores
+uvicorn src.main:app --host 0.0.0.0 --port 8080
 ```
 
-Edit `.env`:
-```
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-TELEGRAM_CHAT_ID=your_chat_id_here
-```
+## Dashboard
 
-### 5. Run Locally
-
-```bash
-python -m src.main
-```
-
-## Deploy to Railway
-
-1. Push to GitHub
-2. Create new project in [Railway](https://railway.app)
-3. Connect your GitHub repo
-4. Add environment variables:
-   - `TELEGRAM_BOT_TOKEN`
-   - `TELEGRAM_CHAT_ID`
-5. Deploy!
-
-## Configuration
-
-Edit `config.yaml` to adjust:
-
-```yaml
-polling:
-  interval_seconds: 60  # How often to check
-
-detection:
-  min_size_usd: 2000    # Minimum trade size
-  fresh_wallet_max_trades: 5
-
-scoring:
-  alert_threshold: 5    # Minimum score to alert
-```
-
-## Alert Format
-
-```
-🚨 Potential Insider-Like Activity
-
-Market: Will X happen by Y date?
-Side: YES | Size: $5,000 | Price: 0.65
-
-Wallet: 0x1234...5678 (2 trades)
-Score: 7/10
-
-Triggers:
-  • 🆕 Fresh wallet (2 trades)
-  • 💰 Large size ($5,000)
-  • 🔄 Behavior shift (8.3x avg)
-
-🔗 View Market
-
-⚠️ Anomaly alert only. DYOR.
-```
+El dashboard web muestra:
+- **Stats generales** — alertas totales, hit rate, wallets flaggeadas
+- **Alertas recientes** — tabla con mercado, apuesta, score, estado
+- **Top wallets** — wallets con más alertas y su hit rate
+- **Charts** — alertas por día, distribución de scores
 
 ## License
 
