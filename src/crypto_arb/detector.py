@@ -108,47 +108,62 @@ class CryptoArbDetector:
         self._running = False
 
     async def _scan_active_markets(self):
-        """Buscar mercados crypto up/down activos en Polymarket."""
+        """Buscar mercados crypto up/down activos en Polymarket.
+
+        Los mercados tienen slugs tipo: btc-updown-15m-{ts}, eth-updown-15m-{ts}
+        y también el formato de la Events API: bitcoin-up-or-down-{fecha}
+        """
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 enabled_coins = {c["symbol"] for c in config.CRYPTO_ARB_COINS}
 
-                # Buscar mercados activos — múltiples queries para cubrir más
+                # Slug prefixes para cada moneda
+                slug_map = {
+                    "BTC": ["btc-updown-", "bitcoin-up-or-down-"],
+                    "ETH": ["eth-updown-", "ethereum-up-or-down-"],
+                    "SOL": ["sol-updown-", "solana-up-or-down-"],
+                }
+
+                # Buscar en Markets API (múltiples páginas)
                 all_markets = []
-                for tag in ["crypto", "bitcoin", "ethereum", "solana", "crypto-prices", "updown"]:
+                for offset in [0, 500]:
                     try:
                         resp = await client.get(
                             f"{config.GAMMA_API_URL}/markets",
                             params={
                                 "active": "true",
                                 "closed": "false",
-                                "limit": "100",
-                                "tag": tag,
+                                "limit": "500",
+                                "offset": str(offset),
                             },
                         )
                         if resp.status_code == 200:
-                            all_markets.extend(resp.json())
+                            batch = resp.json()
+                            if batch:
+                                all_markets.extend(batch)
                     except Exception:
                         pass
 
-                # También buscar sin tag, ordenado por endDate
+                # También buscar via Events API con tag up-or-down
                 try:
                     resp = await client.get(
-                        f"{config.GAMMA_API_URL}/markets",
+                        f"{config.GAMMA_API_URL}/events",
                         params={
                             "active": "true",
                             "closed": "false",
                             "limit": "200",
-                            "_order": "endDate",
-                            "_sort": "asc",
                         },
                     )
                     if resp.status_code == 200:
-                        all_markets.extend(resp.json())
+                        events = resp.json()
+                        for ev in events:
+                            for m in ev.get("markets", []):
+                                if not m.get("closed"):
+                                    all_markets.append(m)
                 except Exception:
                     pass
 
-                # Deduplicar por conditionId
+                # Deduplicar
                 seen_cids = set()
                 markets = []
                 for m in all_markets:
@@ -158,41 +173,33 @@ class CryptoArbDetector:
                         markets.append(m)
 
                 new_active = {}
-                crypto_candidates = 0
 
                 for m in markets:
-                    q = m.get("question", "")
-                    tags = [t.lower() for t in (m.get("tags") or [])]
+                    q = m.get("question", "").lower()
+                    slug = m.get("slug", "").lower()
 
-                    # Paso 1: ¿Menciona una crypto?
-                    coin_match = CRYPTO_MARKET_RE.search(q)
-                    is_crypto_tag = any(t in tags for t in ["crypto", "bitcoin", "ethereum", "solana", "crypto-prices"])
-
-                    if not coin_match and not is_crypto_tag:
-                        continue
-
-                    crypto_candidates += 1
-
-                    # Paso 2: ¿Es un mercado de tipo up/down/precio?
-                    is_updown = UPDOWN_RE.search(q)
-                    is_updown_tag = any(t in tags for t in ["updown", "up-or-down"])
-
-                    if not is_updown and not is_updown_tag:
-                        continue
-
-                    # Determinar la moneda
+                    # Detectar mercado crypto up/down por slug o pregunta
                     coin = None
-                    if coin_match:
-                        coin_raw = coin_match.group(1).lower()
-                        coin = COIN_MAP.get(coin_raw)
-                    if not coin:
-                        # Intentar desde tags
-                        for t in tags:
-                            if t in COIN_MAP:
-                                coin = COIN_MAP[t]
+                    for symbol, prefixes in slug_map.items():
+                        if symbol not in enabled_coins:
+                            continue
+                        for prefix in prefixes:
+                            if slug.startswith(prefix.lower()):
+                                coin = symbol
                                 break
-                    if not coin or coin not in enabled_coins:
-                        continue
+                        if coin:
+                            break
+
+                    # Fallback: buscar por pregunta
+                    if not coin:
+                        if "up or down" not in q:
+                            continue
+                        coin_match = CRYPTO_MARKET_RE.search(q)
+                        if coin_match:
+                            coin_raw = coin_match.group(1).lower()
+                            coin = COIN_MAP.get(coin_raw)
+                        if not coin or coin not in enabled_coins:
+                            continue
 
                     cid = m.get("conditionId", "")
                     if not cid:
@@ -213,7 +220,7 @@ class CryptoArbDetector:
 
                     new_active[cid] = {
                         "condition_id": cid,
-                        "question": q,
+                        "question": m.get("question", ""),
                         "coin": coin,
                         "end_date": end_date,
                         "tokens": [],
@@ -233,17 +240,19 @@ class CryptoArbDetector:
 
                 self._active_markets = new_active
 
-                # Logging diagnóstico
-                print(f"[CryptoDetector] Scan: {len(markets)} mercados totales, "
-                      f"{crypto_candidates} mencionan crypto, "
-                      f"{len(new_active)} son up/down activos", flush=True)
-                if new_active:
-                    coins_found = set(m["coin"] for m in new_active.values())
-                    for cid, md in list(new_active.items())[:3]:
-                        print(f"  → {md['coin']}: {md['question'][:80]}", flush=True)
+                print(f"[CryptoDetector] Scan: {len(markets)} mercados, "
+                      f"{len(new_active)} crypto up/down activos", flush=True)
+                for cid, md in list(new_active.items())[:5]:
+                    remaining = ""
+                    if md["end_date"]:
+                        rem_sec = (md["end_date"] - datetime.now(timezone.utc)).total_seconds()
+                        remaining = f" ({rem_sec/60:.0f}min)"
+                    print(f"  → {md['coin']}: {md['question'][:70]}{remaining}", flush=True)
 
         except Exception as e:
             print(f"[CryptoDetector] Scan error: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
 
     async def _check_divergences(self) -> list[CryptoSignal]:
         """Comparar precios spot vs odds de Polymarket para encontrar divergencias."""

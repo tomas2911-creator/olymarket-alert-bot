@@ -193,103 +193,116 @@ class CryptoArbBacktester:
 
     async def _fetch_resolved_markets(self, client: httpx.AsyncClient,
                                        coin_name: str, days: int) -> list[dict]:
-        """Obtener mercados crypto up/down resueltos de los últimos N días."""
-        import re
+        """Obtener mercados crypto up/down resueltos de los últimos N días.
+
+        Los mercados tienen formato: "Bitcoin Up or Down - February 14, 2PM ET"
+        Slugs: btc-updown-15m-{ts}, eth-updown-15m-{ts}, sol-updown-15m-{ts}
+        IMPORTANTE: usar order=volume (no _order=closedTime que está roto en Gamma API).
+        """
         all_markets = []
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-        # Buscar por múltiples tags para cubrir más mercados
-        tags_to_search = ["crypto", "crypto-prices", "bitcoin", "ethereum", "solana", "updown"]
+        # Mapeo de nombre a prefijos de slug
+        slug_prefixes = {
+            "Bitcoin": ["btc-updown-", "bitcoin-up-or-down-"],
+            "Ethereum": ["eth-updown-", "ethereum-up-or-down-"],
+            "Solana": ["sol-updown-", "solana-up-or-down-"],
+        }
+        prefixes = slug_prefixes.get(coin_name, [coin_name.lower()])
+
         try:
-            for tag in tags_to_search:
+            # Gamma API: order=volume funciona, _order=closedTime está roto
+            # Hacer múltiples páginas para encontrar más mercados
+            for offset in range(0, 1000, 500):
                 try:
                     resp = await client.get(
                         f"{config.GAMMA_API_URL}/markets",
                         params={
                             "closed": "true",
-                            "limit": "200",
-                            "tag": tag,
-                            "_order": "closedTime",
-                            "_sort": "desc",
+                            "limit": "500",
+                            "order": "volume",
+                            "ascending": "false",
+                            "offset": str(offset),
                         },
                     )
                     if resp.status_code == 200:
-                        all_markets.extend(resp.json())
+                        batch = resp.json()
+                        if not batch:
+                            break
+                        all_markets.extend(batch)
+                    else:
+                        break
                 except Exception:
-                    pass
-
-            # También buscar sin tag pero con texto
-            try:
-                resp = await client.get(
-                    f"{config.GAMMA_API_URL}/markets",
-                    params={
-                        "closed": "true",
-                        "limit": "200",
-                        "_order": "closedTime",
-                        "_sort": "desc",
-                    },
-                )
-                if resp.status_code == 200:
-                    all_markets.extend(resp.json())
-            except Exception:
-                pass
+                    break
 
             # Deduplicar
             seen = set()
-            unique_markets = []
+            unique = []
             for m in all_markets:
                 cid = m.get("conditionId", "")
                 if cid and cid not in seen:
                     seen.add(cid)
-                    unique_markets.append(m)
+                    unique.append(m)
 
-            # Regex flexible para detectar mercados crypto up/down
-            coin_re = re.compile(rf"\b{re.escape(coin_name)}\b", re.IGNORECASE)
-            updown_re = re.compile(
-                r"(up\s+or\s+down|above|below|higher|lower|15.?min|price)",
-                re.IGNORECASE,
-            )
-
+            # Filtrar: mercados crypto up/down por slug O por pregunta
             markets = []
-            for m in unique_markets:
-                q = m.get("question", "")
-                tags = [t.lower() for t in (m.get("tags") or [])]
+            for m in unique:
+                q = m.get("question", "").lower()
+                slug = m.get("slug", "").lower()
 
-                # ¿Menciona la moneda?
-                has_coin = bool(coin_re.search(q))
-                has_coin_tag = coin_name.lower() in " ".join(tags)
-                if not has_coin and not has_coin_tag:
+                # Verificar si es un mercado up/down de esta moneda
+                is_match = False
+                # Por slug (más confiable)
+                for prefix in prefixes:
+                    if slug.startswith(prefix.lower()):
+                        is_match = True
+                        break
+                # Por pregunta (fallback)
+                if not is_match:
+                    if coin_name.lower() in q and "up or down" in q:
+                        is_match = True
+
+                if not is_match:
                     continue
 
-                # ¿Es mercado up/down o precio?
-                has_updown = bool(updown_re.search(q))
-                has_updown_tag = any(t in tags for t in ["updown", "up-or-down", "crypto-prices"])
-                if not has_updown and not has_updown_tag:
-                    continue
-
-                # ¿Dentro del rango de fechas?
-                closed_time = m.get("closedTime")
-                if closed_time:
-                    try:
-                        ct = datetime.fromisoformat(closed_time.replace("Z", "+00:00"))
-                        if ct < cutoff:
-                            continue
-                    except Exception:
+                # Verificar outcomes = Up/Down
+                outcomes = m.get("outcomes", "")
+                if isinstance(outcomes, str):
+                    if "Up" not in outcomes or "Down" not in outcomes:
                         continue
+
+                # Verificar fecha de cierre dentro del rango
+                closed_time = m.get("closedTime")
+                if not closed_time:
+                    continue
+                try:
+                    ct_str = closed_time.replace("Z", "+00:00")
+                    if "+" not in ct_str and "-" not in ct_str[10:]:
+                        ct_str = ct_str + "+00:00"
+                    ct = datetime.fromisoformat(ct_str)
+                    if ct.tzinfo is None:
+                        ct = ct.replace(tzinfo=timezone.utc)
+                    if ct < cutoff:
+                        continue
+                except Exception:
+                    continue
 
                 cid = m.get("conditionId", "")
                 if cid:
                     markets.append({
                         "condition_id": cid,
-                        "question": q,
+                        "question": m.get("question", ""),
                         "closed_time": closed_time,
+                        "outcome_prices": m.get("outcomePrices", ""),
                     })
 
-            print(f"[Backtest] {coin_name}: {len(unique_markets)} mercados escaneados, "
-                  f"{len(markets)} crypto up/down encontrados", flush=True)
+            print(f"[Backtest] {coin_name}: {len(unique)} mercados escaneados, "
+                  f"{len(markets)} crypto up/down encontrados (últimos {days}d)", flush=True)
 
         except Exception as e:
             logger.warning("backtest_fetch_error", error=str(e))
+            import traceback
+            traceback.print_exc()
 
         return markets
 
