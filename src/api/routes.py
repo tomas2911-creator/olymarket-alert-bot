@@ -138,27 +138,91 @@ class ConfigUpdate(BaseModel):
     min_size_usd: int | None = None
     large_size_usd: int | None = None
     alert_threshold: int | None = None
-    excluded_categories: str | None = None  # comma-separated
+    excluded_categories: str | None = None
     poll_interval: int | None = None
+    max_markets: int | None = None
+    # Señales 1-7
     fresh_wallet_points: int | None = None
     large_size_points: int | None = None
     market_anomaly_points: int | None = None
     wallet_shift_points: int | None = None
     concentration_points: int | None = None
+    time_proximity_points: int | None = None
+    cluster_points: int | None = None
+    # Señales 8-14
+    hit_rate_min_resolved: int | None = None
+    hit_rate_min_pct: int | None = None
+    hit_rate_points: int | None = None
+    contrarian_points: int | None = None
+    accumulation_points: int | None = None
+    proven_winner_min_resolved: int | None = None
+    proven_winner_min_pct: int | None = None
+    proven_winner_points: int | None = None
+    multi_smart_points: int | None = None
+    late_insider_points: int | None = None
+    exit_alert_points: int | None = None
+    cross_basket_extra_points: int | None = None
+    # Módulos
     orderbook_depth_points: int | None = None
     niche_market_points: int | None = None
     ob_min_depth_pct: float | None = None
     niche_max_liquidity: int | None = None
     niche_score_multiplier: float | None = None
-    max_markets: int | None = None
+    # Wallet Baskets
     basket_min_trades: int | None = None
     basket_shift_threshold: float | None = None
     basket_points: int | None = None
     basket_cross_min: int | None = None
+    # Sniper DBSCAN
     sniper_time_window: int | None = None
     sniper_min_cluster: int | None = None
     sniper_min_size: int | None = None
     sniper_points: int | None = None
+    # Smart Money
+    smart_wallet_min_winrate: float | None = None
+
+
+# Mapeo: campo del body → (key en DB, atributo en config)
+_CONFIG_MAP = {
+    "min_size_usd": ("min_size_usd", "MIN_SIZE_USD"),
+    "large_size_usd": ("large_size_usd", "LARGE_SIZE_USD"),
+    "alert_threshold": ("alert_threshold", "ALERT_THRESHOLD"),
+    "poll_interval": ("poll_interval", "POLL_INTERVAL"),
+    "max_markets": ("max_markets", "MAX_MARKETS"),
+    "fresh_wallet_points": ("fresh_wallet_points", "FRESH_WALLET_POINTS"),
+    "large_size_points": ("large_size_points", "LARGE_SIZE_POINTS"),
+    "market_anomaly_points": ("market_anomaly_points", "MARKET_ANOMALY_POINTS"),
+    "wallet_shift_points": ("wallet_shift_points", "WALLET_SHIFT_POINTS"),
+    "concentration_points": ("concentration_points", "CONCENTRATION_POINTS"),
+    "time_proximity_points": ("time_proximity_points", "TIME_PROXIMITY_POINTS"),
+    "cluster_points": ("cluster_points", "CLUSTER_POINTS"),
+    "hit_rate_min_resolved": ("hit_rate_min_resolved", "HIT_RATE_MIN_RESOLVED"),
+    "hit_rate_min_pct": ("hit_rate_min_pct", "HIT_RATE_MIN_PCT"),
+    "hit_rate_points": ("hit_rate_points", "HIT_RATE_POINTS"),
+    "contrarian_points": ("contrarian_points", "CONTRARIAN_POINTS"),
+    "accumulation_points": ("accumulation_points", "ACCUMULATION_POINTS"),
+    "proven_winner_min_resolved": ("proven_winner_min_resolved", "PROVEN_WINNER_MIN_RESOLVED"),
+    "proven_winner_min_pct": ("proven_winner_min_pct", "PROVEN_WINNER_MIN_PCT"),
+    "proven_winner_points": ("proven_winner_points", "PROVEN_WINNER_POINTS"),
+    "multi_smart_points": ("multi_smart_points", "MULTI_SMART_POINTS"),
+    "late_insider_points": ("late_insider_points", "LATE_INSIDER_POINTS"),
+    "exit_alert_points": ("exit_alert_points", "EXIT_ALERT_POINTS"),
+    "cross_basket_extra_points": ("cross_basket_extra_points", "CROSS_BASKET_EXTRA_POINTS"),
+    "orderbook_depth_points": ("orderbook_depth_points", "ORDERBOOK_DEPTH_POINTS"),
+    "niche_market_points": ("niche_market_points", "NICHE_MARKET_POINTS"),
+    "ob_min_depth_pct": ("ob_min_depth_pct", "ORDERBOOK_MIN_DEPTH_PCT"),
+    "niche_max_liquidity": ("niche_max_liquidity", "NICHE_MAX_LIQUIDITY"),
+    "niche_score_multiplier": ("niche_score_multiplier", "NICHE_SCORE_MULTIPLIER"),
+    "basket_min_trades": ("basket_min_trades", "BASKET_MIN_WALLET_TRADES"),
+    "basket_shift_threshold": ("basket_shift_threshold", "BASKET_CATEGORY_SHIFT_THRESHOLD"),
+    "basket_points": ("basket_points", "BASKET_POINTS"),
+    "basket_cross_min": ("basket_cross_min", "BASKET_CROSS_MIN"),
+    "sniper_time_window": ("sniper_time_window", "SNIPER_TIME_WINDOW_SEC"),
+    "sniper_min_cluster": ("sniper_min_cluster", "SNIPER_MIN_CLUSTER_SIZE"),
+    "sniper_min_size": ("sniper_min_size", "SNIPER_MIN_TRADE_SIZE"),
+    "sniper_points": ("sniper_points", "SNIPER_POINTS"),
+    "smart_wallet_min_winrate": ("smart_wallet_min_winrate", "SMART_WALLET_MIN_WINRATE"),
+}
 
 
 @router.get("/api/config")
@@ -166,30 +230,52 @@ async def get_config(request: Request):
     db = request.app.state.db
     saved = await db.get_config()
     return {
-        "min_size_usd": int(saved.get("min_size_usd", config.MIN_SIZE_USD)),
-        "large_size_usd": int(saved.get("large_size_usd", config.LARGE_SIZE_USD)),
-        "alert_threshold": int(saved.get("alert_threshold", config.ALERT_THRESHOLD)),
+        # Detección general
+        "min_size_usd": config.MIN_SIZE_USD,
+        "large_size_usd": config.LARGE_SIZE_USD,
+        "alert_threshold": config.ALERT_THRESHOLD,
         "excluded_categories": saved.get("excluded_categories", "sports,nba,nfl,nhl,mlb,mls,soccer,esports,crypto-prices"),
         "poll_interval": config.POLL_INTERVAL,
+        "max_markets": config.MAX_MARKETS,
+        # Señales 1-7
         "fresh_wallet_points": config.FRESH_WALLET_POINTS,
         "large_size_points": config.LARGE_SIZE_POINTS,
         "market_anomaly_points": config.MARKET_ANOMALY_POINTS,
         "wallet_shift_points": config.WALLET_SHIFT_POINTS,
         "concentration_points": config.CONCENTRATION_POINTS,
+        "time_proximity_points": config.TIME_PROXIMITY_POINTS,
+        "cluster_points": config.CLUSTER_POINTS,
+        # Señales 8-14
+        "hit_rate_min_resolved": config.HIT_RATE_MIN_RESOLVED,
+        "hit_rate_min_pct": config.HIT_RATE_MIN_PCT,
+        "hit_rate_points": config.HIT_RATE_POINTS,
+        "contrarian_points": config.CONTRARIAN_POINTS,
+        "accumulation_points": config.ACCUMULATION_POINTS,
+        "proven_winner_min_resolved": config.PROVEN_WINNER_MIN_RESOLVED,
+        "proven_winner_min_pct": config.PROVEN_WINNER_MIN_PCT,
+        "proven_winner_points": config.PROVEN_WINNER_POINTS,
+        "multi_smart_points": config.MULTI_SMART_POINTS,
+        "late_insider_points": config.LATE_INSIDER_POINTS,
+        "exit_alert_points": config.EXIT_ALERT_POINTS,
+        "cross_basket_extra_points": config.CROSS_BASKET_EXTRA_POINTS,
+        # Módulos
         "orderbook_depth_points": config.ORDERBOOK_DEPTH_POINTS,
         "niche_market_points": config.NICHE_MARKET_POINTS,
         "ob_min_depth_pct": config.ORDERBOOK_MIN_DEPTH_PCT,
         "niche_max_liquidity": config.NICHE_MAX_LIQUIDITY,
         "niche_score_multiplier": config.NICHE_SCORE_MULTIPLIER,
-        "max_markets": config.MAX_MARKETS,
+        # Wallet Baskets
         "basket_min_trades": config.BASKET_MIN_WALLET_TRADES,
         "basket_shift_threshold": config.BASKET_CATEGORY_SHIFT_THRESHOLD,
         "basket_points": config.BASKET_POINTS,
         "basket_cross_min": config.BASKET_CROSS_MIN,
+        # Sniper DBSCAN
         "sniper_time_window": config.SNIPER_TIME_WINDOW_SEC,
         "sniper_min_cluster": config.SNIPER_MIN_CLUSTER_SIZE,
         "sniper_min_size": config.SNIPER_MIN_TRADE_SIZE,
         "sniper_points": config.SNIPER_POINTS,
+        # Smart Money
+        "smart_wallet_min_winrate": config.SMART_WALLET_MIN_WINRATE,
     }
 
 
@@ -197,69 +283,21 @@ async def get_config(request: Request):
 async def update_config(request: Request, body: ConfigUpdate):
     db = request.app.state.db
     data = {}
-    if body.min_size_usd is not None:
-        data["min_size_usd"] = str(body.min_size_usd)
-        config.MIN_SIZE_USD = body.min_size_usd
-    if body.large_size_usd is not None:
-        data["large_size_usd"] = str(body.large_size_usd)
-        config.LARGE_SIZE_USD = body.large_size_usd
-    if body.alert_threshold is not None:
-        data["alert_threshold"] = str(body.alert_threshold)
-        config.ALERT_THRESHOLD = body.alert_threshold
-    if body.excluded_categories is not None:
-        data["excluded_categories"] = body.excluded_categories
-        # Actualizar cache en el bot
-        bot = request.app.state.bot
-        if bot:
-            bot._excluded_categories = {c.strip().lower() for c in body.excluded_categories.split(",") if c.strip()}
-    if body.poll_interval is not None:
-        config.POLL_INTERVAL = body.poll_interval
-    if body.fresh_wallet_points is not None:
-        config.FRESH_WALLET_POINTS = body.fresh_wallet_points
-    if body.large_size_points is not None:
-        config.LARGE_SIZE_POINTS = body.large_size_points
-    if body.market_anomaly_points is not None:
-        config.MARKET_ANOMALY_POINTS = body.market_anomaly_points
-    if body.wallet_shift_points is not None:
-        config.WALLET_SHIFT_POINTS = body.wallet_shift_points
-    if body.concentration_points is not None:
-        config.CONCENTRATION_POINTS = body.concentration_points
-    if body.orderbook_depth_points is not None:
-        config.ORDERBOOK_DEPTH_POINTS = body.orderbook_depth_points
-    if body.niche_market_points is not None:
-        config.NICHE_MARKET_POINTS = body.niche_market_points
-    if body.ob_min_depth_pct is not None:
-        config.ORDERBOOK_MIN_DEPTH_PCT = body.ob_min_depth_pct
-    if body.niche_max_liquidity is not None:
-        config.NICHE_MAX_LIQUIDITY = body.niche_max_liquidity
-    if body.niche_score_multiplier is not None:
-        config.NICHE_SCORE_MULTIPLIER = body.niche_score_multiplier
-    if body.max_markets is not None:
-        config.MAX_MARKETS = body.max_markets
-    if body.basket_min_trades is not None:
-        data["basket_min_trades"] = str(body.basket_min_trades)
-        config.BASKET_MIN_WALLET_TRADES = body.basket_min_trades
-    if body.basket_shift_threshold is not None:
-        data["basket_shift_threshold"] = str(body.basket_shift_threshold)
-        config.BASKET_CATEGORY_SHIFT_THRESHOLD = body.basket_shift_threshold
-    if body.basket_points is not None:
-        data["basket_points"] = str(body.basket_points)
-        config.BASKET_POINTS = body.basket_points
-    if body.basket_cross_min is not None:
-        data["basket_cross_min"] = str(body.basket_cross_min)
-        config.BASKET_CROSS_MIN = body.basket_cross_min
-    if body.sniper_time_window is not None:
-        data["sniper_time_window"] = str(body.sniper_time_window)
-        config.SNIPER_TIME_WINDOW_SEC = body.sniper_time_window
-    if body.sniper_min_cluster is not None:
-        data["sniper_min_cluster"] = str(body.sniper_min_cluster)
-        config.SNIPER_MIN_CLUSTER_SIZE = body.sniper_min_cluster
-    if body.sniper_min_size is not None:
-        data["sniper_min_size"] = str(body.sniper_min_size)
-        config.SNIPER_MIN_TRADE_SIZE = body.sniper_min_size
-    if body.sniper_points is not None:
-        data["sniper_points"] = str(body.sniper_points)
-        config.SNIPER_POINTS = body.sniper_points
+
+    # Procesar todos los campos usando el mapeo
+    body_dict = body.model_dump(exclude_none=True)
+    for field_name, value in body_dict.items():
+        if field_name == "excluded_categories":
+            data["excluded_categories"] = value
+            bot = request.app.state.bot
+            if bot:
+                bot._excluded_categories = {c.strip().lower() for c in value.split(",") if c.strip()}
+            continue
+        if field_name in _CONFIG_MAP:
+            db_key, config_attr = _CONFIG_MAP[field_name]
+            data[db_key] = str(value)
+            setattr(config, config_attr, value)
+
     if data:
         await db.set_config_bulk(data)
     return {"status": "ok", "updated": list(data.keys())}
@@ -324,23 +362,32 @@ class FeaturesUpdate(BaseModel):
 
 
 @router.post("/api/features")
-async def update_features(body: FeaturesUpdate):
+async def update_features(request: Request, body: FeaturesUpdate):
+    db = request.app.state.db
     updated = {}
+    data = {}
     if body.orderbook_depth is not None:
         config.FEATURE_ORDERBOOK_DEPTH = body.orderbook_depth
         updated["orderbook_depth"] = body.orderbook_depth
+        data["feature_orderbook_depth"] = str(body.orderbook_depth)
     if body.market_classification is not None:
         config.FEATURE_MARKET_CLASSIFICATION = body.market_classification
         updated["market_classification"] = body.market_classification
+        data["feature_market_classification"] = str(body.market_classification)
     if body.wallet_baskets is not None:
         config.FEATURE_WALLET_BASKETS = body.wallet_baskets
         updated["wallet_baskets"] = body.wallet_baskets
+        data["feature_wallet_baskets"] = str(body.wallet_baskets)
     if body.sniper_dbscan is not None:
         config.FEATURE_SNIPER_DBSCAN = body.sniper_dbscan
         updated["sniper_dbscan"] = body.sniper_dbscan
+        data["feature_sniper_dbscan"] = str(body.sniper_dbscan)
     if body.crypto_arb is not None:
         config.FEATURE_CRYPTO_ARB = body.crypto_arb
         updated["crypto_arb"] = body.crypto_arb
+        data["feature_crypto_arb"] = str(body.crypto_arb)
+    if data:
+        await db.set_config_bulk(data)
     return {"status": "ok", "updated": updated}
 
 
@@ -489,24 +536,34 @@ class CryptoConfigUpdate(BaseModel):
 
 
 @router.post("/api/crypto-arb/config")
-async def update_crypto_config(body: CryptoConfigUpdate):
+async def update_crypto_config(request: Request, body: CryptoConfigUpdate):
+    db = request.app.state.db
     updated = {}
+    data = {}
     if body.min_price_move_pct is not None:
         config.CRYPTO_ARB_MIN_MOVE_PCT = body.min_price_move_pct
         updated["min_price_move_pct"] = body.min_price_move_pct
+        data["crypto_min_move_pct"] = str(body.min_price_move_pct)
     if body.max_poly_odds is not None:
         config.CRYPTO_ARB_MAX_POLY_ODDS = body.max_poly_odds
         updated["max_poly_odds"] = body.max_poly_odds
+        data["crypto_max_poly_odds"] = str(body.max_poly_odds)
     if body.min_confidence_pct is not None:
         config.CRYPTO_ARB_MIN_CONFIDENCE = body.min_confidence_pct
         updated["min_confidence_pct"] = body.min_confidence_pct
+        data["crypto_min_confidence"] = str(body.min_confidence_pct)
     if body.paper_bet_size is not None:
         config.CRYPTO_ARB_PAPER_BET = body.paper_bet_size
         updated["paper_bet_size"] = body.paper_bet_size
+        data["crypto_paper_bet"] = str(body.paper_bet_size)
     if body.max_daily_signals is not None:
         config.CRYPTO_ARB_MAX_DAILY = body.max_daily_signals
         updated["max_daily_signals"] = body.max_daily_signals
+        data["crypto_max_daily"] = str(body.max_daily_signals)
     if body.telegram_alerts is not None:
         config.CRYPTO_ARB_TELEGRAM = body.telegram_alerts
         updated["telegram_alerts"] = body.telegram_alerts
+        data["crypto_telegram"] = str(body.telegram_alerts)
+    if data:
+        await db.set_config_bulk(data)
     return {"status": "ok", "updated": updated}

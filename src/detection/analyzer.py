@@ -86,10 +86,10 @@ class AnomalyAnalyzer:
             triggers.append(f"👥 Cluster {len(cluster_wallets)}w")
 
         # 8. Hit rate de la wallet
-        if wallet_stats and (wallet_stats.win_count + wallet_stats.loss_count) >= 3:
+        if wallet_stats and (wallet_stats.win_count + wallet_stats.loss_count) >= config.HIT_RATE_MIN_RESOLVED:
             wallet_hr = wallet_stats.hit_rate
-            if wallet_hr >= 70:
-                score += 2
+            if wallet_hr >= config.HIT_RATE_MIN_PCT:
+                score += config.HIT_RATE_POINTS
             triggers.append(f"🏆 {wallet_hr:.0f}% win")
 
         # ── Nuevas señales v4.0 (9-14) ───────────────────────────────
@@ -104,38 +104,38 @@ class AnomalyAnalyzer:
             elif trade.outcome == "Yes" and trade.side == "SELL" and market_price > 0.80:
                 is_contrarian = True  # Vende Yes cuando mercado dice 80%+ Yes
             if is_contrarian:
-                score += 3
+                score += config.CONTRARIAN_POINTS
                 triggers.append(f"🔥 Contrarian (precio {market_price:.0%})")
 
         # 10. ACUMULACIÓN: wallet comprando repetidamente el mismo outcome
         if accumulation_info and accumulation_info.get("count", 0) >= 2:
             acc_count = accumulation_info["count"]
             acc_total = accumulation_info.get("total_size", 0)
-            score += 2
+            score += config.ACCUMULATION_POINTS
             triggers.append(f"📈 Acumula ({acc_count}x, total ${acc_total:,.0f})")
 
         # 11. PROVEN WINNER: wallet con historial ganador verificado
-        if wallet_stats and (wallet_stats.win_count + wallet_stats.loss_count) >= 5:
-            if wallet_stats.hit_rate >= 65:
-                score += 3
+        if wallet_stats and (wallet_stats.win_count + wallet_stats.loss_count) >= config.PROVEN_WINNER_MIN_RESOLVED:
+            if wallet_stats.hit_rate >= config.PROVEN_WINNER_MIN_PCT:
+                score += config.PROVEN_WINNER_POINTS
                 triggers.append(f"✅ Ganador probado ({wallet_stats.win_count}W/{wallet_stats.loss_count}L)")
 
         # 12. MULTI-SMART CONFIRMATION: múltiples wallets inteligentes en el mismo lado
         if smart_cluster_count >= 2:
-            score += 3
+            score += config.MULTI_SMART_POINTS
             triggers.append(f"🧠 {smart_cluster_count} smart wallets mismo lado")
 
         # 13. LATE INSIDER: trade grande cerca del cierre + wallet nueva
         if days_to_close is not None and days_to_close <= 2 and trade.size >= config.LARGE_SIZE_USD:
             if self._is_fresh_wallet(wallet_stats):
-                score += 2
+                score += config.LATE_INSIDER_POINTS
                 triggers.append("🕵️ Late insider")
 
         # 14. EXIT ALERT: smart money vendiendo (SELL)
         if trade.side == "SELL" and wallet_stats:
             resolved = wallet_stats.win_count + wallet_stats.loss_count
             if resolved >= 3 and wallet_stats.hit_rate >= 60:
-                score += 2
+                score += config.EXIT_ALERT_POINTS
                 triggers.append(f"🚪 Exit (smart money vende)")
 
         # ── Señales v5.0 (módulos opcionales) ─────────────────────
@@ -162,7 +162,7 @@ class AnomalyAnalyzer:
             triggers.append("🔀 Fuera de categoría habitual")
             # Si múltiples wallets fuera de categoría operan aquí = más sospechoso
             if cross_basket_count >= config.BASKET_CROSS_MIN:
-                score += 2
+                score += config.CROSS_BASKET_EXTRA_POINTS
                 triggers.append(f"🧺 {cross_basket_count} wallets cross-category")
 
         # 18. SNIPER DBSCAN: cluster de wallets operando en ventana temporal muy estrecha

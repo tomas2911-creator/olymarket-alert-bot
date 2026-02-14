@@ -67,12 +67,17 @@ class PolymarketAlertBot:
             print(f"ERROR conectando DB: {e}", flush=True)
             raise
         self._running = True
-        # Cargar categorías excluidas en memoria
+        # Restaurar TODAS las configs desde DB (persisten entre reinicios)
         try:
             saved_cfg = await self.db.get_config()
+            config.restore_from_db(saved_cfg)
             exc_str = saved_cfg.get("excluded_categories", "")
             self._excluded_categories = {c.strip().lower() for c in exc_str.split(",") if c.strip()}
-        except Exception:
+            restored = len([k for k in saved_cfg if k != "excluded_categories"])
+            if restored:
+                print(f"Config restaurada desde DB: {restored} valores", flush=True)
+        except Exception as e:
+            print(f"Error restaurando config: {e}", flush=True)
             self._excluded_categories = set()
         # Telegram startup en background para no bloquear healthcheck
         asyncio.create_task(self._send_startup_safe())

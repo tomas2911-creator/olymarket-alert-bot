@@ -204,8 +204,8 @@
                 <input type="number" id="cfg-max-markets" min="10" max="200" step="10" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
             </div>
         </div>
-        <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Puntos por Señal (base)</h4>
-        <div class="grid grid-cols-3 md:grid-cols-5 gap-3">
+        <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Puntos por Señal (1-7)</h4>
+        <div class="grid grid-cols-3 md:grid-cols-7 gap-3">
             <div>
                 <label class="text-[10px] text-gray-500 mb-1 block">Fresh Wallet</label>
                 <input type="number" id="cfg-pts-fresh" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
@@ -225,6 +225,63 @@
             <div>
                 <label class="text-[10px] text-gray-500 mb-1 block">Concentr.</label>
                 <input type="number" id="cfg-pts-conc" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Proximidad</label>
+                <input type="number" id="cfg-pts-time" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Cluster</label>
+                <input type="number" id="cfg-pts-cluster" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+        </div>
+        <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Señales Avanzadas (8-14)</h4>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Hit Rate pts</label>
+                <input type="number" id="cfg-pts-hitrate" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Min WR% (#8)</label>
+                <input type="number" id="cfg-hr-min-pct" min="50" max="95" step="5" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Contrarian pts</label>
+                <input type="number" id="cfg-pts-contrarian" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Acumulación pts</label>
+                <input type="number" id="cfg-pts-accum" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Proven Winner pts</label>
+                <input type="number" id="cfg-pts-proven" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Min WR% (#11)</label>
+                <input type="number" id="cfg-pw-min-pct" min="50" max="95" step="5" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Multi-Smart pts</label>
+                <input type="number" id="cfg-pts-multismart" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Late Insider pts</label>
+                <input type="number" id="cfg-pts-late" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Exit Alert pts</label>
+                <input type="number" id="cfg-pts-exit" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Cross-Basket pts</label>
+                <input type="number" id="cfg-pts-crossbask" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Smart WR mín</label>
+                <input type="number" id="cfg-smart-wr" min="0.40" max="0.80" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
             </div>
         </div>
         <!-- Categorías -->
@@ -841,14 +898,28 @@ async function loadConfig(){
     document.getElementById('cfg-large-size').value=c.large_size_usd;
     document.getElementById('cfg-threshold').value=c.alert_threshold;
     document.getElementById('cfg-poll-interval').value=c.poll_interval||60;
-    // Scoring
+    // Scoring señales 1-7
     document.getElementById('cfg-pts-fresh').value=c.fresh_wallet_points||2;
     document.getElementById('cfg-pts-large').value=c.large_size_points||2;
     document.getElementById('cfg-pts-anomaly').value=c.market_anomaly_points||2;
     document.getElementById('cfg-pts-shift').value=c.wallet_shift_points||3;
     document.getElementById('cfg-pts-conc').value=c.concentration_points||3;
+    document.getElementById('cfg-pts-time').value=c.time_proximity_points||3;
+    document.getElementById('cfg-pts-cluster').value=c.cluster_points||3;
     document.getElementById('cfg-pts-ob').value=c.orderbook_depth_points||2;
     document.getElementById('cfg-pts-niche').value=c.niche_market_points||2;
+    // Señales 8-14
+    document.getElementById('cfg-pts-hitrate').value=c.hit_rate_points||2;
+    document.getElementById('cfg-hr-min-pct').value=c.hit_rate_min_pct||70;
+    document.getElementById('cfg-pts-contrarian').value=c.contrarian_points||3;
+    document.getElementById('cfg-pts-accum').value=c.accumulation_points||2;
+    document.getElementById('cfg-pts-proven').value=c.proven_winner_points||3;
+    document.getElementById('cfg-pw-min-pct').value=c.proven_winner_min_pct||65;
+    document.getElementById('cfg-pts-multismart').value=c.multi_smart_points||3;
+    document.getElementById('cfg-pts-late').value=c.late_insider_points||2;
+    document.getElementById('cfg-pts-exit').value=c.exit_alert_points||2;
+    document.getElementById('cfg-pts-crossbask').value=c.cross_basket_extra_points||2;
+    document.getElementById('cfg-smart-wr').value=c.smart_wallet_min_winrate||0.55;
     // Avanzados
     document.getElementById('cfg-ob-depth').value=c.ob_min_depth_pct||2.0;
     document.getElementById('cfg-niche-liq').value=c.niche_max_liquidity||50000;
@@ -911,21 +982,39 @@ async function saveConfig(){
         alert_threshold:parseInt(document.getElementById('cfg-threshold').value)||5,
         excluded_categories:excluded,
         poll_interval:parseInt(document.getElementById('cfg-poll-interval').value)||60,
+        max_markets:parseInt(document.getElementById('cfg-max-markets').value)||50,
+        // Señales 1-7
         fresh_wallet_points:parseInt(document.getElementById('cfg-pts-fresh').value)||2,
         large_size_points:parseInt(document.getElementById('cfg-pts-large').value)||2,
         market_anomaly_points:parseInt(document.getElementById('cfg-pts-anomaly').value)||2,
         wallet_shift_points:parseInt(document.getElementById('cfg-pts-shift').value)||3,
         concentration_points:parseInt(document.getElementById('cfg-pts-conc').value)||3,
+        time_proximity_points:parseInt(document.getElementById('cfg-pts-time').value)||3,
+        cluster_points:parseInt(document.getElementById('cfg-pts-cluster').value)||3,
+        // Señales 8-14
+        hit_rate_points:parseInt(document.getElementById('cfg-pts-hitrate').value)||2,
+        hit_rate_min_pct:parseInt(document.getElementById('cfg-hr-min-pct').value)||70,
+        contrarian_points:parseInt(document.getElementById('cfg-pts-contrarian').value)||3,
+        accumulation_points:parseInt(document.getElementById('cfg-pts-accum').value)||2,
+        proven_winner_points:parseInt(document.getElementById('cfg-pts-proven').value)||3,
+        proven_winner_min_pct:parseInt(document.getElementById('cfg-pw-min-pct').value)||65,
+        multi_smart_points:parseInt(document.getElementById('cfg-pts-multismart').value)||3,
+        late_insider_points:parseInt(document.getElementById('cfg-pts-late').value)||2,
+        exit_alert_points:parseInt(document.getElementById('cfg-pts-exit').value)||2,
+        cross_basket_extra_points:parseInt(document.getElementById('cfg-pts-crossbask').value)||2,
+        smart_wallet_min_winrate:parseFloat(document.getElementById('cfg-smart-wr').value)||0.55,
+        // Módulos
         orderbook_depth_points:parseInt(document.getElementById('cfg-pts-ob').value)||2,
         niche_market_points:parseInt(document.getElementById('cfg-pts-niche').value)||2,
         ob_min_depth_pct:parseFloat(document.getElementById('cfg-ob-depth').value)||2.0,
         niche_max_liquidity:parseInt(document.getElementById('cfg-niche-liq').value)||50000,
         niche_score_multiplier:parseFloat(document.getElementById('cfg-niche-mult').value)||1.5,
-        max_markets:parseInt(document.getElementById('cfg-max-markets').value)||50,
+        // Wallet Baskets
         basket_min_trades:parseInt(document.getElementById('cfg-bk-min-trades').value)||5,
         basket_shift_threshold:parseFloat(document.getElementById('cfg-bk-threshold').value)||0.15,
         basket_points:parseInt(document.getElementById('cfg-bk-points').value)||3,
         basket_cross_min:parseInt(document.getElementById('cfg-bk-cross-min').value)||2,
+        // Sniper DBSCAN
         sniper_time_window:parseInt(document.getElementById('cfg-sn-window').value)||120,
         sniper_min_cluster:parseInt(document.getElementById('cfg-sn-min-cluster').value)||3,
         sniper_min_size:parseInt(document.getElementById('cfg-sn-min-size').value)||500,

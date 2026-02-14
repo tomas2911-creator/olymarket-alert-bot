@@ -190,9 +190,19 @@ class TelegramNotifier:
         market_url = f"https://polymarket.com/event/{trade.market_slug}" if trade.market_slug else ""
         wallet_trades = candidate.wallet_stats.total_trades if candidate.wallet_stats else 0
 
-        # Score bar visual
-        filled = min(candidate.score, 12)
-        score_bar = "█" * filled + "░" * (12 - filled)
+        # Score bar visual — máximo dinámico basado en señales configuradas
+        max_score = (
+            config.FRESH_WALLET_POINTS + config.LARGE_SIZE_POINTS +
+            config.MARKET_ANOMALY_POINTS + config.WALLET_SHIFT_POINTS +
+            config.CONCENTRATION_POINTS + config.TIME_PROXIMITY_POINTS +
+            config.CLUSTER_POINTS + config.HIT_RATE_POINTS +
+            config.CONTRARIAN_POINTS + config.ACCUMULATION_POINTS +
+            config.PROVEN_WINNER_POINTS + config.MULTI_SMART_POINTS +
+            config.LATE_INSIDER_POINTS + config.EXIT_ALERT_POINTS
+        )
+        bar_len = 12
+        filled = min(int(candidate.score / max(max_score, 1) * bar_len), bar_len)
+        score_bar = "█" * filled + "░" * (bar_len - filled)
 
         message = (
             f"🚨 <b>Actividad Sospechosa Detectada</b>\n\n"
@@ -200,7 +210,7 @@ class TelegramNotifier:
             f"<b>Apuesta:</b> {trade.outcome} {trade.side} | "
             f"<b>Size:</b> ${trade.size:,.0f} | <b>Precio:</b> {trade.price:.2f}\n\n"
             f"<b>Wallet:</b> <code>{wallet_short}</code> ({wallet_trades} trades)\n"
-            f"<b>Score:</b> [{score_bar}] {candidate.score}/12\n\n"
+            f"<b>Score:</b> [{score_bar}] {candidate.score}/{max_score}\n\n"
             f"<b>Señales:</b>\n{triggers_text}\n"
         )
 

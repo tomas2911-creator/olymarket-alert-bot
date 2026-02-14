@@ -529,8 +529,8 @@ class Database:
                   AND t.wallet_address != $4
                   AND t.timestamp > NOW() - ($5 || ' hours')::INTERVAL
                   AND (w.win_count + w.loss_count) >= 3
-                  AND w.win_count::float / NULLIF(w.win_count + w.loss_count, 0) >= 0.55
-            """, market_id, side, outcome, exclude_wallet.lower(), str(hours))
+                  AND w.win_count::float / NULLIF(w.win_count + w.loss_count, 0) >= $6
+            """, market_id, side, outcome, exclude_wallet.lower(), str(hours), config.SMART_WALLET_MIN_WINRATE)
             return count or 0
 
     # ── Category Edge Analysis ─────────────────────────────────────
