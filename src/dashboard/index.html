@@ -784,16 +784,19 @@ async function openWallet(addr){
     `).join('');
 
     // Alerts
-    document.getElementById('wm-alerts-body').innerHTML=(data.alerts||[]).map(a=>`
-        <tr class="border-b border-gray-800/30">
-            <td class="px-3 py-1.5 text-gray-400">${fmtDate(a.created_at)}</td>
-            <td class="px-3 py-1.5 max-w-xs truncate"><a href="${polyLink(a.market_slug)}" target="_blank" class="hover:text-purple-400">${(a.market_question||'').slice(0,40)}</a></td>
+    document.getElementById('wm-alerts-body').innerHTML=(data.alerts||[]).map(a=>{
+        const triggers=(a.triggers||'').split('||').filter(Boolean).map(t=>t.trim());
+        const trigHtml=triggers.length>0?`<div class="flex flex-col gap-0.5">${triggers.slice(0,3).map(t=>`<span class="text-[10px] text-gray-300">${t}</span>`).join('')}${triggers.length>3?`<span class="text-[10px] text-gray-500">+${triggers.length-3} más</span>`:''}</div>`:'<span class="text-gray-600">-</span>';
+        const resultado=a.resolved?(a.was_correct?'<span class="text-green-400">✅ Correcto</span>':'<span class="text-red-400">❌ Incorrecto</span>'):'<span class="text-gray-500">Pendiente</span>';
+        return`<tr class="border-b border-gray-800/30">
+            <td class="px-3 py-1.5 text-gray-400 whitespace-nowrap">${fmtDate(a.created_at)}</td>
+            <td class="px-3 py-1.5 max-w-[200px] truncate"><a href="${polyLink(a.market_slug)}" target="_blank" class="hover:text-purple-400">${(a.market_question||'').slice(0,45)}</a></td>
             <td class="px-3 py-1.5 text-right font-mono">${fmtUsd(a.size)}</td>
             <td class="px-3 py-1.5 text-center"><span class="font-bold ${scoreC(a.score)}">${a.score}</span></td>
-            <td class="px-3 py-1.5 text-gray-300 max-w-xs truncate">${(a.triggers||'').replace(/,/g,', ')}</td>
-            <td class="px-3 py-1.5 text-center">${a.was_correct===true?'<span class="text-green-400">Correcto</span>':a.was_correct===false?'<span class="text-red-400">Incorrecto</span>':'<span class="text-gray-500">-</span>'}</td>
-        </tr>
-    `).join('');
+            <td class="px-3 py-1.5">${trigHtml}</td>
+            <td class="px-3 py-1.5 text-center whitespace-nowrap">${resultado}</td>
+        </tr>`;
+    }).join('');
 }
 function closeWalletModal(){document.getElementById('wallet-modal').classList.add('hidden')}
 

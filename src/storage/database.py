@@ -677,7 +677,8 @@ class Database:
 
             alerts = await conn.fetch("""
                 SELECT id, market_question, market_slug, side, outcome,
-                       size, score, triggers, was_correct, created_at
+                       size, score, triggers, resolved, was_correct,
+                       resolution, price_at_alert, is_copy_trade, created_at
                 FROM alerts WHERE wallet_address = $1
                 ORDER BY created_at DESC LIMIT 50
             """, addr)
