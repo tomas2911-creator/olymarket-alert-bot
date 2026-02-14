@@ -49,12 +49,23 @@ class PolymarketAlertBot:
         self._running = False
 
     async def start(self):
-        """Inicializar DB y enviar mensaje de startup."""
-        await self.db.connect()
-        print("DB PostgreSQL conectada OK", flush=True)
-        await self.notifier.send_startup_message()
-        print("Mensaje startup enviado", flush=True)
+        """Inicializar DB y marcar como running."""
+        try:
+            await self.db.connect()
+            print("DB PostgreSQL conectada OK", flush=True)
+        except Exception as e:
+            print(f"ERROR conectando DB: {e}", flush=True)
+            raise
         self._running = True
+        # Telegram startup en background para no bloquear healthcheck
+        asyncio.create_task(self._send_startup_safe())
+
+    async def _send_startup_safe(self):
+        try:
+            await self.notifier.send_startup_message()
+            print("Mensaje startup enviado", flush=True)
+        except Exception as e:
+            print(f"Error enviando startup a Telegram: {e}", flush=True)
 
     async def stop(self):
         self._running = False
