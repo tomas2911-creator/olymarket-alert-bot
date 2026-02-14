@@ -107,19 +107,19 @@
         <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Sesion</div><div class="text-lg font-bold mt-1" id="stat-session">-</div></div>
     </div>
 
-    <!-- Charts Row -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="glass glow rounded-xl p-4">
-            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Alertas por Dia</h3>
-            <canvas id="chart-alerts-day" height="180"></canvas>
+    <!-- Charts Row (compact) -->
+    <div class="grid grid-cols-3 gap-3">
+        <div class="glass glow rounded-lg p-3">
+            <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Alertas/Dia</h3>
+            <canvas id="chart-alerts-day" height="80"></canvas>
         </div>
-        <div class="glass glow rounded-xl p-4">
-            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Distribucion de Scores</h3>
-            <canvas id="chart-scores" height="180"></canvas>
+        <div class="glass glow rounded-lg p-3">
+            <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Scores</h3>
+            <canvas id="chart-scores" height="80"></canvas>
         </div>
-        <div class="glass glow rounded-xl p-4">
-            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Categorias</h3>
-            <canvas id="chart-categories" height="180"></canvas>
+        <div class="glass glow rounded-lg p-3">
+            <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Categorias</h3>
+            <canvas id="chart-categories" height="80"></canvas>
         </div>
     </div>
 
@@ -540,29 +540,30 @@ async function openWallet(addr){
 function closeWalletModal(){document.getElementById('wallet-modal').classList.add('hidden')}
 
 // ── Charts ──
-const chartDef={responsive:true,plugins:{legend:{display:false}},scales:{
-    x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#666',font:{size:10}}},
-    y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#666',font:{size:10}}}
+const chartSmall={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{
+    x:{grid:{display:false},ticks:{color:'#555',font:{size:8},maxTicksLimit:5}},
+    y:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{color:'#555',font:{size:8},maxTicksLimit:4}}
 }};
+const donutSmall={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'60%'};
 
 async function loadCharts(){
-    const dayData=await fetchJson('/api/charts/alerts-by-day?days=30');
+    const dayData=await fetchJson('/api/charts/alerts-by-day?days=14');
     if(dayData&&dayData.length>0){
         const ctx=document.getElementById('chart-alerts-day').getContext('2d');
         if(alertsChart)alertsChart.destroy();
-        alertsChart=new Chart(ctx,{type:'bar',data:{labels:dayData.map(d=>d.day.slice(5)),datasets:[{data:dayData.map(d=>d.count),backgroundColor:'rgba(108,92,231,0.6)',borderColor:'rgba(108,92,231,1)',borderWidth:1,borderRadius:4}]},options:{...chartDef}});
+        alertsChart=new Chart(ctx,{type:'bar',data:{labels:dayData.map(d=>d.day.slice(5)),datasets:[{data:dayData.map(d=>d.count),backgroundColor:'rgba(108,92,231,0.6)',borderRadius:3}]},options:chartSmall});
     }
     const scoreData=await fetchJson('/api/charts/score-distribution');
     if(scoreData&&scoreData.length>0){
         const ctx=document.getElementById('chart-scores').getContext('2d');
         if(scoresChart)scoresChart.destroy();
-        scoresChart=new Chart(ctx,{type:'doughnut',data:{labels:scoreData.map(d=>`Score ${d.score}`),datasets:[{data:scoreData.map(d=>d.count),backgroundColor:['#6c5ce7','#a29bfe','#fd79a8','#e17055','#00b894','#fdcb6e','#0984e3','#636e72','#d63031','#e84393','#00cec9','#fab1a0'],borderWidth:0}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{color:'#999',font:{size:10}}}}}});
+        scoresChart=new Chart(ctx,{type:'doughnut',data:{labels:scoreData.map(d=>`${d.score}`),datasets:[{data:scoreData.map(d=>d.count),backgroundColor:['#6c5ce7','#a29bfe','#fd79a8','#e17055','#00b894','#fdcb6e','#0984e3'],borderWidth:0}]},options:donutSmall});
     }
     const catData=await fetchJson('/api/categories');
     if(catData&&catData.length>0){
         const ctx=document.getElementById('chart-categories').getContext('2d');
         if(catChart)catChart.destroy();
-        catChart=new Chart(ctx,{type:'doughnut',data:{labels:catData.map(d=>d.category),datasets:[{data:catData.map(d=>d.trade_count),backgroundColor:['#6c5ce7','#fd79a8','#00b894','#fdcb6e','#0984e3','#e17055','#a29bfe','#636e72','#d63031','#e84393'],borderWidth:0}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{color:'#999',font:{size:10}}}}}});
+        catChart=new Chart(ctx,{type:'doughnut',data:{labels:catData.map(d=>d.category),datasets:[{data:catData.map(d=>d.trade_count),backgroundColor:['#6c5ce7','#fd79a8','#00b894','#fdcb6e','#0984e3','#e17055'],borderWidth:0}]},options:donutSmall});
     }
 }
 
