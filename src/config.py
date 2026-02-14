@@ -211,6 +211,7 @@ def restore_from_db(saved: dict):
 
     # Smart Money
     cfg.SMART_WALLET_MIN_WINRATE = _float("smart_wallet_min_winrate", cfg.SMART_WALLET_MIN_WINRATE)
+    cfg.COOLDOWN_HOURS = _int("cooldown_hours", cfg.COOLDOWN_HOURS)
 
     # Feature flags
     cfg.FEATURE_ORDERBOOK_DEPTH = _bool("feature_orderbook_depth", cfg.FEATURE_ORDERBOOK_DEPTH)

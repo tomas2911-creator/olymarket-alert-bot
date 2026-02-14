@@ -182,6 +182,7 @@ class ConfigUpdate(BaseModel):
     sniper_points: int | None = None
     # Smart Money
     smart_wallet_min_winrate: float | None = None
+    cooldown_hours: int | None = None
 
 
 # Mapeo: campo del body → (key en DB, atributo en config)
@@ -226,6 +227,7 @@ _CONFIG_MAP = {
     "sniper_min_size": ("sniper_min_size", "SNIPER_MIN_TRADE_SIZE"),
     "sniper_points": ("sniper_points", "SNIPER_POINTS"),
     "smart_wallet_min_winrate": ("smart_wallet_min_winrate", "SMART_WALLET_MIN_WINRATE"),
+    "cooldown_hours": ("cooldown_hours", "COOLDOWN_HOURS"),
 }
 
 
@@ -282,6 +284,7 @@ async def get_config(request: Request):
         "sniper_points": config.SNIPER_POINTS,
         # Smart Money
         "smart_wallet_min_winrate": config.SMART_WALLET_MIN_WINRATE,
+        "cooldown_hours": config.COOLDOWN_HOURS,
     }
 
 
