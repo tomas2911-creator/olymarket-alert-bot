@@ -285,8 +285,9 @@ class CryptoArbBacktester:
                     continue
                 try:
                     ct_str = closed_time.replace("Z", "+00:00")
-                    if "+" not in ct_str and "-" not in ct_str[10:]:
-                        ct_str = ct_str + "+00:00"
+                    # Gamma API devuelve "+00" que no es ISO válido, necesita "+00:00"
+                    if re.search(r'[+-]\d{2}$', ct_str):
+                        ct_str = ct_str + ":00"
                     ct = datetime.fromisoformat(ct_str)
                     if ct.tzinfo is None:
                         ct = ct.replace(tzinfo=timezone.utc)
