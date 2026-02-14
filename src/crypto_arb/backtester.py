@@ -402,16 +402,19 @@ class CryptoArbBacktester:
     async def _simulate_trade(self, client: httpx.AsyncClient, market: dict,
                                coin: str, bet_size: float,
                                max_odds: float) -> Optional[BacktestTrade]:
-        """Simular un trade usando datos REALES.
+        """Simular un trade usando datos REALES de Binance.
 
+        Método (simula lo que haría el detector en vivo):
         1. Obtiene resolución real de Polymarket (quién ganó: Up o Down)
-        2. Obtiene precios reales de Binance para el window del mercado
-        3. Simula la lógica del detector: a mitad del window, ¿el precio sube o baja?
-        4. Compara predicción del detector vs resolución real
-        5. Calcula PnL con entry_odds = 0.50 (mercados abren ~50/50)
+        2. Obtiene klines de Binance para el window completo del mercado
+        3. Desliza por el window buscando momentum suficiente (como el detector)
+           - En cada minuto, compara precio actual vs precio de N minutos atrás
+           - Si el cambio >= min_move → esa es la entrada del detector
+        4. Compara predicción con resolución real
+        5. Calcula PnL con entry_odds basado en cuándo entró (más temprano = mejor odds)
         """
         cid = market["condition_id"]
-        market["_coin"] = coin  # Para _parse_market_window
+        market["_coin"] = coin
 
         try:
             # 1. Obtener resolución real via CLOB API
@@ -439,6 +442,7 @@ class CryptoArbBacktester:
                 return None
 
             start_dt, end_dt, binance_pair = window
+            window_minutes = (end_dt - start_dt).total_seconds() / 60
 
             # 3. Obtener klines reales de Binance
             klines = await self._get_binance_klines(client, binance_pair, start_dt, end_dt)
@@ -446,42 +450,69 @@ class CryptoArbBacktester:
                 print(f"[Backtest] Sin klines para {binance_pair} {start_dt}", flush=True)
                 return None
 
-            # 4. Simular lógica del detector
-            # Precio de apertura del window (referencia)
+            # 4. Simular lógica del detector: deslizar por el window
+            # El detector en vivo compara precio actual vs lookback_seconds atrás
+            # Para klines de 1 min, lookback = 3 candles (~3 min)
+            lookback_candles = max(1, config.CRYPTO_ARB_LOOKBACK_SEC // 60)
+            # Para mercados cortos (5min), usar lookback más corto
+            if window_minutes <= 5:
+                lookback_candles = 1
+            elif window_minutes <= 15:
+                lookback_candles = min(lookback_candles, 3)
+
+            # Umbral mínimo adaptado a la duración del mercado
+            # Mercados cortos (5min) tienen menos movimiento que los de 4h
+            min_move = config.CRYPTO_ARB_MIN_MOVE_PCT
+            if window_minutes <= 5:
+                min_move = min(min_move, 0.03)  # 5min: umbral más bajo
+            elif window_minutes <= 15:
+                min_move = min(min_move, 0.05)  # 15min: umbral moderado
+            # Mercados largos (1h+): usar el umbral normal del config
+
+            # Buscar primer punto con momentum suficiente
+            entry_idx = None
+            entry_change = 0
             open_price = klines[0]["open"]
 
-            # Precio a mitad del window (cuando el detector tomaría la decisión)
-            mid_idx = len(klines) // 2
-            if mid_idx < 1:
-                mid_idx = 1
-            mid_price = klines[mid_idx]["close"]
+            for i in range(lookback_candles, len(klines)):
+                # Momentum: precio actual vs precio lookback candles atrás
+                ref_price = klines[i - lookback_candles]["close"]
+                cur_price = klines[i]["close"]
+                if ref_price <= 0:
+                    continue
+                change = ((cur_price - ref_price) / ref_price) * 100
+                if abs(change) >= min_move:
+                    entry_idx = i
+                    entry_change = change
+                    break
 
-            # El detector predice: si el precio está arriba de la apertura → UP, sino → DOWN
-            spot_change_pct = ((mid_price - open_price) / open_price) * 100
-
-            # Solo entrar si hay movimiento suficiente (min_price_move_pct)
-            min_move = config.CRYPTO_ARB_MIN_MOVE_PCT
-            if abs(spot_change_pct) < min_move:
-                # Sin movimiento suficiente → el detector NO entraría
-                return None
+            # Si no encontró momentum suficiente, usar cambio total open→close
+            # (el mercado igual se resolvió, solo fue un movimiento lento)
+            if entry_idx is None:
+                final_price = klines[-1]["close"]
+                total_change = ((final_price - open_price) / open_price) * 100
+                if abs(total_change) < 0.005:  # Menos de 0.005% = flat
+                    return None  # Realmente no hubo movimiento
+                entry_idx = len(klines) - 2  # Entrada tardía
+                entry_change = total_change
 
             # Dirección predicha por el detector
-            predicted_direction = "up" if spot_change_pct > 0 else "down"
+            predicted_direction = "up" if entry_change > 0 else "down"
 
             # 5. Comparar con resolución real
             correct = (predicted_direction == winner)
 
             # 6. Calcular PnL
-            # Entry odds: mercados abren ~50/50, pero si ya vemos momentum,
-            # el precio se habría movido ligeramente. Estimamos entry basado
-            # en cuánto se movió el spot (más movimiento → odds menos favorables)
-            # Fórmula: base 0.50 + ajuste por momentum ya visible
-            momentum_adj = min(abs(spot_change_pct) * 0.02, 0.10)  # máx +0.10
-            entry_odds = 0.50 + momentum_adj
+            # Entry odds basado en cuándo entró:
+            # Más temprano en el window = mejores odds (más cerca de 0.50)
+            # Más tarde = peores odds (mercado ya se movió)
+            progress = entry_idx / max(len(klines) - 1, 1)  # 0.0 = inicio, 1.0 = final
+            # Base 0.50 + ajuste por progreso (máx +0.12)
+            entry_odds = 0.50 + (progress * 0.12)
 
             # Respetar max_odds del usuario
             if entry_odds > max_odds:
-                return None  # Odds demasiado altas, no entraríamos
+                return None
 
             if correct:
                 pnl = bet_size * (1 - entry_odds)
@@ -490,7 +521,6 @@ class CryptoArbBacktester:
                 pnl = -bet_size * entry_odds
                 result = "loss"
 
-            # Timestamp del trade
             ts = end_dt
 
             return BacktestTrade(
