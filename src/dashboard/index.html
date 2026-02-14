@@ -355,6 +355,12 @@
                     <option value="7">Score >= 7</option>
                     <option value="9">Score >= 9</option>
                 </select>
+                <select id="alert-status-filter" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none" onchange="filterAlerts()">
+                    <option value="all">Todos los estados</option>
+                    <option value="correct">✅ Correctas</option>
+                    <option value="incorrect">❌ Incorrectas</option>
+                    <option value="pending">⏳ Pendientes</option>
+                </select>
                 <div class="ml-auto flex gap-1 items-center">
                     <select id="alert-clean-hours" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300">
                         <option value="6">+6h</option>
@@ -369,15 +375,15 @@
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-                        <th class="px-4 py-2 text-left">Fecha</th>
-                        <th class="px-4 py-2 text-left">Mercado</th>
-                        <th class="px-4 py-2 text-center">Apuesta</th>
-                        <th class="px-4 py-2 text-right">Size</th>
-                        <th class="px-4 py-2 text-center">Score</th>
+                        <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="sortAlerts('fecha')">Fecha <span id="sort-icon-fecha" class="text-purple-400">▼</span></th>
+                        <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="sortAlerts('mercado')">Mercado <span id="sort-icon-mercado" class="text-purple-400 hidden"></span></th>
+                        <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="sortAlerts('apuesta')">Apuesta <span id="sort-icon-apuesta" class="text-purple-400 hidden"></span></th>
+                        <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="sortAlerts('size')">Size <span id="sort-icon-size" class="text-purple-400 hidden"></span></th>
+                        <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="sortAlerts('score')">Score <span id="sort-icon-score" class="text-purple-400 hidden"></span></th>
                         <th class="px-4 py-2 text-left">Señales</th>
-                        <th class="px-4 py-2 text-left">Wallet</th>
+                        <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="sortAlerts('wallet')">Wallet <span id="sort-icon-wallet" class="text-purple-400 hidden"></span></th>
                         <th class="px-4 py-2 text-center">Price Impact</th>
-                        <th class="px-4 py-2 text-center">Estado</th>
+                        <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="sortAlerts('estado')">Estado <span id="sort-icon-estado" class="text-purple-400 hidden"></span></th>
                     </tr></thead>
                     <tbody id="alerts-body"></tbody>
                 </table>
@@ -1056,6 +1062,7 @@ async function loadStats(){
 
 // ── Load Alerts (con paginación) ──
 let alertsPage=0, alertsPerPage=25, alertsFiltered=[];
+let alertsSortCol='fecha', alertsSortDir='desc';
 async function cleanAlerts(){
     const hours=document.getElementById('alert-clean-hours').value;
     const labels={'6':'6 horas','24':'24 horas','72':'3 días','168':'7 días','720':'30 días'};
@@ -1080,13 +1087,46 @@ async function loadAlerts(){
 function filterAlerts(){
     const q=(document.getElementById('alert-search').value||'').toLowerCase();
     const minScore=parseInt(document.getElementById('alert-score-filter').value)||0;
+    const statusF=document.getElementById('alert-status-filter').value;
     alertsFiltered=allAlerts.filter(a=>{
         if(minScore&&a.score<minScore)return false;
         if(q&&!(a.market_question||'').toLowerCase().includes(q)&&!(a.wallet_address||'').toLowerCase().includes(q))return false;
+        if(statusF==='correct'&&!a.was_correct)return false;
+        if(statusF==='incorrect'&&(!a.resolved||a.was_correct))return false;
+        if(statusF==='pending'&&a.resolved)return false;
         return true;
     });
+    applySortAlerts();
     alertsPage=0;
     renderAlertsPage();
+}
+function sortAlerts(col){
+    if(alertsSortCol===col){alertsSortDir=alertsSortDir==='asc'?'desc':'asc';}
+    else{alertsSortCol=col;alertsSortDir=col==='fecha'?'desc':'desc';}
+    document.querySelectorAll('[id^=sort-icon-]').forEach(el=>{el.classList.add('hidden');el.textContent='';});
+    const icon=document.getElementById('sort-icon-'+col);
+    if(icon){icon.classList.remove('hidden');icon.textContent=alertsSortDir==='asc'?'▲':'▼';}
+    applySortAlerts();
+    alertsPage=0;
+    renderAlertsPage();
+}
+function alertStatusVal(a){return a.resolved?(a.was_correct?2:0):1;}
+function applySortAlerts(){
+    const dir=alertsSortDir==='asc'?1:-1;
+    alertsFiltered.sort((a,b)=>{
+        let va,vb;
+        switch(alertsSortCol){
+            case 'fecha':va=new Date(a.created_at||0).getTime();vb=new Date(b.created_at||0).getTime();break;
+            case 'mercado':va=(a.market_question||'').toLowerCase();vb=(b.market_question||'').toLowerCase();return va<vb?-dir:va>vb?dir:0;
+            case 'apuesta':va=(a.outcome||'')+(a.side||'');vb=(b.outcome||'')+(b.side||'');return va<vb?-dir:va>vb?dir:0;
+            case 'size':va=a.size||0;vb=b.size||0;break;
+            case 'score':va=a.score||0;vb=b.score||0;break;
+            case 'wallet':va=(a.wallet_address||'').toLowerCase();vb=(b.wallet_address||'').toLowerCase();return va<vb?-dir:va>vb?dir:0;
+            case 'estado':va=alertStatusVal(a);vb=alertStatusVal(b);break;
+            default:va=0;vb=0;
+        }
+        return (va-vb)*dir;
+    });
 }
 function alertsPageChange(dir){alertsPage+=dir;renderAlertsPage();}
 function renderAlertsPage(){
