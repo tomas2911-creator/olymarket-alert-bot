@@ -420,8 +420,16 @@ async function saveConfig(){
         alert_threshold:parseInt(document.getElementById('cfg-threshold').value)||5,
         excluded_categories:excluded
     };
-    await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const st=document.getElementById('cfg-status');st.classList.remove('hidden');setTimeout(()=>st.classList.add('hidden'),2000);
+    const btn=document.querySelector('[onclick="saveConfig()"]');
+    btn.textContent='Guardando...';btn.disabled=true;
+    try{
+        await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        btn.textContent='✅ Guardado!';btn.className='px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium transition';
+        setTimeout(()=>{btn.textContent='Guardar';btn.className='px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition';btn.disabled=false;},2000);
+    }catch(e){
+        btn.textContent='❌ Error';btn.className='px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium transition';
+        setTimeout(()=>{btn.textContent='Guardar';btn.className='px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition';btn.disabled=false;},2000);
+    }
 }
 
 // ── Load Stats ──
