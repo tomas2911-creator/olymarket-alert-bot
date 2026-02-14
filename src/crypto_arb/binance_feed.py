@@ -85,15 +85,25 @@ class BinanceFeed:
         }
 
     async def start(self):
-        """Iniciar feed. Intenta WebSocket primero, fallback a polling HTTP."""
+        """Iniciar feed. Intenta WebSocket con timeout, fallback a polling HTTP."""
         self._running = True
-        logger.info("binance_feed_starting", pairs=self.pairs)
-        # Intentar WebSocket, si falla usar polling
+        print(f"[BinanceFeed] Iniciando feed para {self.pairs}", flush=True)
+        # Intentar WebSocket con timeout de 15s para recibir primer dato
         try:
-            await self._run_websocket()
+            ws_task = asyncio.create_task(self._run_websocket())
+            # Esperar hasta 15s a que llegue al menos un precio
+            for _ in range(15):
+                await asyncio.sleep(1)
+                if self._latest:
+                    print(f"[BinanceFeed] WebSocket OK, precios recibidos: {list(self._latest.keys())}", flush=True)
+                    await ws_task  # Continuar con WebSocket
+                    return
+            # Si en 15s no llegó nada, cancelar WS y usar polling
+            ws_task.cancel()
+            print("[BinanceFeed] WebSocket sin datos en 15s, cambiando a HTTP polling", flush=True)
         except Exception as e:
-            logger.warning("binance_ws_failed_using_polling", error=str(e))
-            await self._run_polling()
+            print(f"[BinanceFeed] WebSocket falló: {e}, cambiando a HTTP polling", flush=True)
+        await self._run_polling()
 
     async def stop(self):
         self._running = False
@@ -140,26 +150,85 @@ class BinanceFeed:
                 break
 
     async def _run_polling(self):
-        """Fallback: polling HTTP cada 2 segundos para precio."""
+        """Fallback: polling HTTP cada 2 segundos para precio.
+        Intenta múltiples fuentes: Binance.com, Binance.us, CoinGecko.
+        """
         import httpx
-        logger.info("binance_polling_started")
+        print("[BinanceFeed] Iniciando HTTP polling", flush=True)
+
+        # Mapeo para CoinGecko
+        COINGECKO_IDS = {"btcusdt": "bitcoin", "ethusdt": "ethereum", "solusdt": "solana"}
+
         async with httpx.AsyncClient(timeout=10) as client:
+            errors_in_a_row = 0
+            source = "binance.com"
             while self._running:
                 try:
+                    got_any = False
                     for pair in self.pairs:
-                        resp = await client.get(
-                            f"https://api.binance.com/api/v3/ticker/price",
-                            params={"symbol": pair.upper()},
-                        )
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            price = float(data.get("price", 0))
-                            if price > 0:
-                                now = time.time()
-                                self._history[pair].append(PriceTick(price, now))
-                                self._latest[pair] = price
+                        price = None
+
+                        # Fuente 1: Binance.com
+                        if source in ("binance.com", "all"):
+                            try:
+                                resp = await client.get(
+                                    "https://api.binance.com/api/v3/ticker/price",
+                                    params={"symbol": pair.upper()},
+                                )
+                                if resp.status_code == 200:
+                                    price = float(resp.json().get("price", 0))
+                            except Exception:
+                                pass
+
+                        # Fuente 2: Binance.us
+                        if not price and source in ("binance.us", "all"):
+                            try:
+                                resp = await client.get(
+                                    "https://api.binance.us/api/v3/ticker/price",
+                                    params={"symbol": pair.upper()},
+                                )
+                                if resp.status_code == 200:
+                                    price = float(resp.json().get("price", 0))
+                            except Exception:
+                                pass
+
+                        # Fuente 3: CoinGecko
+                        if not price:
+                            try:
+                                cg_id = COINGECKO_IDS.get(pair)
+                                if cg_id:
+                                    resp = await client.get(
+                                        "https://api.coingecko.com/api/v3/simple/price",
+                                        params={"ids": cg_id, "vs_currencies": "usd"},
+                                    )
+                                    if resp.status_code == 200:
+                                        data = resp.json()
+                                        price = float(data.get(cg_id, {}).get("usd", 0))
+                            except Exception:
+                                pass
+
+                        if price and price > 0:
+                            now = time.time()
+                            self._history[pair].append(PriceTick(price, now))
+                            self._latest[pair] = price
+                            got_any = True
+
+                    if got_any:
+                        if errors_in_a_row > 0:
+                            print(f"[BinanceFeed] Precios recuperados via {source}", flush=True)
+                        errors_in_a_row = 0
+                    else:
+                        errors_in_a_row += 1
+                        if errors_in_a_row == 1:
+                            print(f"[BinanceFeed] Sin datos de {source}, probando todas las fuentes...", flush=True)
+                            source = "all"
+                        if errors_in_a_row % 30 == 0:
+                            print(f"[BinanceFeed] {errors_in_a_row} polls sin datos", flush=True)
+
                 except Exception as e:
-                    logger.warning("binance_polling_error", error=str(e))
+                    errors_in_a_row += 1
+                    if errors_in_a_row <= 3:
+                        print(f"[BinanceFeed] Polling error: {e}", flush=True)
                 await asyncio.sleep(2)
 
     def get_status(self) -> dict:
