@@ -356,6 +356,23 @@ async def crypto_arb_signals(request: Request, limit: int = 100, coin: str = Non
         return []
 
 
+@router.delete("/api/crypto-arb/signals")
+async def delete_crypto_signals(request: Request, older_than_hours: int = 24):
+    """Borrar señales crypto más viejas que N horas."""
+    db = request.app.state.db
+    try:
+        from datetime import timedelta
+        cutoff = datetime.now() - timedelta(hours=older_than_hours)
+        async with db._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM crypto_signals WHERE created_at < $1", cutoff
+            )
+            deleted = int(result.split(" ")[-1]) if result else 0
+        return {"status": "ok", "deleted": deleted, "older_than_hours": older_than_hours}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @router.get("/api/crypto-arb/live")
 async def crypto_arb_live(request: Request):
     """Señales en vivo y mercados activos del detector."""
