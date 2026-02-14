@@ -29,6 +29,10 @@ class AnomalyAnalyzer:
         orderbook_depth_pct: Optional[float] = None,
         market_liquidity: Optional[float] = None,
         market_category: Optional[str] = None,
+        # v6.0: wallet baskets + sniper dbscan
+        wallet_category_shift: bool = False,
+        cross_basket_count: int = 0,
+        sniper_cluster_size: int = 0,
     ) -> AlertCandidate:
         score = 0
         triggers: list[str] = []
@@ -149,6 +153,22 @@ class AnomalyAnalyzer:
                 if not is_mainstream:
                     score += config.NICHE_MARKET_POINTS
                     triggers.append(f"🔬 Nicho (liq ${market_liquidity:,.0f})")
+
+        # ── Señales v6.0 (wallet baskets + sniper dbscan) ────────────
+
+        # 17. WALLET BASKET SHIFT: wallet opera fuera de su categoría habitual
+        if config.FEATURE_WALLET_BASKETS and wallet_category_shift:
+            score += config.BASKET_POINTS
+            triggers.append("🔀 Fuera de categoría habitual")
+            # Si múltiples wallets fuera de categoría operan aquí = más sospechoso
+            if cross_basket_count >= config.BASKET_CROSS_MIN:
+                score += 2
+                triggers.append(f"🧺 {cross_basket_count} wallets cross-category")
+
+        # 18. SNIPER DBSCAN: cluster de wallets operando en ventana temporal muy estrecha
+        if config.FEATURE_SNIPER_DBSCAN and sniper_cluster_size >= config.SNIPER_MIN_CLUSTER_SIZE:
+            score += config.SNIPER_POINTS
+            triggers.append(f"🎯 Sniper cluster ({sniper_cluster_size}w en <{config.SNIPER_TIME_WINDOW_SEC}s)")
 
         return AlertCandidate(
             trade=trade,

@@ -1097,6 +1097,79 @@ class Database:
                 address.lower(),
             )
 
+    # ── Wallet Baskets ───────────────────────────────────────────────
+
+    async def get_wallet_category_profile(self, address: str) -> dict:
+        """Obtener el perfil de categorías de una wallet (en qué categorías suele operar)."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT m.category, COUNT(*) as trade_count, SUM(t.size) as total_vol
+                FROM trades t
+                JOIN markets m ON m.condition_id = t.market_id
+                WHERE t.wallet_address = $1 AND m.category IS NOT NULL
+                GROUP BY m.category
+                ORDER BY trade_count DESC
+            """, address.lower())
+            total = sum(r["trade_count"] for r in rows) or 1
+            return {
+                "categories": {
+                    r["category"]: {
+                        "count": r["trade_count"],
+                        "volume": float(r["total_vol"] or 0),
+                        "pct": round(r["trade_count"] / total * 100, 1),
+                    }
+                    for r in rows
+                },
+                "primary_category": rows[0]["category"] if rows else None,
+                "total_trades": total,
+            }
+
+    async def find_basket_wallets_in_market(self, market_id: str, market_category: str,
+                                             window_hours: int = 24) -> list[dict]:
+        """Encontrar wallets que normalmente NO operan en esta categoría pero apostaron aquí."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                WITH wallet_trades AS (
+                    SELECT t.wallet_address, COUNT(*) as total_trades,
+                           COUNT(CASE WHEN m.category = $2 THEN 1 END) as cat_trades
+                    FROM trades t
+                    JOIN markets m ON m.condition_id = t.market_id
+                    WHERE t.wallet_address IN (
+                        SELECT DISTINCT wallet_address FROM trades
+                        WHERE market_id = $1
+                          AND timestamp > NOW() - ($3 || ' hours')::INTERVAL
+                    )
+                    AND m.category IS NOT NULL
+                    GROUP BY t.wallet_address
+                    HAVING COUNT(*) >= 5
+                )
+                SELECT wallet_address, total_trades, cat_trades,
+                       ROUND(cat_trades::numeric / NULLIF(total_trades, 0) * 100, 1) as cat_pct
+                FROM wallet_trades
+                WHERE cat_trades::float / NULLIF(total_trades, 0) < 0.15
+                ORDER BY total_trades DESC
+                LIMIT 20
+            """, market_id, market_category.lower() if market_category else "", str(window_hours))
+            return [dict(r) for r in rows]
+
+    # ── Sniper DBSCAN ────────────────────────────────────────────────
+
+    async def get_trades_for_sniper_scan(self, market_id: str, side: str,
+                                          outcome: str, window_minutes: int = 10,
+                                          min_size: float = 500) -> list[dict]:
+        """Obtener trades recientes de un mercado para análisis DBSCAN."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT wallet_address, size, timestamp,
+                       EXTRACT(EPOCH FROM timestamp) as ts_epoch
+                FROM trades
+                WHERE market_id = $1 AND side = $2 AND outcome = $3
+                  AND timestamp > NOW() - ($4 || ' minutes')::INTERVAL
+                  AND size >= $5
+                ORDER BY timestamp ASC
+            """, market_id, side, outcome, str(window_minutes), min_size)
+            return [dict(r) for r in rows]
+
     # ── Crypto Arb Signals ────────────────────────────────────────────
 
     async def record_crypto_signal(self, signal: dict) -> int:

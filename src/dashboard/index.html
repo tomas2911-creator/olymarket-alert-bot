@@ -123,6 +123,50 @@
             </div>
         </div>
 
+        <div id="cfg-section-baskets" class="hidden mt-4 pt-4 border-t border-orange-500/30">
+            <h4 class="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-3">Opciones Wallet Baskets</h4>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Min Trades Wallet</label>
+                    <input type="number" id="cfg-bk-min-trades" min="2" max="20" step="1" class="w-full bg-gray-800/70 border border-orange-600/50 rounded-lg px-3 py-2 text-sm font-mono text-orange-300 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Shift Threshold (%)</label>
+                    <input type="number" id="cfg-bk-threshold" min="0.05" max="0.5" step="0.05" class="w-full bg-gray-800/70 border border-orange-600/50 rounded-lg px-3 py-2 text-sm font-mono text-orange-300 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Puntos Basket</label>
+                    <input type="number" id="cfg-bk-points" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-orange-600/50 rounded-lg px-3 py-2 text-sm font-mono text-orange-300 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Min Cross-Basket</label>
+                    <input type="number" id="cfg-bk-cross-min" min="1" max="10" step="1" class="w-full bg-gray-800/70 border border-orange-600/50 rounded-lg px-3 py-2 text-sm font-mono text-orange-300 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                </div>
+            </div>
+        </div>
+
+        <div id="cfg-section-dbscan" class="hidden mt-4 pt-4 border-t border-red-500/30">
+            <h4 class="text-xs font-semibold text-red-400 uppercase tracking-wider mb-3">Opciones Sniper DBSCAN</h4>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Ventana Temporal (seg)</label>
+                    <input type="number" id="cfg-sn-window" min="10" max="600" step="10" class="w-full bg-gray-800/70 border border-red-600/50 rounded-lg px-3 py-2 text-sm font-mono text-red-300 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Min Cluster Size</label>
+                    <input type="number" id="cfg-sn-min-cluster" min="2" max="10" step="1" class="w-full bg-gray-800/70 border border-red-600/50 rounded-lg px-3 py-2 text-sm font-mono text-red-300 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Min Trade Size ($)</label>
+                    <input type="number" id="cfg-sn-min-size" min="100" max="5000" step="100" class="w-full bg-gray-800/70 border border-red-600/50 rounded-lg px-3 py-2 text-sm font-mono text-red-300 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Puntos Sniper</label>
+                    <input type="number" id="cfg-sn-points" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-red-600/50 rounded-lg px-3 py-2 text-sm font-mono text-red-300 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500">
+                </div>
+            </div>
+        </div>
+
         <div id="cfg-section-crypto" class="hidden mt-4 pt-4 border-t border-yellow-500/30">
             <h4 class="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-2">Crypto Arb</h4>
             <p class="text-xs text-gray-500">Config detallada en la pestaña <strong class="text-yellow-300">₿ Crypto Arb → Config</strong></p>
@@ -743,9 +787,13 @@ function toggleModuleSection(){
     // Mostrar/ocultar secciones de config según checkbox
     const ob=document.getElementById('ft-orderbook').checked;
     const mc=document.getElementById('ft-mclass').checked;
+    const bk=document.getElementById('ft-baskets').checked;
+    const db=document.getElementById('ft-dbscan').checked;
     const cr=document.getElementById('ft-crypto').checked;
     document.getElementById('cfg-section-orderbook').classList.toggle('hidden',!ob);
     document.getElementById('cfg-section-mclass').classList.toggle('hidden',!mc);
+    document.getElementById('cfg-section-baskets').classList.toggle('hidden',!bk);
+    document.getElementById('cfg-section-dbscan').classList.toggle('hidden',!db);
     document.getElementById('cfg-section-crypto').classList.toggle('hidden',!cr);
     // Estilo visual de labels activos/inactivos
     const pairs=[['ft-orderbook','ft-orderbook-label'],['ft-mclass','ft-mclass-label'],['ft-baskets','ft-baskets-label'],['ft-dbscan','ft-dbscan-label'],['ft-crypto','ft-crypto-label']];
@@ -787,6 +835,16 @@ async function loadConfig(){
     document.getElementById('cfg-niche-liq').value=c.niche_max_liquidity||50000;
     document.getElementById('cfg-niche-mult').value=c.niche_score_multiplier||1.5;
     document.getElementById('cfg-max-markets').value=c.max_markets||50;
+    // Wallet Baskets
+    document.getElementById('cfg-bk-min-trades').value=c.basket_min_trades||5;
+    document.getElementById('cfg-bk-threshold').value=c.basket_shift_threshold||0.15;
+    document.getElementById('cfg-bk-points').value=c.basket_points||3;
+    document.getElementById('cfg-bk-cross-min').value=c.basket_cross_min||2;
+    // Sniper DBSCAN
+    document.getElementById('cfg-sn-window').value=c.sniper_time_window||120;
+    document.getElementById('cfg-sn-min-cluster').value=c.sniper_min_cluster||3;
+    document.getElementById('cfg-sn-min-size').value=c.sniper_min_size||500;
+    document.getElementById('cfg-sn-points').value=c.sniper_points||4;
     // Categorías excluidas
     const excluded=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase());
     const cont=document.getElementById('cfg-categories');
@@ -845,6 +903,14 @@ async function saveConfig(){
         niche_max_liquidity:parseInt(document.getElementById('cfg-niche-liq').value)||50000,
         niche_score_multiplier:parseFloat(document.getElementById('cfg-niche-mult').value)||1.5,
         max_markets:parseInt(document.getElementById('cfg-max-markets').value)||50,
+        basket_min_trades:parseInt(document.getElementById('cfg-bk-min-trades').value)||5,
+        basket_shift_threshold:parseFloat(document.getElementById('cfg-bk-threshold').value)||0.15,
+        basket_points:parseInt(document.getElementById('cfg-bk-points').value)||3,
+        basket_cross_min:parseInt(document.getElementById('cfg-bk-cross-min').value)||2,
+        sniper_time_window:parseInt(document.getElementById('cfg-sn-window').value)||120,
+        sniper_min_cluster:parseInt(document.getElementById('cfg-sn-min-cluster').value)||3,
+        sniper_min_size:parseInt(document.getElementById('cfg-sn-min-size').value)||500,
+        sniper_points:parseInt(document.getElementById('cfg-sn-points').value)||4,
     };
     const btn=document.querySelector('[onclick="saveConfig()"]');
     btn.textContent='Guardando...';btn.disabled=true;

@@ -94,6 +94,21 @@ NICHE_MAX_LIQUIDITY = _mclass.get("niche_max_liquidity", 50000)
 NICHE_SCORE_MULTIPLIER = _mclass.get("niche_score_multiplier", 1.5)
 MAINSTREAM_CATEGORIES = set(_mclass.get("mainstream_categories", ["politics", "sports", "crypto-prices"]))
 
+# === Wallet Baskets ===
+_baskets = _yaml.get("wallet_baskets", {})
+BASKET_MIN_WALLET_TRADES = _baskets.get("min_wallet_trades", 5)
+BASKET_CATEGORY_SHIFT_THRESHOLD = _baskets.get("category_shift_threshold", 0.15)
+BASKET_POINTS = _baskets.get("basket_points", 3)
+BASKET_CROSS_MIN = _baskets.get("cross_basket_min", 2)
+
+# === Sniper DBSCAN ===
+_sniper = _yaml.get("sniper_dbscan", {})
+SNIPER_TIME_WINDOW_SEC = _sniper.get("time_window_sec", 120)
+SNIPER_MIN_CLUSTER_SIZE = _sniper.get("min_cluster_size", 3)
+SNIPER_MIN_TRADE_SIZE = _sniper.get("min_trade_size", 500)
+SNIPER_SCAN_WINDOW_MIN = _sniper.get("scan_window_minutes", 10)
+SNIPER_POINTS = _sniper.get("sniper_points", 4)
+
 # === Crypto Arb ===
 _crypto = _yaml.get("crypto_arb", {})
 CRYPTO_ARB_MODE = _crypto.get("mode", "alert")

@@ -134,6 +134,14 @@ class ConfigUpdate(BaseModel):
     niche_max_liquidity: int | None = None
     niche_score_multiplier: float | None = None
     max_markets: int | None = None
+    basket_min_trades: int | None = None
+    basket_shift_threshold: float | None = None
+    basket_points: int | None = None
+    basket_cross_min: int | None = None
+    sniper_time_window: int | None = None
+    sniper_min_cluster: int | None = None
+    sniper_min_size: int | None = None
+    sniper_points: int | None = None
 
 
 @router.get("/api/config")
@@ -157,6 +165,14 @@ async def get_config(request: Request):
         "niche_max_liquidity": config.NICHE_MAX_LIQUIDITY,
         "niche_score_multiplier": config.NICHE_SCORE_MULTIPLIER,
         "max_markets": config.MAX_MARKETS,
+        "basket_min_trades": config.BASKET_MIN_WALLET_TRADES,
+        "basket_shift_threshold": config.BASKET_CATEGORY_SHIFT_THRESHOLD,
+        "basket_points": config.BASKET_POINTS,
+        "basket_cross_min": config.BASKET_CROSS_MIN,
+        "sniper_time_window": config.SNIPER_TIME_WINDOW_SEC,
+        "sniper_min_cluster": config.SNIPER_MIN_CLUSTER_SIZE,
+        "sniper_min_size": config.SNIPER_MIN_TRADE_SIZE,
+        "sniper_points": config.SNIPER_POINTS,
     }
 
 
@@ -199,6 +215,22 @@ async def update_config(request: Request, body: ConfigUpdate):
         config.NICHE_SCORE_MULTIPLIER = body.niche_score_multiplier
     if body.max_markets is not None:
         config.MAX_MARKETS = body.max_markets
+    if body.basket_min_trades is not None:
+        config.BASKET_MIN_WALLET_TRADES = body.basket_min_trades
+    if body.basket_shift_threshold is not None:
+        config.BASKET_CATEGORY_SHIFT_THRESHOLD = body.basket_shift_threshold
+    if body.basket_points is not None:
+        config.BASKET_POINTS = body.basket_points
+    if body.basket_cross_min is not None:
+        config.BASKET_CROSS_MIN = body.basket_cross_min
+    if body.sniper_time_window is not None:
+        config.SNIPER_TIME_WINDOW_SEC = body.sniper_time_window
+    if body.sniper_min_cluster is not None:
+        config.SNIPER_MIN_CLUSTER_SIZE = body.sniper_min_cluster
+    if body.sniper_min_size is not None:
+        config.SNIPER_MIN_TRADE_SIZE = body.sniper_min_size
+    if body.sniper_points is not None:
+        config.SNIPER_POINTS = body.sniper_points
     if data:
         await db.set_config_bulk(data)
     return {"status": "ok", "updated": list(data.keys())}

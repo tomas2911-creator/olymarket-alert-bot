@@ -6,8 +6,8 @@
 features:
   orderbook_depth: true           # Análisis de profundidad del order book en scoring
   market_classification: true     # Clasificar mercados nicho vs mainstream
-  wallet_baskets: false           # Grupos de wallets por tema (requiere datos históricos)
-  sniper_dbscan: false            # Clustering avanzado DBSCAN
+  wallet_baskets: true            # Grupos de wallets por tema
+  sniper_dbscan: true             # Clustering avanzado DBSCAN
   crypto_arb: true                # Bot de arbitraje crypto 15-min up/down
 
 # ══════════════════════════════════════════════════════════════
@@ -83,6 +83,25 @@ market_classification:
     - "politics"
     - "sports"
     - "crypto-prices"
+
+# ══════════════════════════════════════════════════════════════
+# WALLET BASKETS — Agrupar wallets por comportamiento
+# ══════════════════════════════════════════════════════════════
+wallet_baskets:
+  min_wallet_trades: 5              # Mínimo de trades para tener perfil
+  category_shift_threshold: 0.15    # Si <15% de trades en la categoría = fuera de perfil
+  basket_points: 3                  # Puntos extra si wallet opera fuera de categoría
+  cross_basket_min: 2               # Mínimo wallets fuera de categoría para alerta
+
+# ══════════════════════════════════════════════════════════════
+# SNIPER DBSCAN — Clustering avanzado para coordinación
+# ══════════════════════════════════════════════════════════════
+sniper_dbscan:
+  time_window_sec: 120              # Ventana temporal para considerar trades "cercanos"
+  min_cluster_size: 3               # Mínimo wallets para formar cluster
+  min_trade_size: 500               # Tamaño mínimo de trade para análisis
+  scan_window_minutes: 10           # Ventana de escaneo hacia atrás
+  sniper_points: 4                  # Puntos extra si se detecta cluster coordinado
 
 # ══════════════════════════════════════════════════════════════
 # CRYPTO ARB — Bot de arbitraje crypto 15-min up/down

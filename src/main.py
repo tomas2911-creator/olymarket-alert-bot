@@ -255,14 +255,51 @@ class PolymarketAlertBot:
             smart_cluster_count = await self.db.count_smart_wallets_same_side(
                 trade.market_id, trade.side, trade.outcome, trade.wallet_address)
         except Exception:
-            pass  # No bloquear análisis si falla algún contexto extra
+            pass
 
-        # Analizar con todas las señales (v4.0)
+        # v6.0: Wallet Baskets — detectar si wallet opera fuera de categoría
+        wallet_category_shift = False
+        cross_basket_count = 0
+        if config.FEATURE_WALLET_BASKETS and trade.market_category:
+            try:
+                profile = await self.db.get_wallet_category_profile(trade.wallet_address)
+                if profile["total_trades"] >= config.BASKET_MIN_WALLET_TRADES:
+                    cat_info = profile["categories"].get(trade.market_category)
+                    cat_pct = (cat_info["pct"] / 100) if cat_info else 0
+                    if cat_pct < config.BASKET_CATEGORY_SHIFT_THRESHOLD:
+                        wallet_category_shift = True
+                    # Cuántas wallets fuera de categoría operan en este mercado
+                    cross_wallets = await self.db.find_basket_wallets_in_market(
+                        trade.market_id, trade.market_category)
+                    cross_basket_count = len(cross_wallets)
+            except Exception:
+                pass
+
+        # v6.0: Sniper DBSCAN — detectar cluster temporal estrecho
+        sniper_cluster_size = 0
+        if config.FEATURE_SNIPER_DBSCAN:
+            try:
+                trades_nearby = await self.db.get_trades_for_sniper_scan(
+                    trade.market_id, trade.side, trade.outcome,
+                    window_minutes=config.SNIPER_SCAN_WINDOW_MIN,
+                    min_size=config.SNIPER_MIN_TRADE_SIZE,
+                )
+                if len(trades_nearby) >= config.SNIPER_MIN_CLUSTER_SIZE:
+                    # DBSCAN simplificado: agrupar trades por ventana temporal
+                    sniper_cluster_size = self._dbscan_cluster(
+                        trades_nearby, config.SNIPER_TIME_WINDOW_SEC)
+            except Exception:
+                pass
+
+        # Analizar con todas las señales (v6.0)
         candidate = self.analyzer.analyze(
             trade, wallet_stats, market_baseline, cluster,
             accumulation_info=accumulation_info,
             market_price=market_price,
             smart_cluster_count=smart_cluster_count,
+            wallet_category_shift=wallet_category_shift,
+            cross_basket_count=cross_basket_count,
+            sniper_cluster_size=sniper_cluster_size,
         )
 
         # Copy-trade: si wallet está en watchlist, alertar aunque score sea bajo
@@ -338,6 +375,39 @@ class PolymarketAlertBot:
                         market=trade.market_slug,
                         score=candidate.score,
                         copy_trade=is_copy)
+
+    # ── Sniper DBSCAN ──────────────────────────────────────────────────
+
+    def _dbscan_cluster(self, trades: list[dict], time_window_sec: float) -> int:
+        """DBSCAN simplificado: encontrar el cluster más grande de trades
+        donde cada trade está a menos de time_window_sec del siguiente.
+        Retorna el tamaño del cluster más grande (wallets únicas).
+        """
+        if not trades:
+            return 0
+        # Extraer timestamps y wallets
+        points = [(t["ts_epoch"], t["wallet_address"]) for t in trades if t.get("ts_epoch")]
+        if len(points) < 2:
+            return 0
+        points.sort(key=lambda x: x[0])
+        # Encontrar clusters de trades cercanos en tiempo
+        clusters = []
+        current_cluster = {points[0][1]}
+        last_ts = points[0][0]
+        for i in range(1, len(points)):
+            ts, wallet = points[i]
+            if ts - last_ts <= time_window_sec:
+                current_cluster.add(wallet)
+            else:
+                if len(current_cluster) >= 2:
+                    clusters.append(current_cluster)
+                current_cluster = {wallet}
+            last_ts = ts
+        if len(current_cluster) >= 2:
+            clusters.append(current_cluster)
+        if not clusters:
+            return 0
+        return max(len(c) for c in clusters)
 
     # ── Baselines ─────────────────────────────────────────────────────
 
