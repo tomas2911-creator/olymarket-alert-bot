@@ -181,20 +181,18 @@ class PolymarketClient:
             return []
 
     async def get_market_by_id(self, condition_id: str) -> Optional[dict]:
-        """Obtener datos de un mercado específico (con cache)."""
+        """Obtener datos de un mercado específico (con cache) via CLOB API."""
         if condition_id in self._market_cache:
             return self._market_cache[condition_id]
         try:
             response = await self.client.get(
-                f"{config.GAMMA_API_URL}/markets",
-                params={"condition_id": condition_id},
+                f"{config.CLOB_API_URL}/markets/{condition_id}",
             )
             if response.status_code == 200:
-                data = response.json()
-                item = data[0] if isinstance(data, list) and len(data) > 0 else data if isinstance(data, dict) else None
-                if not item:
+                item = response.json()
+                if not item or not item.get("question"):
                     return None
-                end_str = item.get("endDate") or item.get("end_date_iso")
+                end_str = item.get("end_date_iso")
                 end_date = None
                 if end_str:
                     try:
@@ -204,7 +202,7 @@ class PolymarketClient:
                 tags = item.get("tags", [])
                 market_info = {
                     "question": item.get("question", ""),
-                    "slug": item.get("slug", ""),
+                    "slug": item.get("market_slug", ""),
                     "end_date": end_date,
                     "category": tags[0] if tags else None,
                 }
@@ -215,42 +213,25 @@ class PolymarketClient:
         return None
 
     async def check_market_resolution(self, condition_id: str) -> Optional[str]:
-        """Verificar si un mercado se resolvió. Devuelve 'Yes'/'No'/None."""
+        """Verificar si un mercado se resolvió. Devuelve el outcome ganador o None."""
         try:
-            # Gamma API usa query params, devuelve array
+            # CLOB API acepta conditionId directamente y tiene tokens[].winner
             response = await self.client.get(
-                f"{config.GAMMA_API_URL}/markets",
-                params={"condition_id": condition_id},
+                f"{config.CLOB_API_URL}/markets/{condition_id}",
             )
             if response.status_code == 200:
                 data = response.json()
-                # Puede ser array o dict
-                item = data[0] if isinstance(data, list) and len(data) > 0 else data if isinstance(data, dict) else None
-                if not item:
-                    return None
-                is_resolved = item.get("resolved") == True or item.get("closed") == True
-                if is_resolved:
-                    # Buscar resultado en varios campos posibles
-                    outcome = (
-                        item.get("outcome") or
-                        item.get("resolution") or
-                        item.get("winningOutcome") or
-                        ""
-                    )
-                    if outcome:
-                        return str(outcome)
-                    # Si está cerrado pero sin outcome explícito, intentar con outcomePrices
-                    prices_str = item.get("outcomePrices", "")
-                    if prices_str:
-                        try:
-                            prices = json.loads(prices_str) if isinstance(prices_str, str) else prices_str
-                            if isinstance(prices, list) and len(prices) >= 2:
-                                if float(prices[0]) >= 0.95:
-                                    return "Yes"
-                                elif float(prices[1]) >= 0.95:
-                                    return "No"
-                        except Exception:
-                            pass
+                if not data.get("closed"):
+                    return None  # Mercado aún abierto
+                # Buscar token ganador
+                tokens = data.get("tokens", [])
+                for token in tokens:
+                    if token.get("winner") is True:
+                        return str(token.get("outcome", "Yes"))
+                # Si cerrado pero sin winner explícito, verificar por precio
+                for token in tokens:
+                    if float(token.get("price", 0)) >= 0.95:
+                        return str(token.get("outcome", "Yes"))
         except Exception as e:
             logger.warning("error_check_resolution", condition_id=condition_id[:20], error=str(e))
         return None
@@ -258,29 +239,22 @@ class PolymarketClient:
     # ── Market Price (para price impact) ─────────────────────────────
 
     async def get_market_price(self, condition_id: str, outcome: str = "Yes") -> Optional[float]:
-        """Obtener precio actual de un outcome en un mercado."""
+        """Obtener precio actual de un outcome en un mercado via CLOB API."""
         try:
             response = await self.client.get(
-                f"{config.GAMMA_API_URL}/markets",
-                params={"condition_id": condition_id},
+                f"{config.CLOB_API_URL}/markets/{condition_id}",
             )
             if response.status_code == 200:
                 data = response.json()
-                item = data[0] if isinstance(data, list) and len(data) > 0 else data if isinstance(data, dict) else None
-                if not item:
-                    return None
-                # outcomePrices es un string como "[0.65, 0.35]"
-                prices_str = item.get("outcomePrices", "")
-                if prices_str:
-                    try:
-                        prices = json.loads(prices_str) if isinstance(prices_str, str) else prices_str
-                        if isinstance(prices, list) and len(prices) >= 2:
-                            return float(prices[0]) if outcome == "Yes" else float(prices[1])
-                    except Exception:
-                        pass
-                # Fallback: usar bestAsk/bestBid
-                if outcome == "Yes":
-                    return float(item.get("bestAsk", 0) or item.get("lastTradePrice", 0) or 0)
+                tokens = data.get("tokens", [])
+                # Buscar token que matchea el outcome pedido
+                for token in tokens:
+                    if token.get("outcome", "").lower() == outcome.lower():
+                        return float(token.get("price", 0))
+                # Fallback: primer token = Yes, segundo = No
+                if tokens:
+                    idx = 0 if outcome == "Yes" else (1 if len(tokens) > 1 else 0)
+                    return float(tokens[idx].get("price", 0))
         except Exception:
             pass
         return None
