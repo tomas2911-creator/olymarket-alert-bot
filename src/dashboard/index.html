@@ -248,7 +248,22 @@
         </div>
 
         <!-- Feed Panel -->
-        <div id="panel-feed" class="hidden overflow-x-auto">
+        <div id="panel-feed" class="hidden">
+            <div class="px-4 py-2 flex gap-2 items-center border-b border-gray-800/50">
+                <span class="text-xs text-gray-400">Min size:</span>
+                <select id="feed-min-size" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none" onchange="filterFeed()">
+                    <option value="0">Todos</option>
+                    <option value="100">$100+</option>
+                    <option value="500">$500+</option>
+                    <option value="1000">$1K+</option>
+                    <option value="5000">$5K+</option>
+                    <option value="10000">$10K+</option>
+                    <option value="50000">$50K+</option>
+                </select>
+                <input type="text" id="feed-search" placeholder="Buscar mercado o wallet..." class="bg-gray-800/50 rounded px-3 py-1.5 text-xs text-gray-200 w-52 focus:outline-none focus:ring-1 focus:ring-purple-500" oninput="filterFeed()">
+                <span id="feed-count" class="text-xs text-gray-500 ml-auto"></span>
+            </div>
+            <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
                     <th class="px-4 py-2 text-left">Hora</th>
@@ -262,6 +277,7 @@
                 <tbody id="feed-body"></tbody>
             </table>
             <div id="feed-empty" class="hidden text-center py-10 text-gray-500">Sin trades aun.</div>
+            </div>
         </div>
     </div>
 </main>
@@ -514,12 +530,24 @@ async function loadMarkets(){
 }
 
 // ── Load Feed ──
+let allFeedTrades = [];
 async function loadFeed(){
-    const trades=await fetchJson('/api/trades/recent?limit=100');
+    allFeedTrades=await fetchJson('/api/trades/recent?limit=200')||[];
+    filterFeed();
+}
+function filterFeed(){
+    const minSize=parseInt(document.getElementById('feed-min-size').value)||0;
+    const q=(document.getElementById('feed-search').value||'').toLowerCase();
+    const filtered=allFeedTrades.filter(t=>{
+        if(minSize&&(t.size||0)<minSize)return false;
+        if(q&&!(t.market_question||'').toLowerCase().includes(q)&&!(t.wallet_address||'').toLowerCase().includes(q)&&!(t.wallet_name||'').toLowerCase().includes(q))return false;
+        return true;
+    });
     const body=document.getElementById('feed-body'),empty=document.getElementById('feed-empty');
-    if(!trades||trades.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    document.getElementById('feed-count').textContent=`${filtered.length}/${allFeedTrades.length} trades`;
+    if(filtered.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
     empty.classList.add('hidden');
-    body.innerHTML=trades.map(t=>`
+    body.innerHTML=filtered.map(t=>`
         <tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
             <td class="px-4 py-2 text-xs text-gray-400 whitespace-nowrap">${fmtTime(t.timestamp)}</td>
             <td class="px-4 py-2 max-w-xs truncate text-xs">
