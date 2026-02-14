@@ -240,7 +240,11 @@ async def update_features(body: FeaturesUpdate):
 @router.get("/api/crypto-arb/stats")
 async def crypto_arb_stats(request: Request):
     db = request.app.state.db
-    db_stats = await db.get_crypto_arb_stats()
+    try:
+        db_stats = await db.get_crypto_arb_stats()
+    except Exception:
+        db_stats = {"total_signals": 0, "resolved": 0, "wins": 0, "win_rate": 0,
+                    "total_pnl": 0, "signals_24h": 0, "pnl_24h": 0, "by_coin": []}
     bot = request.app.state.bot
     live_stats = {}
     if bot and hasattr(bot, "crypto_detector") and bot.crypto_detector:
@@ -254,7 +258,10 @@ async def crypto_arb_stats(request: Request):
 @router.get("/api/crypto-arb/signals")
 async def crypto_arb_signals(request: Request, limit: int = 100, coin: str = None):
     db = request.app.state.db
-    return await db.get_crypto_signals_history(limit=limit, coin=coin)
+    try:
+        return await db.get_crypto_signals_history(limit=limit, coin=coin)
+    except Exception:
+        return []
 
 
 @router.get("/api/crypto-arb/live")
