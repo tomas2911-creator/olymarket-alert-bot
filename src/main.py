@@ -51,6 +51,8 @@ class PolymarketAlertBot:
         self.trades_processed = 0
         self.alerts_sent = 0
         self._running = False
+        # Debug counters
+        self._debug = {"too_small": 0, "scored": 0, "low_score": 0, "excluded_cat": 0, "cooldown": 0, "alerted": 0, "last_scores": []}
         self._watchlist: set[str] = set()
         self._excluded_categories: set[str] = set()
         # Crypto Arb (inicializado solo si feature está habilitada)
@@ -239,6 +241,7 @@ class PolymarketAlertBot:
         # Skip trades pequeños para análisis (excepto wallets en watchlist)
         is_watched = trade.wallet_address.lower() in self._watchlist
         if trade.size < config.MIN_SIZE_USD and not is_watched:
+            self._debug["too_small"] += 1
             return
 
         # Obtener contexto
@@ -319,7 +322,15 @@ class PolymarketAlertBot:
         is_copy = trade.wallet_address.lower() in self._watchlist
         should_alert = self.analyzer.should_alert(candidate) or is_copy
 
+        self._debug["scored"] += 1
+        self._debug["last_scores"] = (self._debug["last_scores"] + [{
+            "score": candidate.score, "size": trade.size,
+            "triggers": candidate.triggers[:3], "market": (trade.market_question or "")[:50],
+            "slug": (trade.market_slug or "")[:40], "cat": trade.market_category or "",
+        }])[-20:]
+
         if not should_alert:
+            self._debug["low_score"] += 1
             return
 
         # Filtrar por categorías excluidas (cacheadas en memoria)
@@ -327,18 +338,27 @@ class PolymarketAlertBot:
             excluded_cats = self._excluded_categories
             market_cat = (trade.market_category or "").lower()
             if market_cat and market_cat in excluded_cats:
+                self._debug["excluded_cat"] += 1
+                print(f"DEBUG EXCLUDED cat={market_cat} slug={trade.market_slug} score={candidate.score}", flush=True)
                 return
             market_slug_lower = (trade.market_slug or "").lower()
-            if any(cat in market_slug_lower for cat in excluded_cats if len(cat) > 2):
+            matched_slug = [cat for cat in excluded_cats if len(cat) > 2 and cat in market_slug_lower]
+            if matched_slug:
+                self._debug["excluded_cat"] += 1
+                print(f"DEBUG EXCLUDED slug_match={matched_slug} slug={trade.market_slug} score={candidate.score}", flush=True)
                 return
             q_lower = (trade.market_question or "").lower()
             sport_keywords = {"nba", "nfl", "nhl", "mlb", "mls", "soccer", "football", "basketball", "baseball", "hockey", "esports"}
             matched_keywords = excluded_cats & sport_keywords
             if any(kw in q_lower for kw in matched_keywords):
+                self._debug["excluded_cat"] += 1
+                print(f"DEBUG EXCLUDED keyword in question: {trade.market_question[:60]} score={candidate.score}", flush=True)
                 return
 
         # Cooldown
         if not await self.db.should_alert(trade.wallet_address, trade.market_id, config.COOLDOWN_HOURS):
+            self._debug["cooldown"] += 1
+            print(f"DEBUG COOLDOWN wallet={trade.wallet_address[:10]} market={trade.market_slug} score={candidate.score}", flush=True)
             return
 
         # Enviar alerta (copy-trade o anomalía)

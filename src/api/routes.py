@@ -40,6 +40,28 @@ async def get_stats(request: Request):
     return stats
 
 
+@router.get("/api/debug")
+async def get_debug(request: Request):
+    bot = request.app.state.bot
+    if not bot:
+        return {"error": "bot not running"}
+    return {
+        "trades_processed": bot.trades_processed,
+        "alerts_sent": bot.alerts_sent,
+        "excluded_categories": list(bot._excluded_categories),
+        "watchlist_size": len(bot._watchlist),
+        "config": {
+            "MIN_SIZE_USD": config.MIN_SIZE_USD,
+            "LARGE_SIZE_USD": config.LARGE_SIZE_USD,
+            "ALERT_THRESHOLD": config.ALERT_THRESHOLD,
+            "LARGE_SIZE_POINTS": config.LARGE_SIZE_POINTS,
+            "COOLDOWN_HOURS": config.COOLDOWN_HOURS,
+        },
+        "debug_counters": {k: v for k, v in bot._debug.items() if k != "last_scores"},
+        "last_scored_trades": bot._debug.get("last_scores", []),
+    }
+
+
 # ── Alerts ───────────────────────────────────────────────────────────
 
 @router.get("/api/alerts")
