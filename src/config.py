@@ -64,5 +64,12 @@ _alerts = _yaml.get("alerts", {})
 COOLDOWN_HOURS = _alerts.get("cooldown_hours", 6)
 MAX_ALERTS_PER_HOUR = _alerts.get("max_alerts_per_hour", 20)
 
+# === Smart Money ===
+SMART_MONEY_THRESHOLD = int(os.getenv("SMART_MONEY_THRESHOLD", 50))
+COPY_TRADE_MIN_RESOLVED = int(os.getenv("COPY_TRADE_MIN_RESOLVED", 3))
+
+# === Polygonscan (opcional) ===
+POLYGONSCAN_API_KEY = os.getenv("POLYGONSCAN_API_KEY", "")
+
 # === Dashboard ===
 DASHBOARD_PORT = int(os.getenv("PORT", 8080))

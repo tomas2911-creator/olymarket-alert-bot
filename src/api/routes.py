@@ -154,6 +154,28 @@ async def update_config(request: Request, body: ConfigUpdate):
     return {"status": "ok", "updated": list(data.keys())}
 
 
+# ── Leaderboard ─────────────────────────────────────────────────────
+
+@router.get("/api/leaderboard")
+async def get_leaderboard(request: Request, limit: int = 30, sort: str = "pnl"):
+    db = request.app.state.db
+    return await db.get_leaderboard(limit=limit, sort_by=sort)
+
+
+# ── Coordination ────────────────────────────────────────────────────
+
+@router.get("/api/coordination")
+async def get_coordination(request: Request, limit: int = 30):
+    db = request.app.state.db
+    return await db.get_all_coordination(limit=limit)
+
+
+@router.get("/api/wallets/{address}/coordination")
+async def get_wallet_coordination(request: Request, address: str):
+    db = request.app.state.db
+    return await db.get_wallet_coordination(address)
+
+
 # ── Health ───────────────────────────────────────────────────────────
 
 @router.get("/api/health")

@@ -1,5 +1,6 @@
 """Cliente de API de Polymarket — Gamma (mercados) + Data API (trades)."""
 import httpx
+import json
 import re
 from datetime import datetime
 from typing import Optional
@@ -221,6 +222,32 @@ class PolymarketClient:
                     outcome = item.get("outcome", item.get("resolution", ""))
                     if outcome:
                         return str(outcome)
+        except Exception:
+            pass
+        return None
+
+    # ── Market Price (para price impact) ─────────────────────────────
+
+    async def get_market_price(self, condition_id: str, outcome: str = "Yes") -> Optional[float]:
+        """Obtener precio actual de un outcome en un mercado."""
+        try:
+            response = await self.client.get(
+                f"{config.GAMMA_API_URL}/markets/{condition_id}",
+            )
+            if response.status_code == 200:
+                item = response.json()
+                # outcomePrices es un string como "[0.65, 0.35]"
+                prices_str = item.get("outcomePrices", "")
+                if prices_str:
+                    try:
+                        prices = json.loads(prices_str) if isinstance(prices_str, str) else prices_str
+                        if isinstance(prices, list) and len(prices) >= 2:
+                            return float(prices[0]) if outcome == "Yes" else float(prices[1])
+                    except Exception:
+                        pass
+                # Fallback: usar bestAsk/bestBid
+                if outcome == "Yes":
+                    return float(item.get("bestAsk", 0) or item.get("lastTradePrice", 0) or 0)
         except Exception:
             pass
         return None

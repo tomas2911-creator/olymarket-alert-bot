@@ -130,8 +130,10 @@
     <div class="glass glow rounded-xl overflow-hidden">
         <div class="flex border-b border-gray-700/50 overflow-x-auto">
             <button onclick="showTab('alerts')" id="tab-alerts" class="tab-btn active px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">🚨 Alertas</button>
+            <button onclick="showTab('leaderboard')" id="tab-leaderboard" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">🏆 Leaderboard</button>
             <button onclick="showTab('wallets')" id="tab-wallets" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">👛 Wallets</button>
             <button onclick="showTab('markets')" id="tab-markets" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">📊 Mercados</button>
+            <button onclick="showTab('coordination')" id="tab-coordination" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">🔗 Coordinacion</button>
             <button onclick="showTab('feed')" id="tab-feed" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">⚡ Feed</button>
         </div>
 
@@ -160,6 +162,37 @@
                     <tbody id="alerts-body"></tbody>
                 </table>
                 <div id="alerts-empty" class="hidden text-center py-10 text-gray-500">No hay alertas aun. El bot esta monitoreando...</div>
+            </div>
+        </div>
+
+        <!-- Leaderboard Panel -->
+        <div id="panel-leaderboard" class="hidden">
+            <div class="px-4 py-2 flex gap-2 items-center border-b border-gray-800/50">
+                <span class="text-xs text-gray-400">Ordenar por:</span>
+                <select id="lb-sort" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none" onchange="loadLeaderboard()">
+                    <option value="pnl">PnL</option>
+                    <option value="roi">ROI %</option>
+                    <option value="score">Smart Money Score</option>
+                    <option value="winrate">Win Rate</option>
+                </select>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
+                        <th class="px-3 py-2 text-center">#</th>
+                        <th class="px-3 py-2 text-left">Wallet</th>
+                        <th class="px-3 py-2 text-center">SM Score</th>
+                        <th class="px-3 py-2 text-right">PnL</th>
+                        <th class="px-3 py-2 text-right">ROI</th>
+                        <th class="px-3 py-2 text-center">Win Rate</th>
+                        <th class="px-3 py-2 text-right">Volumen</th>
+                        <th class="px-3 py-2 text-center">Mercados</th>
+                        <th class="px-3 py-2 text-center">On-chain</th>
+                        <th class="px-3 py-2 text-center">Explorar</th>
+                    </tr></thead>
+                    <tbody id="lb-body"></tbody>
+                </table>
+                <div id="lb-empty" class="hidden text-center py-10 text-gray-500">Aun no hay datos de PnL. Se calculan cuando los mercados se resuelven.</div>
             </div>
         </div>
 
@@ -196,6 +229,22 @@
                 <tbody id="markets-body"></tbody>
             </table>
             <div id="markets-empty" class="hidden text-center py-10 text-gray-500">Sin mercados trackeados aun.</div>
+        </div>
+
+        <!-- Coordination Panel -->
+        <div id="panel-coordination" class="hidden overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
+                    <th class="px-4 py-2 text-left">Wallet A</th>
+                    <th class="px-4 py-2 text-left">Wallet B</th>
+                    <th class="px-4 py-2 text-center">Mercados Compartidos</th>
+                    <th class="px-4 py-2 text-center">Mismo Lado %</th>
+                    <th class="px-4 py-2 text-center">Avg Dif (seg)</th>
+                    <th class="px-4 py-2 text-center">Confianza</th>
+                </tr></thead>
+                <tbody id="coord-body"></tbody>
+            </table>
+            <div id="coord-empty" class="hidden text-center py-10 text-gray-500">No se detectaron wallets coordinadas aun. Se analiza cada hora.</div>
         </div>
 
         <!-- Feed Panel -->
@@ -235,12 +284,17 @@
             </div>
         </div>
         <!-- Wallet Stats -->
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
             <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Trades</div><div class="text-lg font-bold" id="wm-trades">-</div></div>
             <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Volumen</div><div class="text-lg font-bold" id="wm-volume">-</div></div>
-            <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Avg Size</div><div class="text-lg font-bold" id="wm-avg">-</div></div>
             <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Hit Rate</div><div class="text-lg font-bold" id="wm-hitrate">-</div></div>
             <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Mercados</div><div class="text-lg font-bold" id="wm-markets">-</div></div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">PnL Total</div><div class="text-lg font-bold" id="wm-pnl">-</div></div>
+            <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">ROI</div><div class="text-lg font-bold" id="wm-roi">-</div></div>
+            <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">Smart Money</div><div class="text-lg font-bold" id="wm-smart">-</div></div>
+            <div class="bg-gray-800/50 rounded-lg p-3"><div class="text-xs text-gray-400">On-chain</div><div class="text-sm font-bold" id="wm-onchain">-</div></div>
         </div>
         <!-- Wallet Trades -->
         <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Trades Recientes</h3>
@@ -276,7 +330,7 @@
 </div>
 
 <footer class="text-center text-gray-600 text-xs py-4">
-    Polymarket Insider Alert Bot v2.1 — Anomaly detection only. DYOR.
+    Polymarket Insider Alert Bot v3.0 — Smart Money Tracker. DYOR.
 </footer>
 
 <script>
@@ -304,12 +358,14 @@ function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
 // ── Tabs ──
 function showTab(t){
-    ['alerts','wallets','markets','feed'].forEach(id=>{
+    ['alerts','leaderboard','wallets','markets','coordination','feed'].forEach(id=>{
         document.getElementById('panel-'+id).classList.toggle('hidden',id!==t);
         document.getElementById('tab-'+id).classList.toggle('active',id===t);
     });
     if(t==='markets')loadMarkets();
     if(t==='feed')loadFeed();
+    if(t==='leaderboard')loadLeaderboard();
+    if(t==='coordination')loadCoordination();
 }
 
 // ── Config ──
@@ -482,6 +538,75 @@ async function loadFeed(){
     `).join('');
 }
 
+// ── Leaderboard ──
+async function loadLeaderboard(){
+    const sort=document.getElementById('lb-sort').value;
+    const data=await fetchJson(`/api/leaderboard?limit=30&sort=${sort}`);
+    const body=document.getElementById('lb-body'),empty=document.getElementById('lb-empty');
+    if(!data||data.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    empty.classList.add('hidden');
+    body.innerHTML=data.map((w,i)=>{
+        const resolved=(w.win_count||0)+(w.loss_count||0);
+        const wr=resolved>0?((w.win_count/resolved)*100).toFixed(0)+'%':'-';
+        const pnl=w.total_pnl||0;
+        const pnlClass=pnl>0?'text-green-400':pnl<0?'text-red-400':'text-gray-400';
+        const roi=w.roi_pct||0;
+        const roiClass=roi>0?'text-green-400':roi<0?'text-red-400':'text-gray-400';
+        const sm=w.smart_money_score||0;
+        const smClass=sm>=70?'text-yellow-400':sm>=50?'text-purple-400':sm>=30?'text-blue-400':'text-gray-500';
+        const watchBadge=w.is_watchlisted?'<span class="text-yellow-400 ml-1" title="Watchlisted">⭐</span>':'';
+        const name=w.pseudonym||w.name||shortW(w.address);
+        const chainAge=w.on_chain_first_tx?new Date(w.on_chain_first_tx).toLocaleDateString('es',{year:'2-digit',month:'short'}):'-';
+        const funder=w.on_chain_funded_by?`<span class="text-xs text-gray-500" title="${w.on_chain_funded_by}">${shortW(w.on_chain_funded_by)}</span>`:'<span class="text-gray-600">-</span>';
+        return`<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+            <td class="px-3 py-2 text-center text-gray-500 font-bold">${i+1}</td>
+            <td class="px-3 py-2 text-xs">
+                <button onclick="openWallet('${w.address}')" class="text-purple-400 hover:text-purple-300 transition font-medium">${name}</button>${watchBadge}
+                <div class="text-[10px] text-gray-500 font-mono">${shortW(w.address)}</div>
+            </td>
+            <td class="px-3 py-2 text-center"><span class="font-bold ${smClass}">${sm.toFixed(0)}</span></td>
+            <td class="px-3 py-2 text-right font-mono text-xs ${pnlClass}">${pnl>=0?'+':''}$${Math.abs(pnl).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+            <td class="px-3 py-2 text-right font-mono text-xs ${roiClass}">${roi>=0?'+':''}${roi.toFixed(1)}%</td>
+            <td class="px-3 py-2 text-center text-xs">${wr} <span class="text-gray-600">(${resolved})</span></td>
+            <td class="px-3 py-2 text-right font-mono text-xs">${fmtUsd(w.total_volume)}</td>
+            <td class="px-3 py-2 text-center text-xs">${w.correct_markets||0}/${resolved}</td>
+            <td class="px-3 py-2 text-center text-[10px]">${chainAge}<br>${funder}</td>
+            <td class="px-3 py-2 text-center flex gap-1 justify-center">
+                <a href="${polyProfile(w.address)}" target="_blank" class="explorer-link text-xs text-purple-400">PM</a>
+                <a href="${scanLink(w.address)}" target="_blank" class="explorer-link text-xs text-blue-400">PS</a>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ── Coordination ──
+async function loadCoordination(){
+    const data=await fetchJson('/api/coordination?limit=30');
+    const body=document.getElementById('coord-body'),empty=document.getElementById('coord-empty');
+    if(!data||data.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    empty.classList.add('hidden');
+    body.innerHTML=data.map(c=>{
+        const conf=c.confidence||0;
+        const confClass=conf>=70?'text-red-400':conf>=40?'text-yellow-400':'text-gray-400';
+        const nameA=c.name_a||shortW(c.wallet_a);
+        const nameB=c.name_b||shortW(c.wallet_b);
+        return`<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+            <td class="px-4 py-2 text-xs">
+                <button onclick="openWallet('${c.wallet_a}')" class="text-purple-400 hover:text-purple-300">${nameA}</button>
+                <div class="text-[10px] font-mono text-gray-500">${shortW(c.wallet_a)}</div>
+            </td>
+            <td class="px-4 py-2 text-xs">
+                <button onclick="openWallet('${c.wallet_b}')" class="text-purple-400 hover:text-purple-300">${nameB}</button>
+                <div class="text-[10px] font-mono text-gray-500">${shortW(c.wallet_b)}</div>
+            </td>
+            <td class="px-4 py-2 text-center font-bold text-purple-400">${c.shared_markets}</td>
+            <td class="px-4 py-2 text-center text-xs">${(c.same_side_pct||0).toFixed(0)}%</td>
+            <td class="px-4 py-2 text-center text-xs font-mono">${(c.avg_time_diff_sec||0).toFixed(0)}s</td>
+            <td class="px-4 py-2 text-center"><span class="font-bold ${confClass}">${conf.toFixed(0)}%</span></td>
+        </tr>`;
+    }).join('');
+}
+
 // ── Wallet Modal ──
 async function openWallet(addr){
     if(!addr)return;
@@ -503,9 +628,30 @@ async function openWallet(addr){
     const hr=total>0?((w.win_count/total)*100).toFixed(0)+'%':'-';
     document.getElementById('wm-trades').textContent=fmt(w.total_trades);
     document.getElementById('wm-volume').textContent=fmtUsd(w.total_volume);
-    document.getElementById('wm-avg').textContent=fmtUsd(w.avg_trade_size);
     document.getElementById('wm-hitrate').textContent=hr;
     document.getElementById('wm-markets').textContent=fmt(data.markets?.length||0);
+
+    // PnL, ROI, Smart Money, On-chain
+    const pnl=w.total_pnl||0;
+    const pnlEl=document.getElementById('wm-pnl');
+    pnlEl.textContent=(pnl>=0?'+':'')+fmtUsd(pnl);
+    pnlEl.className='text-lg font-bold '+(pnl>0?'text-green-400':pnl<0?'text-red-400':'text-gray-400');
+
+    const roi=w.roi_pct||0;
+    const roiEl=document.getElementById('wm-roi');
+    roiEl.textContent=(roi>=0?'+':'')+roi.toFixed(1)+'%';
+    roiEl.className='text-lg font-bold '+(roi>0?'text-green-400':roi<0?'text-red-400':'text-gray-400');
+
+    const sm=w.smart_money_score||0;
+    const smEl=document.getElementById('wm-smart');
+    smEl.textContent=sm.toFixed(0)+'/100'+(w.is_watchlisted?' ⭐':'');
+    smEl.className='text-lg font-bold '+(sm>=70?'text-yellow-400':sm>=50?'text-purple-400':sm>=30?'text-blue-400':'text-gray-500');
+
+    const chainEl=document.getElementById('wm-onchain');
+    if(w.on_chain_first_tx){
+        const age=new Date(w.on_chain_first_tx).toLocaleDateString('es',{year:'numeric',month:'short',day:'numeric'});
+        chainEl.textContent=age;
+    }else{chainEl.textContent='-'}
 
     // Trades
     document.getElementById('wm-trades-body').innerHTML=(data.trades||[]).map(t=>`

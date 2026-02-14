@@ -20,6 +20,7 @@ from src.storage.database import Database
 from src.detection.analyzer import AnomalyAnalyzer
 from src.alerts.telegram import TelegramNotifier
 from src.api.routes import router
+from src.api.polygonscan import get_wallet_onchain_info
 
 structlog.configure(
     processors=[
@@ -47,6 +48,7 @@ class PolymarketAlertBot:
         self.trades_processed = 0
         self.alerts_sent = 0
         self._running = False
+        self._watchlist: set[str] = set()
 
     async def start(self):
         """Inicializar DB y marcar como running."""
@@ -81,15 +83,40 @@ class PolymarketAlertBot:
             try:
                 await self.poll_cycle()
                 cycle += 1
-                # Cada 10 ciclos, actualizar baselines y chequear resoluciones
+
+                # Cada 5 ciclos (~5 min): price impact check
+                if cycle % 5 == 0:
+                    await self.check_price_impact()
+
+                # Cada 10 ciclos (~10 min): baselines + smart money scores
                 if cycle % 10 == 0:
                     await self.update_all_baselines()
-                # Cada 30 ciclos (~30 min), chequear resoluciones
+                    sm_count = await self.db.update_all_smart_money_scores()
+                    if sm_count:
+                        print(f"Smart money scores actualizados: {sm_count} wallets", flush=True)
+
+                # Cada 30 ciclos (~30 min): resoluciones + watchlist
                 if cycle % 30 == 0:
                     await self.check_resolutions()
-                # Cada 60 ciclos (~1h), enviar health check
+                    await self.db.update_watchlist(
+                        threshold=config.SMART_MONEY_THRESHOLD,
+                        min_resolved=config.COPY_TRADE_MIN_RESOLVED,
+                    )
+                    self._watchlist = await self.db.get_watchlisted_wallets()
+                    if self._watchlist:
+                        print(f"Watchlist actualizado: {len(self._watchlist)} wallets", flush=True)
+
+                # Cada 60 ciclos (~1h): health check + coordination + on-chain
                 if cycle % 60 == 0:
                     await self.send_health_check()
+                    try:
+                        coord_count = await self.db.detect_coordination()
+                        if coord_count:
+                            print(f"Coordinacion detectada: {coord_count} pares", flush=True)
+                    except Exception as e:
+                        print(f"Error en coordinacion: {e}", flush=True)
+                    await self.check_onchain_wallets()
+
             except Exception as e:
                 print(f"Error en ciclo polling: {e}", flush=True)
                 import traceback
@@ -140,8 +167,9 @@ class PolymarketAlertBot:
                 trade.market_end_date, trade.market_category,
             )
 
-        # Skip trades pequeños para análisis
-        if trade.size < config.MIN_SIZE_USD:
+        # Skip trades pequeños para análisis (excepto wallets en watchlist)
+        is_watched = trade.wallet_address.lower() in self._watchlist
+        if trade.size < config.MIN_SIZE_USD and not is_watched:
             return
 
         # Obtener contexto
@@ -163,18 +191,29 @@ class PolymarketAlertBot:
         # Analizar
         candidate = self.analyzer.analyze(trade, wallet_stats, market_baseline, cluster)
 
-        if not self.analyzer.should_alert(candidate):
+        # Copy-trade: si wallet está en watchlist, alertar aunque score sea bajo
+        is_copy = trade.wallet_address.lower() in self._watchlist
+        should_alert = self.analyzer.should_alert(candidate) or is_copy
+
+        if not should_alert:
             return
 
         # Cooldown
         if not await self.db.should_alert(trade.wallet_address, trade.market_id, config.COOLDOWN_HOURS):
             return
 
-        # Enviar alerta
-        success = await self.notifier.send_alert(candidate)
+        # Enviar alerta (copy-trade o anomalía)
+        if is_copy and not self.analyzer.should_alert(candidate):
+            candidate.triggers.insert(0, "⭐ Smart Money (watchlisted)")
+            success = await self.notifier.send_copy_trade_alert(trade, candidate)
+        else:
+            if is_copy:
+                candidate.triggers.insert(0, "⭐ Smart Money")
+            success = await self.notifier.send_alert(candidate)
+
         if success:
             self.alerts_sent += 1
-            await self.db.record_alert(
+            await self.db.record_alert_with_price(
                 wallet=trade.wallet_address,
                 market_id=trade.market_id,
                 market_question=trade.market_question,
@@ -188,11 +227,14 @@ class PolymarketAlertBot:
                 cluster_wallets=candidate.cluster_wallets,
                 days_to_close=candidate.days_to_resolution,
                 wallet_hit_rate=candidate.wallet_hit_rate,
+                price_at_alert=trade.price,
+                is_copy_trade=is_copy,
             )
             logger.info("alerta_enviada",
                         wallet=trade.wallet_address[:10],
                         market=trade.market_slug,
-                        score=candidate.score)
+                        score=candidate.score,
+                        copy_trade=is_copy)
 
     # ── Baselines ─────────────────────────────────────────────────────
 
@@ -244,6 +286,46 @@ class PolymarketAlertBot:
                 print(f"Mercados resueltos: {resolved_count}", flush=True)
         except Exception as e:
             print(f"Error verificando resoluciones: {e}", flush=True)
+
+    # ── Price Impact Checker ──────────────────────────────────────────
+
+    async def check_price_impact(self):
+        """Verificar cómo se movió el precio después de cada alerta."""
+        try:
+            checks = [
+                ("price_1h", 1, 48),
+                ("price_6h", 6, 48),
+                ("price_24h", 24, 72),
+            ]
+            async with PolymarketClient() as client:
+                for field, min_h, max_h in checks:
+                    alerts = await self.db.get_alerts_needing_price_check(field, min_h, max_h)
+                    for alert in alerts:
+                        price = await client.get_market_price(
+                            alert["market_id"], alert.get("outcome", "Yes")
+                        )
+                        if price and price > 0:
+                            await self.db.update_alert_price_impact(alert["id"], field, price)
+        except Exception as e:
+            print(f"Error en price impact check: {e}", flush=True)
+
+    # ── On-chain Checker (Polygonscan) ─────────────────────────────
+
+    async def check_onchain_wallets(self):
+        """Verificar datos on-chain de wallets nuevas (rate-limited)."""
+        if not config.POLYGONSCAN_API_KEY:
+            return
+        try:
+            wallets = await self.db.get_wallets_for_onchain_check(limit=5)
+            for addr in wallets:
+                info = await get_wallet_onchain_info(addr)
+                if info["first_tx"] or info["funded_by"]:
+                    await self.db.update_wallet_onchain(addr, info["first_tx"], info["funded_by"])
+                await asyncio.sleep(1)  # Rate limit
+            if wallets:
+                print(f"On-chain check: {len(wallets)} wallets", flush=True)
+        except Exception as e:
+            print(f"Error en on-chain check: {e}", flush=True)
 
     # ── Health Check ──────────────────────────────────────────────────
 

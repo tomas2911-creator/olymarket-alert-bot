@@ -113,6 +113,38 @@ class TelegramNotifier:
         except Exception as e:
             print(f"Error enviando resolución: {e}", flush=True)
 
+    async def send_copy_trade_alert(self, trade, candidate: AlertCandidate) -> bool:
+        """Enviar alerta especial de copy-trade (smart money)."""
+        if not self.is_configured:
+            return False
+        try:
+            wallet_short = f"{trade.wallet_address[:6]}...{trade.wallet_address[-4:]}"
+            triggers_text = "\n".join([f"  • {t}" for t in candidate.triggers])
+            market_url = f"https://polymarket.com/event/{trade.market_slug}" if trade.market_slug else ""
+            poly_profile = f"https://polymarket.com/profile/{trade.wallet_address}"
+
+            message = (
+                f"⭐ <b>Smart Money Alert — Copy Trade</b>\n\n"
+                f"<b>Mercado:</b> {trade.market_question[:80]}\n"
+                f"<b>Apuesta:</b> {trade.outcome} {trade.side} | "
+                f"<b>Size:</b> ${trade.size:,.0f} | <b>Precio:</b> {trade.price:.2f}\n\n"
+                f"<b>Wallet:</b> <code>{wallet_short}</code>\n"
+                f"<b>Score:</b> {candidate.score}/12\n\n"
+                f"<b>Señales:</b>\n{triggers_text}\n"
+            )
+            if candidate.wallet_hit_rate is not None:
+                message += f"\n📈 Hit rate: {candidate.wallet_hit_rate:.0f}%"
+            if market_url:
+                message += f"\n🔗 <a href=\"{market_url}\">Polymarket</a>"
+                message += f" | <a href=\"{poly_profile}\">Perfil Trader</a>"
+            message += "\n\n💡 <i>Wallet en watchlist por rendimiento histórico.</i>"
+
+            sent = await self._send_to_all(message, disable_preview=True)
+            return sent > 0
+        except Exception as e:
+            print(f"Error enviando copy-trade alert: {e}", flush=True)
+            return False
+
     def _format_message(self, candidate: AlertCandidate) -> str:
         trade = candidate.trade
         wallet_short = f"{trade.wallet_address[:6]}...{trade.wallet_address[-4:]}"
