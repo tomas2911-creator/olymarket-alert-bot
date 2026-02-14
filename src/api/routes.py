@@ -122,6 +122,18 @@ class ConfigUpdate(BaseModel):
     large_size_usd: int | None = None
     alert_threshold: int | None = None
     excluded_categories: str | None = None  # comma-separated
+    poll_interval: int | None = None
+    fresh_wallet_points: int | None = None
+    large_size_points: int | None = None
+    market_anomaly_points: int | None = None
+    wallet_shift_points: int | None = None
+    concentration_points: int | None = None
+    orderbook_depth_points: int | None = None
+    niche_market_points: int | None = None
+    ob_min_depth_pct: float | None = None
+    niche_max_liquidity: int | None = None
+    niche_score_multiplier: float | None = None
+    max_markets: int | None = None
 
 
 @router.get("/api/config")
@@ -133,6 +145,18 @@ async def get_config(request: Request):
         "large_size_usd": int(saved.get("large_size_usd", config.LARGE_SIZE_USD)),
         "alert_threshold": int(saved.get("alert_threshold", config.ALERT_THRESHOLD)),
         "excluded_categories": saved.get("excluded_categories", "sports,nba,nfl,nhl,mlb,mls,soccer,esports,crypto-prices"),
+        "poll_interval": config.POLL_INTERVAL,
+        "fresh_wallet_points": config.FRESH_WALLET_POINTS,
+        "large_size_points": config.LARGE_SIZE_POINTS,
+        "market_anomaly_points": config.MARKET_ANOMALY_POINTS,
+        "wallet_shift_points": config.WALLET_SHIFT_POINTS,
+        "concentration_points": config.CONCENTRATION_POINTS,
+        "orderbook_depth_points": config.ORDERBOOK_DEPTH_POINTS,
+        "niche_market_points": config.NICHE_MARKET_POINTS,
+        "ob_min_depth_pct": config.ORDERBOOK_MIN_DEPTH_PCT,
+        "niche_max_liquidity": config.NICHE_MAX_LIQUIDITY,
+        "niche_score_multiplier": config.NICHE_SCORE_MULTIPLIER,
+        "max_markets": config.MAX_MARKETS,
     }
 
 
@@ -151,6 +175,30 @@ async def update_config(request: Request, body: ConfigUpdate):
         config.ALERT_THRESHOLD = body.alert_threshold
     if body.excluded_categories is not None:
         data["excluded_categories"] = body.excluded_categories
+    if body.poll_interval is not None:
+        config.POLL_INTERVAL = body.poll_interval
+    if body.fresh_wallet_points is not None:
+        config.FRESH_WALLET_POINTS = body.fresh_wallet_points
+    if body.large_size_points is not None:
+        config.LARGE_SIZE_POINTS = body.large_size_points
+    if body.market_anomaly_points is not None:
+        config.MARKET_ANOMALY_POINTS = body.market_anomaly_points
+    if body.wallet_shift_points is not None:
+        config.WALLET_SHIFT_POINTS = body.wallet_shift_points
+    if body.concentration_points is not None:
+        config.CONCENTRATION_POINTS = body.concentration_points
+    if body.orderbook_depth_points is not None:
+        config.ORDERBOOK_DEPTH_POINTS = body.orderbook_depth_points
+    if body.niche_market_points is not None:
+        config.NICHE_MARKET_POINTS = body.niche_market_points
+    if body.ob_min_depth_pct is not None:
+        config.ORDERBOOK_MIN_DEPTH_PCT = body.ob_min_depth_pct
+    if body.niche_max_liquidity is not None:
+        config.NICHE_MAX_LIQUIDITY = body.niche_max_liquidity
+    if body.niche_score_multiplier is not None:
+        config.NICHE_SCORE_MULTIPLIER = body.niche_score_multiplier
+    if body.max_markets is not None:
+        config.MAX_MARKETS = body.max_markets
     if data:
         await db.set_config_bulk(data)
     return {"status": "ok", "updated": list(data.keys())}

@@ -58,10 +58,42 @@
 </header>
 
 <!-- Config Panel (hidden by default) -->
-<div id="config-panel" class="hidden max-w-7xl mx-auto px-4 pt-4">
+<div id="config-panel" class="hidden max-w-7xl mx-auto px-4 pt-4 space-y-4">
+    <!-- Sección 1: Módulos / Feature Flags -->
     <div class="glass glow rounded-xl p-5 fade-in">
-        <h3 class="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-4">Configuracion del Bot</h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <h3 class="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-4">Módulos Activos</h3>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition">
+                <input type="checkbox" id="ft-orderbook" class="accent-purple-500 w-4 h-4">
+                <div><div class="text-sm text-white">Orderbook Depth</div><div class="text-[10px] text-gray-500">Profundidad del libro</div></div>
+            </label>
+            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition">
+                <input type="checkbox" id="ft-mclass" class="accent-purple-500 w-4 h-4">
+                <div><div class="text-sm text-white">Market Classif.</div><div class="text-[10px] text-gray-500">Nicho vs mainstream</div></div>
+            </label>
+            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition">
+                <input type="checkbox" id="ft-baskets" class="accent-purple-500 w-4 h-4">
+                <div><div class="text-sm text-white">Wallet Baskets</div><div class="text-[10px] text-gray-500">Grupos de wallets</div></div>
+            </label>
+            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition">
+                <input type="checkbox" id="ft-dbscan" class="accent-purple-500 w-4 h-4">
+                <div><div class="text-sm text-white">Sniper DBSCAN</div><div class="text-[10px] text-gray-500">Clustering avanzado</div></div>
+            </label>
+            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition">
+                <input type="checkbox" id="ft-crypto" class="accent-purple-500 w-4 h-4">
+                <div><div class="text-sm text-white">Crypto Arb</div><div class="text-[10px] text-gray-500">Bot BTC/ETH/SOL</div></div>
+            </label>
+        </div>
+        <div class="mt-3 flex gap-3">
+            <button onclick="saveFeatures()" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">Guardar Módulos</button>
+            <span id="ft-status" class="text-xs text-green-400 self-center hidden">Guardado!</span>
+        </div>
+    </div>
+
+    <!-- Sección 2: Detección y Alertas -->
+    <div class="glass glow rounded-xl p-5 fade-in">
+        <h3 class="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-4">Detección y Alertas</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
                 <label class="text-xs text-gray-400 mb-1 block">Min Trade Size (USD)</label>
                 <div class="flex items-center gap-1">
@@ -80,14 +112,71 @@
                 <label class="text-xs text-gray-400 mb-1 block">Alert Threshold (Score min)</label>
                 <input type="number" id="cfg-threshold" min="1" max="20" step="1" value="5" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
             </div>
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">Intervalo Polling (seg)</label>
+                <input type="number" id="cfg-poll-interval" min="10" max="300" step="10" value="60" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+            </div>
         </div>
+        <!-- Scoring -->
+        <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Puntos por Señal</h4>
+        <div class="grid grid-cols-3 md:grid-cols-7 gap-3">
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Fresh Wallet</label>
+                <input type="number" id="cfg-pts-fresh" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Large Size</label>
+                <input type="number" id="cfg-pts-large" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Mkt Anomaly</label>
+                <input type="number" id="cfg-pts-anomaly" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Wallet Shift</label>
+                <input type="number" id="cfg-pts-shift" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Concentr.</label>
+                <input type="number" id="cfg-pts-conc" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Orderbook</label>
+                <input type="number" id="cfg-pts-ob" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 mb-1 block">Nicho Mkt</label>
+                <input type="number" id="cfg-pts-niche" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
+            </div>
+        </div>
+        <!-- Orderbook & Market Classification params -->
+        <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Parámetros Avanzados</h4>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">OB Min Depth (%)</label>
+                <input type="number" id="cfg-ob-depth" min="0" step="0.5" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+            </div>
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">Nicho Max Liquidez ($)</label>
+                <input type="number" id="cfg-niche-liq" min="0" step="1000" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+            </div>
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">Nicho Score Mult.</label>
+                <input type="number" id="cfg-niche-mult" min="1" max="5" step="0.1" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+            </div>
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">Max Mercados/Ciclo</label>
+                <input type="number" id="cfg-max-markets" min="10" max="200" step="10" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+            </div>
+        </div>
+        <!-- Categorías -->
         <div class="mt-4">
             <label class="text-xs text-gray-400 mb-2 block">Categorias Excluidas</label>
             <div id="cfg-categories" class="flex flex-wrap gap-2"></div>
         </div>
         <div class="mt-4 flex gap-3">
             <button onclick="saveConfig()" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">
-                Guardar
+                Guardar Config
             </button>
             <button onclick="toggleConfig()" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition">
                 Cerrar
@@ -635,10 +724,35 @@ function showTab(t){
 function toggleConfig(){document.getElementById('config-panel').classList.toggle('hidden')}
 
 async function loadConfig(){
+    // Cargar feature flags
+    const ft=await fetchJson('/api/features');
+    if(ft){
+        document.getElementById('ft-orderbook').checked=!!ft.orderbook_depth;
+        document.getElementById('ft-mclass').checked=!!ft.market_classification;
+        document.getElementById('ft-baskets').checked=!!ft.wallet_baskets;
+        document.getElementById('ft-dbscan').checked=!!ft.sniper_dbscan;
+        document.getElementById('ft-crypto').checked=!!ft.crypto_arb;
+    }
+    // Cargar config general
     const c=await fetchJson('/api/config');if(!c)return;
     document.getElementById('cfg-min-size').value=c.min_size_usd;
     document.getElementById('cfg-large-size').value=c.large_size_usd;
     document.getElementById('cfg-threshold').value=c.alert_threshold;
+    document.getElementById('cfg-poll-interval').value=c.poll_interval||60;
+    // Scoring
+    document.getElementById('cfg-pts-fresh').value=c.fresh_wallet_points||2;
+    document.getElementById('cfg-pts-large').value=c.large_size_points||2;
+    document.getElementById('cfg-pts-anomaly').value=c.market_anomaly_points||2;
+    document.getElementById('cfg-pts-shift').value=c.wallet_shift_points||3;
+    document.getElementById('cfg-pts-conc').value=c.concentration_points||3;
+    document.getElementById('cfg-pts-ob').value=c.orderbook_depth_points||2;
+    document.getElementById('cfg-pts-niche').value=c.niche_market_points||2;
+    // Avanzados
+    document.getElementById('cfg-ob-depth').value=c.ob_min_depth_pct||2.0;
+    document.getElementById('cfg-niche-liq').value=c.niche_max_liquidity||50000;
+    document.getElementById('cfg-niche-mult').value=c.niche_score_multiplier||1.5;
+    document.getElementById('cfg-max-markets').value=c.max_markets||50;
+    // Categorías excluidas
     const excluded=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase());
     const cont=document.getElementById('cfg-categories');
     cont.innerHTML=ALL_CATEGORIES.map(cat=>{
@@ -655,6 +769,27 @@ function toggleCatStyle(el){
     else{l.className='flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer transition bg-green-900/40 text-green-300';}
 }
 
+async function saveFeatures(){
+    const body={
+        orderbook_depth:document.getElementById('ft-orderbook').checked,
+        market_classification:document.getElementById('ft-mclass').checked,
+        wallet_baskets:document.getElementById('ft-baskets').checked,
+        sniper_dbscan:document.getElementById('ft-dbscan').checked,
+        crypto_arb:document.getElementById('ft-crypto').checked,
+    };
+    const btn=document.querySelector('[onclick="saveFeatures()"]');
+    btn.textContent='Guardando...';btn.disabled=true;
+    try{
+        await fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        btn.textContent='✅ Guardado!';btn.className='px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium transition';
+        const st=document.getElementById('ft-status');st.classList.remove('hidden');
+        setTimeout(()=>{btn.textContent='Guardar Módulos';btn.className='px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition';btn.disabled=false;st.classList.add('hidden');},2000);
+    }catch(e){
+        btn.textContent='❌ Error';btn.className='px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium transition';
+        setTimeout(()=>{btn.textContent='Guardar Módulos';btn.className='px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition';btn.disabled=false;},2000);
+    }
+}
+
 async function saveConfig(){
     const checks=document.querySelectorAll('.cat-check');
     const excluded=[...checks].filter(c=>c.checked).map(c=>c.dataset.cat).join(',');
@@ -662,17 +797,29 @@ async function saveConfig(){
         min_size_usd:parseInt(document.getElementById('cfg-min-size').value)||50,
         large_size_usd:parseInt(document.getElementById('cfg-large-size').value)||500,
         alert_threshold:parseInt(document.getElementById('cfg-threshold').value)||5,
-        excluded_categories:excluded
+        excluded_categories:excluded,
+        poll_interval:parseInt(document.getElementById('cfg-poll-interval').value)||60,
+        fresh_wallet_points:parseInt(document.getElementById('cfg-pts-fresh').value)||2,
+        large_size_points:parseInt(document.getElementById('cfg-pts-large').value)||2,
+        market_anomaly_points:parseInt(document.getElementById('cfg-pts-anomaly').value)||2,
+        wallet_shift_points:parseInt(document.getElementById('cfg-pts-shift').value)||3,
+        concentration_points:parseInt(document.getElementById('cfg-pts-conc').value)||3,
+        orderbook_depth_points:parseInt(document.getElementById('cfg-pts-ob').value)||2,
+        niche_market_points:parseInt(document.getElementById('cfg-pts-niche').value)||2,
+        ob_min_depth_pct:parseFloat(document.getElementById('cfg-ob-depth').value)||2.0,
+        niche_max_liquidity:parseInt(document.getElementById('cfg-niche-liq').value)||50000,
+        niche_score_multiplier:parseFloat(document.getElementById('cfg-niche-mult').value)||1.5,
+        max_markets:parseInt(document.getElementById('cfg-max-markets').value)||50,
     };
     const btn=document.querySelector('[onclick="saveConfig()"]');
     btn.textContent='Guardando...';btn.disabled=true;
     try{
         await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         btn.textContent='✅ Guardado!';btn.className='px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium transition';
-        setTimeout(()=>{btn.textContent='Guardar';btn.className='px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition';btn.disabled=false;},2000);
+        setTimeout(()=>{btn.textContent='Guardar Config';btn.className='px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition';btn.disabled=false;},2000);
     }catch(e){
         btn.textContent='❌ Error';btn.className='px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium transition';
-        setTimeout(()=>{btn.textContent='Guardar';btn.className='px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition';btn.disabled=false;},2000);
+        setTimeout(()=>{btn.textContent='Guardar Config';btn.className='px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition';btn.disabled=false;},2000);
     }
 }
 
