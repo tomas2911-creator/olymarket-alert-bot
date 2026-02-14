@@ -77,12 +77,6 @@ class PolymarketClient:
             size_skip = 0
             no_id = 0
 
-            # Debug: mostrar estructura del primer trade
-            if data and len(data) > 0:
-                sample = data[0]
-                print(f"[DEBUG] Trade keys: {list(sample.keys())}", flush=True)
-                print(f"[DEBUG] Trade sample: { {k: sample[k] for k in list(sample.keys())[:12]} }", flush=True)
-
             for item in data:
                 try:
                     # Trades no tienen title/tags — buscar en market cache
@@ -102,12 +96,7 @@ class PolymarketClient:
                             continue
                     # Si no hay cache, no filtrar (beneficio de la duda)
 
-                    # Calcular USD: size puede ser shares, USD = size * price
-                    raw_size = float(item.get("size", 0))
-                    price = float(item.get("price", 0))
-                    usd_size = raw_size * price if price > 0 and price < 10 else raw_size
-
-                    trade = self._parse_trade(item, usd_size=usd_size)
+                    trade = self._parse_trade(item)
                     if trade:
                         trades.append(trade)
 
@@ -238,7 +227,7 @@ class PolymarketClient:
 
     # ── Parse ─────────────────────────────────────────────────────────
 
-    def _parse_trade(self, item: dict, usd_size: float | None = None) -> Optional[Trade]:
+    def _parse_trade(self, item: dict) -> Optional[Trade]:
         try:
             # Parsear timestamp (puede ser int, float, string)
             ts_val = item.get("timestamp") or item.get("match_time") or item.get("created_at")
@@ -254,23 +243,18 @@ class PolymarketClient:
             else:
                 timestamp = datetime.now()
 
-            cid = item.get("conditionId", item.get("market", item.get("condition_id", "")))
+            cid = item.get("conditionId", "")
             market_data = self._market_cache.get(cid, {})
-
-            raw_size = float(item.get("size", 0))
-            price = float(item.get("price", 0))
-            size = usd_size if usd_size is not None else raw_size
 
             return Trade(
                 transaction_hash=item.get("transactionHash", item.get("id", "")),
                 market_id=cid,
                 market_question=item.get("title", market_data.get("question", "")),
                 market_slug=item.get("eventSlug", item.get("slug", market_data.get("slug", ""))),
-                wallet_address=item.get("proxyWallet", item.get("maker_address",
-                                item.get("owner", item.get("trader_address", "unknown")))),
+                wallet_address=item.get("proxyWallet", item.get("maker_address", "unknown")),
                 side=item.get("side", "BUY"),
-                size=size,
-                price=price,
+                size=float(item.get("size", 0)),
+                price=float(item.get("price", 0)),
                 timestamp=timestamp,
                 outcome=item.get("outcome", "Yes"),
                 market_end_date=market_data.get("end_date"),

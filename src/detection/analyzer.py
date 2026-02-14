@@ -34,7 +34,7 @@ class AnomalyAnalyzer:
             triggers.append(f"🆕 Wallet nueva ({tc} trades)")
 
         # 2. Tamaño absoluto grande
-        if trade.size >= config.MIN_SIZE_USD:
+        if trade.size >= config.LARGE_SIZE_USD:
             score += config.LARGE_SIZE_POINTS
             triggers.append(f"💰 Trade grande (${trade.size:,.0f})")
 

@@ -102,11 +102,21 @@ class PolymarketAlertBot:
             # Pre-cargar cache de mercados para enriquecer trades
             await client.get_markets(limit=config.MAX_MARKETS)
 
-            trades = await client.get_recent_trades(limit=200)
-            print(f"Trades obtenidos: {len(trades)}", flush=True)
+            trades = await client.get_recent_trades(limit=500)
 
             if not trades:
+                print("Trades obtenidos: 0", flush=True)
                 return
+
+            sizes = [t.size for t in trades]
+            max_s = max(sizes)
+            avg_s = sum(sizes) / len(sizes)
+            big = sum(1 for s in sizes if s >= config.MIN_SIZE_USD)
+            print(
+                f"Trades: {len(trades)} | max=${max_s:,.0f} avg=${avg_s:,.0f} | "
+                f"{big} >= ${config.MIN_SIZE_USD} (pre-filtro)",
+                flush=True,
+            )
 
             for trade in trades:
                 await self.process_trade(trade, client)
