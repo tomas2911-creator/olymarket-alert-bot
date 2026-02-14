@@ -62,25 +62,26 @@
     <!-- Sección 1: Módulos / Feature Flags -->
     <div class="glass glow rounded-xl p-5 fade-in">
         <h3 class="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-4">Módulos Activos</h3>
+        <p class="text-[11px] text-gray-500 -mt-2 mb-3">Activa un módulo para ver sus opciones de configuración</p>
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition">
-                <input type="checkbox" id="ft-orderbook" class="accent-purple-500 w-4 h-4">
+            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition" id="ft-orderbook-label">
+                <input type="checkbox" id="ft-orderbook" class="accent-purple-500 w-4 h-4" onchange="toggleModuleSection()">
                 <div><div class="text-sm text-white">Orderbook Depth</div><div class="text-[10px] text-gray-500">Profundidad del libro</div></div>
             </label>
-            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition">
-                <input type="checkbox" id="ft-mclass" class="accent-purple-500 w-4 h-4">
+            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition" id="ft-mclass-label">
+                <input type="checkbox" id="ft-mclass" class="accent-purple-500 w-4 h-4" onchange="toggleModuleSection()">
                 <div><div class="text-sm text-white">Market Classif.</div><div class="text-[10px] text-gray-500">Nicho vs mainstream</div></div>
             </label>
-            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition">
-                <input type="checkbox" id="ft-baskets" class="accent-purple-500 w-4 h-4">
+            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition" id="ft-baskets-label">
+                <input type="checkbox" id="ft-baskets" class="accent-purple-500 w-4 h-4" onchange="toggleModuleSection()">
                 <div><div class="text-sm text-white">Wallet Baskets</div><div class="text-[10px] text-gray-500">Grupos de wallets</div></div>
             </label>
-            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition">
-                <input type="checkbox" id="ft-dbscan" class="accent-purple-500 w-4 h-4">
+            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition" id="ft-dbscan-label">
+                <input type="checkbox" id="ft-dbscan" class="accent-purple-500 w-4 h-4" onchange="toggleModuleSection()">
                 <div><div class="text-sm text-white">Sniper DBSCAN</div><div class="text-[10px] text-gray-500">Clustering avanzado</div></div>
             </label>
-            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition">
-                <input type="checkbox" id="ft-crypto" class="accent-purple-500 w-4 h-4">
+            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition" id="ft-crypto-label">
+                <input type="checkbox" id="ft-crypto" class="accent-purple-500 w-4 h-4" onchange="toggleModuleSection()">
                 <div><div class="text-sm text-white">Crypto Arb</div><div class="text-[10px] text-gray-500">Bot BTC/ETH/SOL</div></div>
             </label>
         </div>
@@ -90,9 +91,9 @@
         </div>
     </div>
 
-    <!-- Sección 2: Detección y Alertas -->
+    <!-- Sección 2: Detección General (siempre visible) -->
     <div class="glass glow rounded-xl p-5 fade-in">
-        <h3 class="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-4">Detección y Alertas</h3>
+        <h3 class="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-4">Detección General</h3>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
                 <label class="text-xs text-gray-400 mb-1 block">Min Trade Size (USD)</label>
@@ -116,10 +117,13 @@
                 <label class="text-xs text-gray-400 mb-1 block">Intervalo Polling (seg)</label>
                 <input type="number" id="cfg-poll-interval" min="10" max="300" step="10" value="60" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
             </div>
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">Max Mercados/Ciclo</label>
+                <input type="number" id="cfg-max-markets" min="10" max="200" step="10" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+            </div>
         </div>
-        <!-- Scoring -->
-        <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Puntos por Señal</h4>
-        <div class="grid grid-cols-3 md:grid-cols-7 gap-3">
+        <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Puntos por Señal (base)</h4>
+        <div class="grid grid-cols-3 md:grid-cols-5 gap-3">
             <div>
                 <label class="text-[10px] text-gray-500 mb-1 block">Fresh Wallet</label>
                 <input type="number" id="cfg-pts-fresh" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
@@ -140,49 +144,63 @@
                 <label class="text-[10px] text-gray-500 mb-1 block">Concentr.</label>
                 <input type="number" id="cfg-pts-conc" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
             </div>
-            <div>
-                <label class="text-[10px] text-gray-500 mb-1 block">Orderbook</label>
-                <input type="number" id="cfg-pts-ob" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
-            </div>
-            <div>
-                <label class="text-[10px] text-gray-500 mb-1 block">Nicho Mkt</label>
-                <input type="number" id="cfg-pts-niche" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300 focus:outline-none focus:border-purple-500">
-            </div>
-        </div>
-        <!-- Orderbook & Market Classification params -->
-        <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Parámetros Avanzados</h4>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-                <label class="text-xs text-gray-400 mb-1 block">OB Min Depth (%)</label>
-                <input type="number" id="cfg-ob-depth" min="0" step="0.5" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
-            </div>
-            <div>
-                <label class="text-xs text-gray-400 mb-1 block">Nicho Max Liquidez ($)</label>
-                <input type="number" id="cfg-niche-liq" min="0" step="1000" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
-            </div>
-            <div>
-                <label class="text-xs text-gray-400 mb-1 block">Nicho Score Mult.</label>
-                <input type="number" id="cfg-niche-mult" min="1" max="5" step="0.1" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
-            </div>
-            <div>
-                <label class="text-xs text-gray-400 mb-1 block">Max Mercados/Ciclo</label>
-                <input type="number" id="cfg-max-markets" min="10" max="200" step="10" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-purple-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
-            </div>
         </div>
         <!-- Categorías -->
         <div class="mt-4">
             <label class="text-xs text-gray-400 mb-2 block">Categorias Excluidas</label>
             <div id="cfg-categories" class="flex flex-wrap gap-2"></div>
         </div>
-        <div class="mt-4 flex gap-3">
-            <button onclick="saveConfig()" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">
-                Guardar Config
-            </button>
-            <button onclick="toggleConfig()" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition">
-                Cerrar
-            </button>
-            <span id="cfg-status" class="text-xs text-green-400 self-center hidden">Guardado!</span>
+    </div>
+
+    <!-- Sección 3: Orderbook Depth (solo si módulo activo) -->
+    <div id="cfg-section-orderbook" class="glass glow rounded-xl p-5 fade-in hidden">
+        <h3 class="text-sm font-semibold text-blue-400 uppercase tracking-wider mb-3">Orderbook Depth</h3>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">Min Depth (%)</label>
+                <input type="number" id="cfg-ob-depth" min="0" step="0.5" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-blue-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">Puntos Orderbook</label>
+                <input type="number" id="cfg-pts-ob" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-blue-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            </div>
         </div>
+    </div>
+
+    <!-- Sección 4: Market Classification (solo si módulo activo) -->
+    <div id="cfg-section-mclass" class="glass glow rounded-xl p-5 fade-in hidden">
+        <h3 class="text-sm font-semibold text-green-400 uppercase tracking-wider mb-3">Market Classification</h3>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">Nicho Max Liquidez ($)</label>
+                <input type="number" id="cfg-niche-liq" min="0" step="1000" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-green-300 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
+            </div>
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">Nicho Score Mult.</label>
+                <input type="number" id="cfg-niche-mult" min="1" max="5" step="0.1" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-green-300 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
+            </div>
+            <div>
+                <label class="text-xs text-gray-400 mb-1 block">Puntos Nicho Mkt</label>
+                <input type="number" id="cfg-pts-niche" min="0" max="10" step="1" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-green-300 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- Sección 5: Crypto Arb (solo si módulo activo) -->
+    <div id="cfg-section-crypto" class="glass glow rounded-xl p-5 fade-in hidden">
+        <h3 class="text-sm font-semibold text-yellow-400 uppercase tracking-wider mb-3">Crypto Arb</h3>
+        <p class="text-xs text-gray-500">La configuración detallada de Crypto Arb está en la pestaña <strong class="text-yellow-300">₿ Crypto Arb → Config</strong></p>
+    </div>
+
+    <!-- Botones guardar/cerrar -->
+    <div class="glass glow rounded-xl p-4 fade-in flex gap-3">
+        <button onclick="saveConfig()" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">
+            Guardar Config
+        </button>
+        <button onclick="toggleConfig()" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition">
+            Cerrar
+        </button>
+        <span id="cfg-status" class="text-xs text-green-400 self-center hidden">Guardado!</span>
     </div>
 </div>
 
@@ -723,6 +741,24 @@ function showTab(t){
 // ── Config ──
 function toggleConfig(){document.getElementById('config-panel').classList.toggle('hidden')}
 
+function toggleModuleSection(){
+    // Mostrar/ocultar secciones de config según checkbox
+    const ob=document.getElementById('ft-orderbook').checked;
+    const mc=document.getElementById('ft-mclass').checked;
+    const cr=document.getElementById('ft-crypto').checked;
+    document.getElementById('cfg-section-orderbook').classList.toggle('hidden',!ob);
+    document.getElementById('cfg-section-mclass').classList.toggle('hidden',!mc);
+    document.getElementById('cfg-section-crypto').classList.toggle('hidden',!cr);
+    // Estilo visual de labels activos/inactivos
+    const pairs=[['ft-orderbook','ft-orderbook-label'],['ft-mclass','ft-mclass-label'],['ft-baskets','ft-baskets-label'],['ft-dbscan','ft-dbscan-label'],['ft-crypto','ft-crypto-label']];
+    pairs.forEach(([cbId,lblId])=>{
+        const on=document.getElementById(cbId).checked;
+        const lbl=document.getElementById(lblId);
+        if(on){lbl.className='flex items-center gap-2 bg-purple-900/40 border border-purple-500/50 rounded-lg p-3 cursor-pointer hover:bg-purple-900/50 transition';}
+        else{lbl.className='flex items-center gap-2 bg-gray-800/50 rounded-lg p-3 cursor-pointer hover:bg-gray-800/70 transition opacity-60';}
+    });
+}
+
 async function loadConfig(){
     // Cargar feature flags
     const ft=await fetchJson('/api/features');
@@ -732,6 +768,7 @@ async function loadConfig(){
         document.getElementById('ft-baskets').checked=!!ft.wallet_baskets;
         document.getElementById('ft-dbscan').checked=!!ft.sniper_dbscan;
         document.getElementById('ft-crypto').checked=!!ft.crypto_arb;
+        toggleModuleSection();
     }
     // Cargar config general
     const c=await fetchJson('/api/config');if(!c)return;
