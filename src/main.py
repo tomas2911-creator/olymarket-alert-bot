@@ -586,20 +586,20 @@ class PolymarketAlertBot:
                     time_rem = sig.get("time_remaining_sec", 300)
 
                     # Calcular cuándo cerró el mercado
-                    if created and time_rem:
-                        if isinstance(created, str):
-                            from datetime import timezone as tz
-                            try:
-                                created = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                            except Exception:
-                                continue
-                        end_time = created + timedelta(seconds=int(time_rem))
-                        # Si el mercado aún no cerró, saltar
-                        if datetime.now(end_time.tzinfo) < end_time:
-                            continue
-                        secs_since_close = (datetime.now(end_time.tzinfo) - end_time).total_seconds()
-                    else:
+                    if not created:
                         continue
+                    time_rem = time_rem or 0  # Asegurar que 0 no sea None
+                    if isinstance(created, str):
+                        try:
+                            created = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                        except Exception:
+                            continue
+                    end_time = created + timedelta(seconds=int(time_rem))
+                    now = datetime.now(end_time.tzinfo)
+                    # Si el mercado aún no cerró, saltar
+                    if now < end_time:
+                        continue
+                    secs_since_close = (now - end_time).total_seconds()
 
                     # Si cerró hace menos de 60s, esperar un poco para que se actualice
                     if secs_since_close < 60:
