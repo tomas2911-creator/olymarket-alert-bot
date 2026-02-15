@@ -309,6 +309,45 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
                 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at);
             """)
+            # === Tablas v8.0 ===
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS trade_journal (
+                    id          SERIAL PRIMARY KEY,
+                    trade_type  TEXT NOT NULL,
+                    trade_id    INTEGER,
+                    note        TEXT DEFAULT '',
+                    tags        TEXT DEFAULT '',
+                    user_id     INTEGER DEFAULT 1,
+                    created_at  TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE TABLE IF NOT EXISTS bankroll_history (
+                    id          SERIAL PRIMARY KEY,
+                    balance     DOUBLE PRECISION NOT NULL,
+                    daily_pnl   DOUBLE PRECISION DEFAULT 0,
+                    created_at  TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE TABLE IF NOT EXISTS mm_orders (
+                    id          SERIAL PRIMARY KEY,
+                    market_id   TEXT NOT NULL,
+                    side        TEXT NOT NULL,
+                    price       DOUBLE PRECISION NOT NULL,
+                    size        DOUBLE PRECISION NOT NULL,
+                    status      TEXT DEFAULT 'paper',
+                    created_at  TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE TABLE IF NOT EXISTS push_notifications (
+                    id          SERIAL PRIMARY KEY,
+                    user_id     INTEGER DEFAULT 1,
+                    type        TEXT NOT NULL,
+                    title       TEXT NOT NULL,
+                    body        TEXT DEFAULT '',
+                    read        BOOLEAN DEFAULT FALSE,
+                    created_at  TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_push_user ON push_notifications(user_id, read);
+                CREATE INDEX IF NOT EXISTS idx_journal_user ON trade_journal(user_id);
+            """)
+
             # Migración: agregar user_id a bot_config para config por usuario
             user_migrations = [
                 "ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
@@ -1818,6 +1857,162 @@ class Database:
                 "pnl_24h": round(float(row["pnl_24h"] or 0), 2),
                 "trades_24h": row["trades_24h"] or 0,
             }
+
+
+    # ── v8.0: Trade Journal ─────────────────────────────────────────
+    async def add_journal_note(self, trade_type: str, trade_id: int, note: str, tags: str = "", user_id: int = 1):
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO trade_journal (trade_type, trade_id, note, tags, user_id) VALUES ($1,$2,$3,$4,$5)",
+                trade_type, trade_id, note, tags, user_id
+            )
+
+    async def get_journal_notes(self, user_id: int = 1, limit: int = 50):
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM trade_journal WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2",
+                user_id, limit
+            )
+            return [_serialize_row(r) for r in rows]
+
+    # ── v8.0: Bankroll ────────────────────────────────────────────
+    async def log_bankroll(self, balance: float, daily_pnl: float):
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO bankroll_history (balance, daily_pnl) VALUES ($1,$2)",
+                balance, daily_pnl
+            )
+
+    async def get_bankroll_history(self, days: int = 30):
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT balance, daily_pnl, created_at FROM bankroll_history WHERE created_at > NOW() - $1::interval ORDER BY created_at",
+                f"{days} days"
+            )
+            return [_serialize_row(r) for r in rows]
+
+    # ── v8.0: Market Making Orders ────────────────────────────────
+    async def log_mm_order(self, market_id: str, side: str, price: float, size: float):
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO mm_orders (market_id, side, price, size) VALUES ($1,$2,$3,$4)",
+                market_id, side, price, size
+            )
+
+    async def get_mm_orders(self, limit: int = 50):
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM mm_orders ORDER BY created_at DESC LIMIT $1", limit
+            )
+            return [_serialize_row(r) for r in rows]
+
+    # ── v8.0: Push Notifications ──────────────────────────────────
+    async def create_notification(self, user_id: int, ntype: str, title: str, body: str = ""):
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO push_notifications (user_id, type, title, body) VALUES ($1,$2,$3,$4)",
+                user_id, ntype, title, body
+            )
+
+    async def get_notifications(self, user_id: int = 1, unread_only: bool = True, limit: int = 20):
+        async with self._pool.acquire() as conn:
+            if unread_only:
+                rows = await conn.fetch(
+                    "SELECT * FROM push_notifications WHERE user_id=$1 AND NOT read ORDER BY created_at DESC LIMIT $2",
+                    user_id, limit
+                )
+            else:
+                rows = await conn.fetch(
+                    "SELECT * FROM push_notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2",
+                    user_id, limit
+                )
+            return [_serialize_row(r) for r in rows]
+
+    async def mark_notifications_read(self, user_id: int = 1, notification_ids: list = None):
+        async with self._pool.acquire() as conn:
+            if notification_ids:
+                await conn.execute(
+                    "UPDATE push_notifications SET read=TRUE WHERE user_id=$1 AND id=ANY($2::int[])",
+                    user_id, notification_ids
+                )
+            else:
+                await conn.execute(
+                    "UPDATE push_notifications SET read=TRUE WHERE user_id=$1",
+                    user_id
+                )
+
+    # ── v8.0: Heatmap ────────────────────────────────────────────
+    async def get_heatmap_data(self):
+        """PnL por categoría para heatmap."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT
+                    COALESCE(a.category, 'unknown') as category,
+                    COUNT(*) as total_alerts,
+                    COUNT(*) FILTER (WHERE a.resolved AND a.was_correct) as correct,
+                    COUNT(*) FILTER (WHERE a.resolved AND NOT a.was_correct) as incorrect,
+                    COUNT(*) FILTER (WHERE NOT a.resolved) as pending,
+                    COALESCE(SUM(at2.pnl) FILTER (WHERE at2.resolved), 0) as total_pnl
+                FROM alerts a
+                LEFT JOIN alert_autotrades at2 ON a.market_id = at2.condition_id
+                GROUP BY COALESCE(a.category, 'unknown')
+                ORDER BY total_pnl DESC
+            """)
+            return [dict(r) for r in rows]
+
+    # ── v8.0: ML Training Data ────────────────────────────────────
+    async def get_ml_training_data(self):
+        """Datos de entrenamiento para ML scoring."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT
+                    a.score, a.size, a.triggers, a.was_correct, a.resolved,
+                    a.category, a.created_at,
+                    EXTRACT(HOUR FROM a.created_at) as hour,
+                    w.total_trades as wallet_trades,
+                    CASE WHEN (w.win_count + w.loss_count) > 0
+                        THEN (w.win_count::float / (w.win_count + w.loss_count) * 100)
+                        ELSE 0 END as wallet_winrate,
+                    w.smart_money_score
+                FROM alerts a
+                LEFT JOIN wallets w ON a.wallet = w.address
+                WHERE a.resolved = TRUE
+                ORDER BY a.created_at DESC
+                LIMIT 5000
+            """)
+            return [dict(r) for r in rows]
+
+    # ── v8.0: Correlation Filter ──────────────────────────────────
+    async def get_open_positions_markets(self):
+        """Obtener mercados con posiciones abiertas para correlation filter."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT DISTINCT condition_id, market_slug, outcome
+                FROM alert_autotrades
+                WHERE NOT resolved AND status = 'filled'
+            """)
+            return [dict(r) for r in rows]
+
+    # ── v8.0: Active Markets ──────────────────────────────────────
+    async def get_active_markets(self):
+        """Obtener mercados activos trackeados."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT * FROM markets_tracked
+                WHERE end_date IS NULL OR end_date > NOW()
+                ORDER BY trade_count DESC
+                LIMIT 100
+            """)
+            return [dict(r) for r in rows]
+
+    async def get_markets_by_category(self, category: str):
+        """Obtener mercados por categoría."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM markets_tracked WHERE category = $1 LIMIT 50",
+                category
+            )
+            return [dict(r) for r in rows]
 
 
 def _serialize_row(row) -> dict:

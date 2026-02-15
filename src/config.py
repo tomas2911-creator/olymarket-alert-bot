@@ -167,6 +167,112 @@ CRYPTO_ARB_ENTRY_MAX_TIME = _crypto.get("entry_max_time_sec", 180)
 CRYPTO_ARB_MIN_DISTANCE_ATR = _crypto.get("min_distance_atr", 0.3)
 CRYPTO_ARB_MIN_TREND_CONSISTENCY = _crypto.get("min_trend_consistency", 0.55)
 
+# === Nuevas Features v8.0 ===
+
+# -- Correlation Filter (Alert Trading) --
+_corr = _yaml.get("correlation_filter", {})
+FEATURE_CORRELATION_FILTER = _features.get("correlation_filter", False)
+CORRELATION_MIN_OVERLAP = _corr.get("min_overlap_pct", 70)  # % mínimo de correlación
+CORRELATION_MAX_EXPOSURE = _corr.get("max_exposure_pct", 25)  # máx % del bankroll en mercados correlacionados
+
+# -- Multi-Timeframe (Crypto Arb) --
+_mtf = _yaml.get("multi_timeframe", {})
+FEATURE_MULTI_TIMEFRAME = _features.get("multi_timeframe", False)
+MTF_WINDOWS = _mtf.get("windows_sec", [30, 60, 180, 300])  # ventanas en segundos
+MTF_MIN_AGREEMENT = _mtf.get("min_agreement", 3)  # mín timeframes que deben coincidir
+MTF_BOOST_POINTS = _mtf.get("boost_points", 15)  # puntos extra si todos coinciden
+
+# -- VWAP Indicator (Crypto Arb) --
+_vwap = _yaml.get("vwap", {})
+FEATURE_VWAP = _features.get("vwap", False)
+VWAP_LOOKBACK_SEC = _vwap.get("lookback_sec", 300)
+VWAP_MIN_DEVIATION_PCT = _vwap.get("min_deviation_pct", 0.05)  # desviación mín para señal
+
+# -- Order Book Depth Crypto (Crypto Arb) --
+_obd_crypto = _yaml.get("orderbook_crypto", {})
+FEATURE_ORDERBOOK_CRYPTO = _features.get("orderbook_crypto", False)
+ORDERBOOK_CRYPTO_MIN_DEPTH = _obd_crypto.get("min_depth_usd", 500)  # liquidez mín en USD
+ORDERBOOK_CRYPTO_MAX_IMPACT_PCT = _obd_crypto.get("max_impact_pct", 2.0)  # máx impacto en precio
+
+# -- Hedging Automático (Crypto Arb) --
+_hedge = _yaml.get("hedging", {})
+FEATURE_HEDGING = _features.get("hedging", False)
+HEDGE_TRIGGER_LOSS_PCT = _hedge.get("trigger_loss_pct", 30)  # % de pérdida para activar hedge
+HEDGE_SIZE_PCT = _hedge.get("size_pct", 50)  # % del tamaño original para el hedge
+
+# -- News Catalyst Signal #19 (Detection) --
+_news = _yaml.get("news_catalyst", {})
+FEATURE_NEWS_CATALYST = _features.get("news_catalyst", False)
+NEWS_CATALYST_POINTS = _news.get("points", 3)
+NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
+NEWS_MIN_MENTIONS = _news.get("min_mentions", 3)  # menciones mín en últimas horas
+NEWS_LOOKBACK_HOURS = _news.get("lookback_hours", 6)
+
+# -- ML Scoring (Detection) --
+_ml = _yaml.get("ml_scoring", {})
+FEATURE_ML_SCORING = _features.get("ml_scoring", False)
+ML_MIN_TRAINING_SAMPLES = _ml.get("min_training_samples", 100)
+ML_RETRAIN_HOURS = _ml.get("retrain_hours", 24)
+ML_WEIGHT = _ml.get("weight", 0.5)  # peso del ML vs scoring tradicional (0=solo trad, 1=solo ML)
+
+# -- Heatmap de Mercados (Dashboard) --
+FEATURE_HEATMAP = _features.get("heatmap", False)
+
+# -- Trade Journal (Dashboard) --
+FEATURE_TRADE_JOURNAL = _features.get("trade_journal", False)
+
+# -- Push Notifications (Dashboard) --
+FEATURE_PUSH_NOTIFICATIONS = _features.get("push_notifications", False)
+PUSH_MIN_SCORE = int(os.getenv("PUSH_MIN_SCORE", "7"))
+
+# -- WebSocket Polymarket (Infrastructure) --
+FEATURE_WEBSOCKET = _features.get("websocket", False)
+WS_POLYMARKET_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+WS_RECONNECT_DELAY = 5  # segundos entre reconexiones
+
+# -- Queue System (Infrastructure) --
+FEATURE_QUEUE = _features.get("queue_system", False)
+QUEUE_MAX_SIZE = 1000
+QUEUE_WORKERS = 2
+
+# -- Rate Limiting (Infrastructure) --
+FEATURE_RATE_LIMITING = _features.get("rate_limiting", False)
+RATE_LIMIT_MAX_PER_MIN = 30  # requests máx por minuto a Polymarket
+RATE_LIMIT_BACKOFF_BASE = 1.5  # base exponencial para backoff
+
+# -- Bankroll Tracking (Risk) --
+FEATURE_BANKROLL = _features.get("bankroll_tracking", False)
+BANKROLL_WALLET_ADDRESS = os.getenv("BANKROLL_WALLET_ADDRESS", "")
+BANKROLL_INITIAL = float(os.getenv("BANKROLL_INITIAL", "1000"))
+BANKROLL_MAX_SINGLE_BET_PCT = 5.0  # máx % del bankroll en un solo trade
+
+# -- Market Making Bot --
+FEATURE_MARKET_MAKING = _features.get("market_making", False)
+MM_SPREAD_PCT = 3.0  # spread objetivo en %
+MM_ORDER_SIZE = 10.0  # tamaño de cada orden en USD
+MM_MAX_INVENTORY = 100.0  # máx inventario en USD
+MM_REFRESH_SEC = 30  # refrescar órdenes cada X segundos
+MM_MIN_LIQUIDITY = 10000  # liquidez mínima del mercado
+
+# -- Event-Driven Bot --
+FEATURE_EVENT_DRIVEN = _features.get("event_driven", False)
+ED_CHECK_INTERVAL = 60  # segundos entre checks
+ED_MIN_EDGE_PCT = 5.0  # ventaja mínima en % para tradear
+ED_SOURCES = ["uma_oracle", "crypto_prices"]
+
+# -- Spike Detection Bot --
+FEATURE_SPIKE_DETECTION = _features.get("spike_detection", False)
+SPIKE_MIN_MOVE_PCT = 10.0  # movimiento mínimo en %
+SPIKE_LOOKBACK_MIN = 5  # ventana de detección en minutos
+SPIKE_STRATEGY = "mean_reversion"  # "mean_reversion" o "momentum"
+SPIKE_BET_SIZE = 10.0
+SPIKE_MAX_DAILY = 20
+
+# -- Cross-Platform Arb --
+FEATURE_CROSS_PLATFORM = _features.get("cross_platform_arb", False)
+CROSS_PLATFORM_MIN_EDGE = 3.0  # ventaja mínima en %
+CROSS_PLATFORM_SOURCES = ["kalshi", "predictit", "manifold"]
+
 # === Dashboard ===
 DASHBOARD_PORT = int(os.getenv("PORT", 8080))
 
@@ -257,3 +363,48 @@ def restore_from_db(saved: dict):
     cfg.CRYPTO_ARB_ENTRY_MAX_TIME = _int("crypto_entry_max_time", cfg.CRYPTO_ARB_ENTRY_MAX_TIME)
     cfg.CRYPTO_ARB_MIN_DISTANCE_ATR = _float("crypto_min_distance_atr", cfg.CRYPTO_ARB_MIN_DISTANCE_ATR)
     cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY = _float("crypto_min_trend_consistency", cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY)
+
+    # === Features v8.0 ===
+    cfg.FEATURE_CORRELATION_FILTER = _bool("feature_correlation_filter", cfg.FEATURE_CORRELATION_FILTER)
+    cfg.CORRELATION_MIN_OVERLAP = _int("correlation_min_overlap", cfg.CORRELATION_MIN_OVERLAP)
+    cfg.CORRELATION_MAX_EXPOSURE = _int("correlation_max_exposure", cfg.CORRELATION_MAX_EXPOSURE)
+    cfg.FEATURE_MULTI_TIMEFRAME = _bool("feature_multi_timeframe", cfg.FEATURE_MULTI_TIMEFRAME)
+    cfg.MTF_MIN_AGREEMENT = _int("mtf_min_agreement", cfg.MTF_MIN_AGREEMENT)
+    cfg.MTF_BOOST_POINTS = _int("mtf_boost_points", cfg.MTF_BOOST_POINTS)
+    cfg.FEATURE_VWAP = _bool("feature_vwap", cfg.FEATURE_VWAP)
+    cfg.VWAP_LOOKBACK_SEC = _int("vwap_lookback_sec", cfg.VWAP_LOOKBACK_SEC)
+    cfg.VWAP_MIN_DEVIATION_PCT = _float("vwap_min_deviation_pct", cfg.VWAP_MIN_DEVIATION_PCT)
+    cfg.FEATURE_ORDERBOOK_CRYPTO = _bool("feature_orderbook_crypto", cfg.FEATURE_ORDERBOOK_CRYPTO)
+    cfg.ORDERBOOK_CRYPTO_MIN_DEPTH = _int("orderbook_crypto_min_depth", cfg.ORDERBOOK_CRYPTO_MIN_DEPTH)
+    cfg.FEATURE_HEDGING = _bool("feature_hedging", cfg.FEATURE_HEDGING)
+    cfg.HEDGE_TRIGGER_LOSS_PCT = _int("hedge_trigger_loss_pct", cfg.HEDGE_TRIGGER_LOSS_PCT)
+    cfg.HEDGE_SIZE_PCT = _int("hedge_size_pct", cfg.HEDGE_SIZE_PCT)
+    cfg.FEATURE_NEWS_CATALYST = _bool("feature_news_catalyst", cfg.FEATURE_NEWS_CATALYST)
+    cfg.NEWS_CATALYST_POINTS = _int("news_catalyst_points", cfg.NEWS_CATALYST_POINTS)
+    cfg.NEWS_MIN_MENTIONS = _int("news_min_mentions", cfg.NEWS_MIN_MENTIONS)
+    cfg.FEATURE_ML_SCORING = _bool("feature_ml_scoring", cfg.FEATURE_ML_SCORING)
+    cfg.ML_WEIGHT = _float("ml_weight", cfg.ML_WEIGHT)
+    cfg.ML_RETRAIN_HOURS = _int("ml_retrain_hours", cfg.ML_RETRAIN_HOURS)
+    cfg.FEATURE_HEATMAP = _bool("feature_heatmap", cfg.FEATURE_HEATMAP)
+    cfg.FEATURE_TRADE_JOURNAL = _bool("feature_trade_journal", cfg.FEATURE_TRADE_JOURNAL)
+    cfg.FEATURE_PUSH_NOTIFICATIONS = _bool("feature_push_notifications", cfg.FEATURE_PUSH_NOTIFICATIONS)
+    cfg.PUSH_MIN_SCORE = _int("push_min_score", cfg.PUSH_MIN_SCORE)
+    cfg.FEATURE_WEBSOCKET = _bool("feature_websocket", cfg.FEATURE_WEBSOCKET)
+    cfg.FEATURE_QUEUE = _bool("feature_queue", cfg.FEATURE_QUEUE)
+    cfg.FEATURE_RATE_LIMITING = _bool("feature_rate_limiting", cfg.FEATURE_RATE_LIMITING)
+    cfg.RATE_LIMIT_MAX_PER_MIN = _int("rate_limit_max_per_min", cfg.RATE_LIMIT_MAX_PER_MIN)
+    cfg.FEATURE_BANKROLL = _bool("feature_bankroll", cfg.FEATURE_BANKROLL)
+    cfg.BANKROLL_INITIAL = _float("bankroll_initial", cfg.BANKROLL_INITIAL)
+    cfg.BANKROLL_MAX_SINGLE_BET_PCT = _float("bankroll_max_bet_pct", cfg.BANKROLL_MAX_SINGLE_BET_PCT)
+    cfg.FEATURE_MARKET_MAKING = _bool("feature_market_making", cfg.FEATURE_MARKET_MAKING)
+    cfg.MM_SPREAD_PCT = _float("mm_spread_pct", cfg.MM_SPREAD_PCT)
+    cfg.MM_ORDER_SIZE = _float("mm_order_size", cfg.MM_ORDER_SIZE)
+    cfg.MM_MAX_INVENTORY = _float("mm_max_inventory", cfg.MM_MAX_INVENTORY)
+    cfg.FEATURE_EVENT_DRIVEN = _bool("feature_event_driven", cfg.FEATURE_EVENT_DRIVEN)
+    cfg.ED_MIN_EDGE_PCT = _float("ed_min_edge_pct", cfg.ED_MIN_EDGE_PCT)
+    cfg.FEATURE_SPIKE_DETECTION = _bool("feature_spike_detection", cfg.FEATURE_SPIKE_DETECTION)
+    cfg.SPIKE_MIN_MOVE_PCT = _float("spike_min_move_pct", cfg.SPIKE_MIN_MOVE_PCT)
+    cfg.SPIKE_BET_SIZE = _float("spike_bet_size", cfg.SPIKE_BET_SIZE)
+    cfg.SPIKE_MAX_DAILY = _int("spike_max_daily", cfg.SPIKE_MAX_DAILY)
+    cfg.FEATURE_CROSS_PLATFORM = _bool("feature_cross_platform", cfg.FEATURE_CROSS_PLATFORM)
+    cfg.CROSS_PLATFORM_MIN_EDGE = _float("cross_platform_min_edge", cfg.CROSS_PLATFORM_MIN_EDGE)

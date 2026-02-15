@@ -1,0 +1,1 @@
+# Estrategias adicionales del bot

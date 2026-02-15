@@ -28,6 +28,16 @@ from src.crypto_arb.detector import CryptoArbDetector
 from src.crypto_arb.backtester import CryptoArbBacktester
 from src.crypto_arb.autotrader import AutoTrader
 from src.alerts.alert_autotrader import AlertAutoTrader
+from src.strategies.market_maker import MarketMakerBot
+from src.strategies.spike_detector import SpikeDetector
+from src.strategies.event_driven import EventDrivenBot
+from src.strategies.cross_platform import CrossPlatformArb
+from src.infra.rate_limiter import get_limiter
+from src.infra.queue_system import SignalQueue
+from src.infra.websocket_client import PolymarketWebSocket
+from src.infra.bankroll import BankrollTracker
+from src.infra.news_catalyst import NewsCatalyst
+from src.infra.ml_scoring import MLScorer
 
 structlog.configure(
     processors=[
@@ -65,6 +75,17 @@ class PolymarketAlertBot:
         self.backtester = CryptoArbBacktester()
         self.autotrader = None
         self.alert_autotrader = None
+        # v8.0: Nuevos módulos
+        self.market_maker = None
+        self.spike_detector = None
+        self.event_driven = None
+        self.cross_platform = None
+        self.rate_limiter = get_limiter()
+        self.signal_queue = SignalQueue()
+        self.ws_client = None
+        self.bankroll = None
+        self.news_catalyst = NewsCatalyst()
+        self.ml_scorer = None
 
     async def start(self):
         """Inicializar DB y marcar como running."""
@@ -99,6 +120,8 @@ class PolymarketAlertBot:
         except Exception as e:
             print(f"Error iniciando Alert AutoTrader: {e}", flush=True)
             self.alert_autotrader = None
+        # v8.0: Iniciar nuevos módulos
+        await self._start_v8_modules()
 
     async def _send_startup_safe(self):
         try:
@@ -106,6 +129,55 @@ class PolymarketAlertBot:
             print("Mensaje startup enviado", flush=True)
         except Exception as e:
             print(f"Error enviando startup a Telegram: {e}", flush=True)
+
+    async def _start_v8_modules(self):
+        """Inicializar módulos v8.0."""
+        try:
+            # Bankroll tracker
+            self.bankroll = BankrollTracker(self.db)
+            # ML Scorer
+            self.ml_scorer = MLScorer(self.db)
+            if config.FEATURE_ML_SCORING:
+                await self.ml_scorer.train()
+            # Market Maker
+            self.market_maker = MarketMakerBot(self.db)
+            if config.FEATURE_MARKET_MAKING:
+                await self.market_maker.start()
+            # Spike Detector
+            self.spike_detector = SpikeDetector(self.db)
+            # Event Driven
+            self.event_driven = EventDrivenBot(self.db)
+            # Cross Platform Arb
+            self.cross_platform = CrossPlatformArb(self.db)
+            # WebSocket
+            if config.FEATURE_WEBSOCKET:
+                self.ws_client = PolymarketWebSocket()
+                await self.ws_client.start()
+            # Queue System
+            if config.FEATURE_QUEUE:
+                await self.signal_queue.start_workers(self._process_queued_signal)
+            v8_count = sum(1 for f in [
+                config.FEATURE_CORRELATION_FILTER, config.FEATURE_MULTI_TIMEFRAME,
+                config.FEATURE_VWAP, config.FEATURE_ORDERBOOK_CRYPTO,
+                config.FEATURE_HEDGING, config.FEATURE_NEWS_CATALYST,
+                config.FEATURE_ML_SCORING, config.FEATURE_HEATMAP,
+                config.FEATURE_TRADE_JOURNAL, config.FEATURE_PUSH_NOTIFICATIONS,
+                config.FEATURE_WEBSOCKET, config.FEATURE_QUEUE,
+                config.FEATURE_RATE_LIMITING, config.FEATURE_BANKROLL,
+                config.FEATURE_MARKET_MAKING, config.FEATURE_EVENT_DRIVEN,
+                config.FEATURE_SPIKE_DETECTION, config.FEATURE_CROSS_PLATFORM,
+            ] if f)
+            print(f"v8.0 módulos inicializados ({v8_count} activos de 18)", flush=True)
+        except Exception as e:
+            print(f"Error iniciando módulos v8.0: {e}", flush=True)
+
+    async def _process_queued_signal(self, signal: dict):
+        """Procesar una señal de la cola."""
+        stype = signal.get("type", "")
+        if stype == "alert" and self.alert_autotrader:
+            await self.alert_autotrader.process_signal(signal)
+        elif stype == "crypto" and self.autotrader:
+            await self.autotrader.process_signal(signal)
 
     async def _start_crypto_arb(self):
         """Inicializar módulo crypto arb."""
@@ -200,6 +272,41 @@ class PolymarketAlertBot:
                             print(f"Coordinacion detectada: {coord_count} pares", flush=True)
                     except Exception as e:
                         print(f"Error en coordinacion: {e}", flush=True)
+
+                # ── v8.0: Módulos adicionales ──
+                # Cada 2 ciclos (~2 min): market maker + spike detector
+                if cycle % 2 == 0:
+                    try:
+                        if self.market_maker:
+                            await self.market_maker.tick()
+                    except Exception as e:
+                        print(f"Error market maker: {e}", flush=True)
+
+                # Cada 3 ciclos (~3 min): event driven + cross platform
+                if cycle % 3 == 0:
+                    try:
+                        if self.event_driven:
+                            await self.event_driven.tick()
+                        if self.cross_platform:
+                            await self.cross_platform.tick()
+                    except Exception as e:
+                        print(f"Error strategies v8: {e}", flush=True)
+
+                # Cada 5 ciclos: bankroll update
+                if cycle % 5 == 0:
+                    try:
+                        if self.bankroll:
+                            await self.bankroll.update_balance()
+                    except Exception as e:
+                        print(f"Error bankroll: {e}", flush=True)
+
+                # Cada 120 ciclos (~2h): ML retrain
+                if cycle % 120 == 0:
+                    try:
+                        if self.ml_scorer and config.FEATURE_ML_SCORING:
+                            await self.ml_scorer.train()
+                    except Exception as e:
+                        print(f"Error ML retrain: {e}", flush=True)
 
             except Exception as e:
                 print(f"Error en ciclo polling: {e}", flush=True)
@@ -863,6 +970,17 @@ async def lifespan(app: FastAPI):
     app.state.bot = bot
     app.state.autotrader = bot.autotrader
     app.state.alert_autotrader = bot.alert_autotrader
+    # v8.0 módulos
+    app.state.market_maker = bot.market_maker
+    app.state.spike_detector = bot.spike_detector
+    app.state.event_driven = bot.event_driven
+    app.state.cross_platform = bot.cross_platform
+    app.state.rate_limiter = bot.rate_limiter
+    app.state.queue = bot.signal_queue
+    app.state.websocket = bot.ws_client
+    app.state.bankroll = bot.bankroll
+    app.state.news_catalyst = bot.news_catalyst
+    app.state.ml_scorer = bot.ml_scorer
     # Lanzar polling en background
     polling_task = asyncio.create_task(bot.run_polling_loop())
     print(f"Dashboard activo en puerto {config.DASHBOARD_PORT}", flush=True)

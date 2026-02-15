@@ -1435,3 +1435,146 @@ async def get_alert_trades(request: Request, hours: int = 168, limit: int = 50):
     trades = await db.get_alert_autotrades(hours=hours, limit=limit)
     stats = await db.get_alert_autotrade_stats()
     return {"trades": trades, "stats": stats}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# ── v8.0: Nuevas Features ────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+
+@router.get("/api/heatmap")
+async def get_heatmap(request: Request):
+    db = request.app.state.db
+    data = await db.get_heatmap_data()
+    return data
+
+@router.get("/api/journal")
+async def get_journal(request: Request, limit: int = 50):
+    db = request.app.state.db
+    notes = await db.get_journal_notes(user_id=1, limit=limit)
+    return notes
+
+@router.post("/api/journal")
+async def add_journal(request: Request):
+    db = request.app.state.db
+    body = await request.json()
+    await db.add_journal_note(
+        trade_type=body.get("trade_type", "manual"),
+        trade_id=body.get("trade_id", 0),
+        note=body.get("note", ""),
+        tags=body.get("tags", ""),
+        user_id=body.get("user_id", 1),
+    )
+    return {"status": "ok"}
+
+@router.get("/api/bankroll")
+async def get_bankroll(request: Request, days: int = 30):
+    db = request.app.state.db
+    history = await db.get_bankroll_history(days=days)
+    bankroll = getattr(request.app.state, 'bankroll', None)
+    stats = bankroll.get_stats() if bankroll else {"enabled": False}
+    return {"stats": stats, "history": history}
+
+@router.get("/api/notifications")
+async def get_notifications(request: Request, unread: bool = True):
+    db = request.app.state.db
+    notifs = await db.get_notifications(user_id=1, unread_only=unread)
+    return notifs
+
+@router.post("/api/notifications/read")
+async def mark_read(request: Request):
+    db = request.app.state.db
+    body = await request.json()
+    ids = body.get("ids")
+    await db.mark_notifications_read(user_id=1, notification_ids=ids)
+    return {"status": "ok"}
+
+@router.get("/api/strategies/stats")
+async def get_strategies_stats(request: Request):
+    """Stats de todos los bots/estrategias adicionales."""
+    result = {}
+    for name in ['market_maker', 'spike_detector', 'event_driven', 'cross_platform']:
+        bot = getattr(request.app.state, name, None)
+        if bot:
+            result[name] = bot.get_stats()
+        else:
+            result[name] = {"enabled": False}
+    return result
+
+@router.get("/api/infra/stats")
+async def get_infra_stats(request: Request):
+    """Stats de módulos de infraestructura."""
+    result = {}
+    for name in ['rate_limiter', 'queue', 'websocket', 'bankroll', 'news_catalyst', 'ml_scorer']:
+        mod = getattr(request.app.state, name, None)
+        if mod:
+            result[name] = mod.get_stats()
+        else:
+            result[name] = {"enabled": False}
+    return result
+
+@router.get("/api/features/v8")
+async def get_features_v8():
+    """Obtener estado de todas las features v8.0."""
+    return {
+        "correlation_filter": config.FEATURE_CORRELATION_FILTER,
+        "multi_timeframe": config.FEATURE_MULTI_TIMEFRAME,
+        "vwap": config.FEATURE_VWAP,
+        "orderbook_crypto": config.FEATURE_ORDERBOOK_CRYPTO,
+        "hedging": config.FEATURE_HEDGING,
+        "news_catalyst": config.FEATURE_NEWS_CATALYST,
+        "ml_scoring": config.FEATURE_ML_SCORING,
+        "heatmap": config.FEATURE_HEATMAP,
+        "trade_journal": config.FEATURE_TRADE_JOURNAL,
+        "push_notifications": config.FEATURE_PUSH_NOTIFICATIONS,
+        "websocket": config.FEATURE_WEBSOCKET,
+        "queue_system": config.FEATURE_QUEUE,
+        "rate_limiting": config.FEATURE_RATE_LIMITING,
+        "bankroll_tracking": config.FEATURE_BANKROLL,
+        "market_making": config.FEATURE_MARKET_MAKING,
+        "event_driven": config.FEATURE_EVENT_DRIVEN,
+        "spike_detection": config.FEATURE_SPIKE_DETECTION,
+        "cross_platform_arb": config.FEATURE_CROSS_PLATFORM,
+    }
+
+@router.post("/api/features/v8")
+async def save_features_v8(request: Request):
+    """Guardar estado de features v8.0."""
+    db = request.app.state.db
+    body = await request.json()
+    mapping = {
+        "correlation_filter": "feature_correlation_filter",
+        "multi_timeframe": "feature_multi_timeframe",
+        "vwap": "feature_vwap",
+        "orderbook_crypto": "feature_orderbook_crypto",
+        "hedging": "feature_hedging",
+        "news_catalyst": "feature_news_catalyst",
+        "ml_scoring": "feature_ml_scoring",
+        "heatmap": "feature_heatmap",
+        "trade_journal": "feature_trade_journal",
+        "push_notifications": "feature_push_notifications",
+        "websocket": "feature_websocket",
+        "queue_system": "feature_queue",
+        "rate_limiting": "feature_rate_limiting",
+        "bankroll_tracking": "feature_bankroll",
+        "market_making": "feature_market_making",
+        "event_driven": "feature_event_driven",
+        "spike_detection": "feature_spike_detection",
+        "cross_platform_arb": "feature_cross_platform",
+    }
+    import src.config as cfg
+    save_data = {}
+    for ui_key, cfg_key in mapping.items():
+        if ui_key in body:
+            val = body[ui_key]
+            save_data[cfg_key] = str(val).lower()
+            setattr(cfg, cfg_key.upper(), val)
+    await db.set_config(save_data)
+    return {"status": "ok"}
+
+@router.get("/api/mm/orders")
+async def get_mm_orders(request: Request, limit: int = 50):
+    db = request.app.state.db
+    orders = await db.get_mm_orders(limit=limit)
+    mm = getattr(request.app.state, 'market_maker', None)
+    stats = mm.get_stats() if mm else {"running": False}
+    return {"orders": orders, "stats": stats}
