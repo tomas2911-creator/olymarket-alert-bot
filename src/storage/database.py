@@ -294,7 +294,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS users (
                     id          SERIAL PRIMARY KEY,
                     username    TEXT UNIQUE NOT NULL,
-                    email       TEXT UNIQUE,
+                    email       TEXT,
                     password_hash TEXT NOT NULL,
                     display_name TEXT DEFAULT '',
                     created_at  TIMESTAMPTZ DEFAULT NOW(),
@@ -317,6 +317,8 @@ class Database:
                 # Índice único compuesto para config por usuario
                 "DROP INDEX IF EXISTS bot_config_pkey",
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_bot_config_key_user ON bot_config(key, user_id)",
+                # Quitar UNIQUE de email (permite múltiples usuarios sin email)
+                "DROP INDEX IF EXISTS users_email_key",
             ]
             for m in user_migrations:
                 try:
@@ -337,7 +339,7 @@ class Database:
                     INSERT INTO users (username, email, password_hash, display_name)
                     VALUES ($1, $2, $3, $4)
                     RETURNING id, username, display_name, created_at
-                """, username.lower().strip(), email.strip(), pw_hash, display_name or username)
+                """, username.lower().strip(), email.strip() or None, pw_hash, display_name or username)
                 return {"id": row["id"], "username": row["username"], "display_name": row["display_name"]}
             except asyncpg.UniqueViolationError:
                 return {"error": "Usuario ya existe"}

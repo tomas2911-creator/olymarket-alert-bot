@@ -1708,7 +1708,9 @@ function enterApp(){
 }
 
 // ── Helpers ──
+function authHeaders(extra){const h={'Content-Type':'application/json'};if(_authToken)h['Authorization']='Bearer '+_authToken;return Object.assign(h,extra||{});}
 async function fetchJson(url){try{const h={};if(_authToken)h['Authorization']='Bearer '+_authToken;const r=await fetch(url,{headers:h});return r.ok?await r.json():null}catch{return null}}
+async function postJson(url,body){try{const r=await fetch(url,{method:'POST',headers:authHeaders(),body:JSON.stringify(body||{})});return r.ok?await r.json():null}catch{return null}}
 function fmt(n){return n!=null?n.toLocaleString():'-'}
 function fmtUsd(n){return n!=null?'$'+n.toLocaleString(undefined,{maximumFractionDigits:0}):'-'}
 function shortW(a){return !a||a.length<10?a||'?':a.slice(0,6)+'...'+a.slice(-4)}
@@ -1891,7 +1893,7 @@ async function saveFeatures(){
     const btn=document.querySelector('[onclick="saveFeatures()"]');
     btn.textContent='Guardando...';btn.disabled=true;
     try{
-        await fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        await postJson('/api/features',body);
         btn.textContent='✅ Guardado!';btn.className='px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium transition';
         const st=document.getElementById('ft-status');st.classList.remove('hidden');
         setTimeout(()=>{btn.textContent='Guardar Módulos';btn.className='px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition';btn.disabled=false;st.classList.add('hidden');},2000);
@@ -1951,7 +1953,7 @@ async function saveConfig(){
     const btn=document.querySelector('[onclick="saveConfig()"]');
     btn.textContent='Guardando...';btn.disabled=true;
     try{
-        await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        await postJson('/api/config',body);
         btn.textContent='✅ Guardado!';btn.className='px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium transition';
         setTimeout(()=>{btn.textContent='Guardar Config';btn.className='px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition';btn.disabled=false;},2000);
     }catch(e){
@@ -2760,7 +2762,7 @@ async function saveStrategyConfig(){
         min_distance_atr:parseFloat(document.getElementById('st-min-dist').value),
         min_trend_consistency:parseFloat(document.getElementById('st-min-trend').value),
     };
-    await fetch('/api/crypto-arb/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    await postJson('/api/crypto-arb/config',body);
     const st=document.getElementById('strat-status');
     st.classList.remove('hidden');
     setTimeout(()=>st.classList.add('hidden'),2000);
@@ -2812,7 +2814,7 @@ async function saveCryptoConfig(){
         max_daily_signals:parseInt(document.getElementById('cc-max-daily').value),
         telegram_alerts:document.getElementById('cc-telegram').value==='true',
     };
-    await fetch('/api/crypto-arb/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    await postJson('/api/crypto-arb/config',body);
     const st=document.getElementById('cc-status');
     st.classList.remove('hidden');
     setTimeout(()=>st.classList.add('hidden'),2000);
@@ -2822,7 +2824,7 @@ async function saveCryptoConfig(){
 async function disconnectWallet(){
     if(!confirm('¿Desconectar wallet? Se borrarán las 4 credenciales (Private Key, API Key, Secret, Passphrase). Podrás conectar otra wallet después.'))return;
     try{
-        await fetch('/api/crypto-arb/autotrade-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:'',api_secret:'',private_key:'',passphrase:'',enabled:false})});
+        await postJson('/api/crypto-arb/autotrade-config',{api_key:'',api_secret:'',private_key:'',passphrase:'',enabled:false});
         await loadAutotradeConfig();
         document.getElementById('at-gen-msg').textContent='Wallet desconectada. Pega una nueva Private Key para conectar otra.';
         document.getElementById('at-gen-msg').className='text-[10px] text-yellow-400 mt-1';
@@ -2837,9 +2839,8 @@ async function generateApiKeys(){
     btn.disabled=true;btn.textContent='Generando...';
     msg.textContent='Firmando EIP-712 y contactando Polymarket CLOB...';msg.className='text-[10px] text-yellow-400 mt-1';
     try{
-        const r=await fetch('/api/crypto-arb/generate-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({private_key:pk})});
-        const data=await r.json();
-        if(data.status==='ok'){
+        const data=await postJson('/api/crypto-arb/generate-keys',{private_key:pk});
+        if(data&&data.status==='ok'){
             msg.textContent=`API Keys generadas para ${data.wallet}. Listo para trading.`;
             msg.className='text-[10px] text-green-400 mt-1';
             document.getElementById('at-private-key').value='••••••••';
@@ -2928,10 +2929,9 @@ async function saveAutotradeConfig(){
         coins:coins,
     };
     try{
-        const r=await fetch('/api/crypto-arb/autotrade-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-        const data=await r.json();
+        const data=await postJson('/api/crypto-arb/autotrade-config',body);
         const st=document.getElementById('at-save-status');
-        if(data.status==='ok'){
+        if(data&&data.status==='ok'){
             st.textContent='Guardado!';st.className='text-xs text-green-400 self-center';
         }else{
             st.textContent='Error: '+(data.error||'desconocido');st.className='text-xs text-red-400 self-center';
@@ -3115,9 +3115,8 @@ async function generateAatKeys(){
     document.getElementById('aat-gen-msg').textContent='Generando API keys...';
     document.getElementById('aat-gen-msg').className='text-[10px] text-yellow-400 mt-1';
     try{
-        const r=await fetch('/api/alert-trading/generate-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({private_key:pk})});
-        const data=await r.json();
-        if(data.status==='ok'){
+        const data=await postJson('/api/alert-trading/generate-keys',{private_key:pk});
+        if(data&&data.status==='ok'){
             document.getElementById('aat-gen-msg').textContent='Wallet conectada: '+data.wallet;
             document.getElementById('aat-gen-msg').className='text-[10px] text-green-400 mt-1';
             document.getElementById('aat-pk-input').value='';
@@ -3132,7 +3131,7 @@ async function generateAatKeys(){
 async function disconnectAatWallet(){
     if(!confirm('Desconectar wallet del Alert Trading? El bot quedará sin wallet y no podrá tradear.'))return;
     try{
-        await fetch('/api/alert-trading/disconnect-wallet',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        await postJson('/api/alert-trading/disconnect-wallet',{});
         loadAatConfig();
     }catch(e){alert('Error: '+e.message);}
 }
@@ -3180,8 +3179,7 @@ async function saveAatConfig(){
         auto_exit_on_sell:document.getElementById('aat-auto-exit').checked,
     };
     try{
-        const r=await fetch('/api/alert-trading/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-        const data=await r.json();
+        const data=await postJson('/api/alert-trading/config',body);
         const st=document.getElementById('aat-save-status');
         if(data.status==='ok'){st.textContent='Guardado!';st.className='text-xs text-green-400 self-center';}
         else{st.textContent='Error: '+(data.error||'');st.className='text-xs text-red-400 self-center';}
