@@ -3771,7 +3771,11 @@ async function loadStrategies(){
         const lines=[];
         for(const[k,v]of Object.entries(info)){
             if(k==='enabled'||k==='running')continue;
-            lines.push(`<div>${k}: <span class="text-gray-300">${typeof v==='number'?v.toLocaleString():v}</span></div>`);
+            let display=v;
+            if(typeof v==='number')display=v.toLocaleString();
+            else if(typeof v==='object'&&v!==null)display=JSON.stringify(v);
+            else if(typeof v==='boolean')display=v?'true':'false';
+            lines.push(`<div>${k}: <span class="text-gray-300">${display}</span></div>`);
         }
         infoEl.innerHTML=lines.join('')||'Sin datos';
     };
