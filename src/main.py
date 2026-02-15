@@ -669,20 +669,10 @@ class PolymarketAlertBot:
                         except Exception:
                             pass
 
-                    # Método 3: Auto-resolver por precio Binance (fallback rápido)
-                    # Si pasaron >3 min desde el cierre y no hay resolución oficial
-                    if not resolution and secs_since_close > 180 and self.binance_feed:
-                        pair_map = {"BTC": "btcusdt", "ETH": "ethusdt", "SOL": "solusdt"}
-                        pair = pair_map.get(coin)
-                        if pair:
-                            current_price = self.binance_feed.get_price(pair)
-                            signal_price = float(sig.get("spot_price", 0))
-                            if current_price and signal_price:
-                                # Precio actual vs precio al detectar señal
-                                resolution = "Up" if current_price >= signal_price else "Down"
-                                print(f"[CryptoResolve] Auto-resolve {coin}: "
-                                      f"signal_price={signal_price:.2f} current={current_price:.2f} → {resolution}",
-                                      flush=True)
+                    # Método 3 ELIMINADO: Binance auto-resolve era incorrecto.
+                    # Polymarket compara contra "price to beat" (inicio del mercado),
+                    # no contra el spot_price cuando se detectó la señal.
+                    # Solo confiamos en la resolución oficial de Gamma/CLOB.
 
                     if not resolution:
                         continue
