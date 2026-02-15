@@ -428,10 +428,9 @@ class CryptoArbDetector:
             self._signals_today = []
             self._signals_today_date = today
 
-        # Evitar señales duplicadas para el mismo mercado en 60 segundos
-        for s in self._signals_today[-10:]:
-            if (s.condition_id == signal.condition_id and
-                    (signal.timestamp - s.timestamp).total_seconds() < 60):
+        # Evitar señales duplicadas para el mismo mercado (1 señal por condition_id)
+        for s in self._signals_today:
+            if s.condition_id == signal.condition_id:
                 return
 
         if len(self._signals_today) >= config.CRYPTO_ARB_MAX_DAILY:

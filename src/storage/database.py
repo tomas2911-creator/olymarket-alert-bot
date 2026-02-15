@@ -1182,14 +1182,20 @@ class Database:
     # ── Crypto Arb Signals ────────────────────────────────────────────
 
     async def record_crypto_signal(self, signal: dict) -> int:
-        """Registrar señal crypto arb y devolver ID."""
+        """Registrar señal crypto arb y devolver ID. Rechaza duplicados por condition_id."""
         async with self._pool.acquire() as conn:
+            # Crear índice único si no existe (safety net contra duplicados)
+            await conn.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_crypto_signals_condition_id
+                ON crypto_signals (condition_id)
+            """)
             row = await conn.fetchrow("""
                 INSERT INTO crypto_signals
                 (coin, direction, spot_change_pct, poly_odds, fair_odds,
                  confidence, edge_pct, condition_id, market_question,
                  spot_price, time_remaining_sec, paper_bet_size, event_slug)
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                ON CONFLICT (condition_id) DO NOTHING
                 RETURNING id
             """,
                 signal["coin"], signal["direction"],
