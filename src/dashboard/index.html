@@ -425,7 +425,7 @@
     </div>
 
     <!-- Alerts Panel -->
-        <div id="panel-alerts" class="hidden">
+        <div id="panel-alerts" class="hidden glass glow rounded-xl overflow-hidden">
             <div class="px-4 py-2 flex gap-2 items-center border-b border-gray-800/50">
                 <input type="text" id="alert-search" placeholder="Buscar mercado o wallet..." class="bg-gray-800/50 rounded px-3 py-1.5 text-xs text-gray-200 w-64 focus:outline-none focus:ring-1 focus:ring-purple-500" oninput="filterAlerts()">
                 <select id="alert-score-filter" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none" onchange="filterAlerts()">
@@ -478,7 +478,7 @@
         </div>
 
         <!-- Leaderboard Panel -->
-        <div id="panel-leaderboard" class="hidden">
+        <div id="panel-leaderboard" class="hidden glass glow rounded-xl overflow-hidden">
             <div class="px-4 py-2 flex gap-2 items-center border-b border-gray-800/50">
                 <span class="text-xs text-gray-400">Ordenar por:</span>
                 <select id="lb-sort" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none" onchange="loadLeaderboard()">
@@ -509,7 +509,7 @@
         </div>
 
         <!-- Wallets Panel -->
-        <div id="panel-wallets" class="hidden overflow-x-auto">
+        <div id="panel-wallets" class="hidden glass glow rounded-xl overflow-x-auto">
             <table class="w-full text-sm">
                 <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
                     <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('wl','wallet',render_wl)">Wallet <span id="si-wl-wallet" data-sg="wl" class="text-purple-400 hidden"></span></th>
@@ -527,7 +527,7 @@
         </div>
 
         <!-- Markets Panel -->
-        <div id="panel-markets" class="hidden overflow-x-auto">
+        <div id="panel-markets" class="hidden glass glow rounded-xl overflow-x-auto">
             <table class="w-full text-sm">
                 <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
                     <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('mk','market',render_mk)">Mercado <span id="si-mk-market" data-sg="mk" class="text-purple-400 hidden"></span></th>
@@ -544,7 +544,7 @@
         </div>
 
         <!-- Coordination Panel -->
-        <div id="panel-coordination" class="hidden overflow-x-auto">
+        <div id="panel-coordination" class="hidden glass glow rounded-xl overflow-x-auto">
             <table class="w-full text-sm">
                 <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
                     <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('co','wa',render_co)">Wallet A <span id="si-co-wa" data-sg="co" class="text-purple-400 hidden"></span></th>
@@ -560,7 +560,7 @@
         </div>
 
         <!-- Feed Panel -->
-        <div id="panel-feed" class="hidden">
+        <div id="panel-feed" class="hidden glass glow rounded-xl overflow-hidden">
             <div class="px-4 py-2 flex gap-2 items-center border-b border-gray-800/50">
                 <span class="text-xs text-gray-400">Min size:</span>
                 <select id="feed-min-size" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none" onchange="filterFeed()">
@@ -600,7 +600,7 @@
         </div>
 
         <!-- Crypto Arb Panel -->
-        <div id="panel-crypto" class="hidden">
+        <div id="panel-crypto" class="hidden glass glow rounded-xl overflow-hidden">
             <!-- Crypto Stats Cards -->
             <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 p-4">
                 <div class="bg-gray-800/40 rounded-lg p-3">
@@ -1095,7 +1095,7 @@
         </div>
 
         <!-- Alert Trading Panel -->
-        <div id="panel-alerttrading" class="hidden">
+        <div id="panel-alerttrading" class="hidden glass glow rounded-xl overflow-hidden">
             <!-- Stats Cards -->
             <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 p-4">
                 <div class="bg-gray-800/40 rounded-lg p-3">
@@ -1561,9 +1561,6 @@
             </div>
         </div>
 
-    <!-- Config Panel (como sección del sidebar) -->
-    <div id="panel-config" class="hidden"></div>
-
 </main>
 </div><!-- /main-content -->
 </div><!-- /app-wrapper -->
@@ -1756,13 +1753,23 @@ function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 // ── Sidebar Navigation ──
 const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',alerttrading:'Alert Trading',config:'Configuración'};
 function showTab(t){
-    ['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading','config'].forEach(id=>{
+    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading'];
+    // Ocultar todos los paneles
+    panels.forEach(id=>{
         const panel=document.getElementById('panel-'+id);
-        if(panel)panel.classList.toggle('hidden',id!==t);
-        const nav=document.getElementById('nav-'+id);
-        if(nav){nav.classList.toggle('active',id===t);}
+        if(panel)panel.classList.add('hidden');
     });
-    // Config panel especial (ya existe fuera de main)
+    // Mostrar el panel seleccionado (si no es config)
+    if(t!=='config'){
+        const sel=document.getElementById('panel-'+t);
+        if(sel)sel.classList.remove('hidden');
+    }
+    // Sidebar active state
+    [...panels,'config'].forEach(id=>{
+        const nav=document.getElementById('nav-'+id);
+        if(nav)nav.classList.toggle('active',id===t);
+    });
+    // Config panel especial (fuera de main)
     const cfgPanel=document.getElementById('config-panel');
     if(cfgPanel)cfgPanel.classList.toggle('hidden',t!=='config');
     document.getElementById('page-title').textContent=PAGE_TITLES[t]||t;
