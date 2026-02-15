@@ -968,11 +968,15 @@ async def get_alert_trading_config(request: Request):
         "aat_max_daily_trades", "aat_max_daily_loss",
         "aat_min_wallet_hit_rate", "aat_cooldown_hours",
         "aat_excluded_categories", "aat_require_smart_money",
+        "aat_api_key", "aat_private_key",
         "at_api_key", "at_private_key",
     ])
     stats = await db.get_alert_autotrade_stats()
     aat = getattr(request.app.state, 'alert_autotrader', None)
     aat_status = aat.get_status() if aat else {}
+    has_own_wallet = bool(raw.get("aat_private_key"))
+    has_shared_wallet = bool(raw.get("at_api_key") and raw.get("at_private_key"))
+    active_pk = raw.get("aat_private_key") or raw.get("at_private_key", "")
     return {
         "enabled": raw.get("aat_enabled") == "true",
         "bet_size": float(raw.get("aat_bet_size", 10)),
@@ -986,7 +990,11 @@ async def get_alert_trading_config(request: Request):
         "cooldown_hours": float(raw.get("aat_cooldown_hours", 6)),
         "excluded_categories": raw.get("aat_excluded_categories", ""),
         "require_smart_money": raw.get("aat_require_smart_money") == "true",
-        "wallet_connected": bool(raw.get("at_api_key") and raw.get("at_private_key")),
+        "has_own_wallet": has_own_wallet,
+        "wallet_connected": has_own_wallet or has_shared_wallet,
+        "wallet_source": "propia" if has_own_wallet else ("compartida (Crypto Arb)" if has_shared_wallet else "ninguna"),
+        "wallet_address": _derive_wallet_address(active_pk),
+        "api_key_preview": (raw.get("aat_api_key", "")[:12] + "...") if raw.get("aat_api_key") else ((raw.get("at_api_key", "")[:12] + "...") if raw.get("at_api_key") else ""),
         "connected": aat_status.get("connected", False),
         "open_positions": stats.get("open_positions", 0),
         "pnl_today": stats.get("pnl_24h", 0),
@@ -1040,6 +1048,120 @@ async def save_alert_trading_config(request: Request):
         except Exception:
             pass
     return {"status": "ok"}
+
+
+@router.post("/api/alert-trading/generate-keys")
+async def generate_aat_api_keys(request: Request):
+    """Generar API Keys propias para Alert Trading (wallet separada)."""
+    import httpx as _httpx
+    db = request.app.state.db
+    body = await request.json()
+    private_key = body.get("private_key", "").strip()
+    if not private_key:
+        return {"status": "error", "error": "Private key es requerida."}
+    if not private_key.startswith("0x"):
+        private_key = "0x" + private_key
+    pk_clean = private_key[2:]
+    if len(pk_clean) != 64:
+        return {"status": "error", "error": f"Private key debe tener 64 caracteres hex. La tuya tiene {len(pk_clean)}."}
+    try:
+        import time as _time
+        from eth_account import Account
+        from eth_account.messages import encode_typed_data
+        account = Account.from_key(private_key)
+        wallet_address = account.address
+        timestamp = str(int(_time.time()))
+        nonce = 0
+        typed_data = {
+            "types": {
+                "EIP712Domain": [
+                    {"name": "name", "type": "string"},
+                    {"name": "version", "type": "string"},
+                    {"name": "chainId", "type": "uint256"},
+                ],
+                "ClobAuth": [
+                    {"name": "address", "type": "address"},
+                    {"name": "timestamp", "type": "string"},
+                    {"name": "nonce", "type": "uint256"},
+                    {"name": "message", "type": "string"},
+                ],
+            },
+            "primaryType": "ClobAuth",
+            "domain": {"name": "ClobAuthDomain", "version": "1", "chainId": 137},
+            "message": {
+                "address": wallet_address,
+                "timestamp": timestamp,
+                "nonce": nonce,
+                "message": "This message attests that I control the given wallet",
+            },
+        }
+        signable = encode_typed_data(full_message=typed_data)
+        signed = account.sign_message(signable)
+        signature = signed.signature.hex()
+        if not signature.startswith("0x"):
+            signature = "0x" + signature
+        poly_headers = {
+            "POLY_ADDRESS": wallet_address,
+            "POLY_SIGNATURE": signature,
+            "POLY_TIMESTAMP": timestamp,
+            "POLY_NONCE": str(nonce),
+            "User-Agent": "PolymarketAlertBot/3.0",
+            "Accept": "application/json",
+        }
+        api_creds = None
+        error_msg = ""
+        async with _httpx.AsyncClient(timeout=15) as client:
+            try:
+                resp = await client.get("https://clob.polymarket.com/auth/derive-api-key", headers=poly_headers)
+                if resp.status_code == 200:
+                    api_creds = resp.json()
+            except Exception:
+                pass
+            if not api_creds:
+                try:
+                    resp = await client.post("https://clob.polymarket.com/auth/api-key", headers=poly_headers, content=b"")
+                    if resp.status_code == 200:
+                        api_creds = resp.json()
+                    else:
+                        error_msg = f"CLOB HTTP {resp.status_code}: {resp.text[:200]}"
+                except Exception as e:
+                    error_msg = str(e)
+        if not api_creds:
+            return {"status": "error", "error": error_msg or "No se pudieron generar las API keys."}
+        await db.set_config_bulk({
+            "aat_private_key": pk_clean,
+            "aat_api_key": api_creds.get("apiKey", ""),
+            "aat_api_secret": api_creds.get("secret", ""),
+            "aat_passphrase": api_creds.get("passphrase", ""),
+        })
+        aat = getattr(request.app.state, 'alert_autotrader', None)
+        if aat:
+            try:
+                await aat.reload_config()
+            except Exception:
+                pass
+        return {"status": "ok", "wallet": wallet_address, "message": "Wallet propia configurada para Alert Trading."}
+    except Exception as e:
+        return {"status": "error", "error": f"Error: {e}"}
+
+
+@router.post("/api/alert-trading/disconnect-wallet")
+async def disconnect_aat_wallet(request: Request):
+    """Desconectar wallet propia del Alert Trading (vuelve a usar la compartida)."""
+    db = request.app.state.db
+    await db.set_config_bulk({
+        "aat_private_key": "",
+        "aat_api_key": "",
+        "aat_api_secret": "",
+        "aat_passphrase": "",
+    })
+    aat = getattr(request.app.state, 'alert_autotrader', None)
+    if aat:
+        try:
+            await aat.reload_config()
+        except Exception:
+            pass
+    return {"status": "ok", "message": "Wallet propia desconectada. Usando wallet de Crypto Arb si existe."}
 
 
 @router.get("/api/alert-trading/trades")

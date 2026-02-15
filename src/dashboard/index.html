@@ -1038,7 +1038,7 @@
             <!-- Config Sub-panel -->
             <div id="aat-panel-config" class="p-4 space-y-4">
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <!-- Activar + Estado wallet -->
+                    <!-- Activar + Wallet -->
                     <div class="space-y-3">
                         <div class="flex items-center justify-between">
                             <div>
@@ -1050,13 +1050,30 @@
                                 <div class="toggle-slider"></div>
                             </label>
                         </div>
-                        <div id="aat-wallet-status" class="bg-gray-800/40 border border-gray-700/50 rounded p-3">
-                            <div class="text-xs text-gray-400">Wallet: <span id="aat-wallet-info" class="text-gray-500">Sin configurar</span></div>
-                            <p class="text-[10px] text-gray-600 mt-1">Usa la misma wallet configurada en Crypto Arb. Si no tienes una, ve a Crypto Arb y genera tus API keys.</p>
+                        <!-- Estado wallet -->
+                        <div id="aat-wallet-connected" class="hidden bg-green-900/30 border border-green-700/50 rounded p-3">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-green-400 text-sm font-medium">Wallet conectada</span>
+                                <button onclick="disconnectAatWallet()" class="text-[10px] text-red-400 hover:text-red-300 border border-red-800 hover:border-red-600 rounded px-2 py-0.5 transition-colors">Desconectar</button>
+                            </div>
+                            <div class="text-xs text-gray-400 space-y-0.5">
+                                <div>Wallet: <span id="aat-wallet-addr" class="text-purple-300 font-mono">—</span></div>
+                                <div>API Key: <span id="aat-key-preview" class="text-green-400 font-mono">—</span></div>
+                                <div>Tipo: <span id="aat-wallet-type" class="text-yellow-400">—</span></div>
+                            </div>
+                        </div>
+                        <!-- Input wallet propia -->
+                        <div id="aat-wallet-form">
+                            <label class="text-xs text-gray-400 block mb-1">Private Key (wallet separada para Alert Trading)</label>
+                            <div class="flex gap-2">
+                                <input type="password" id="aat-pk-input" placeholder="0x..." class="flex-1 bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                                <button onclick="generateAatKeys()" class="px-3 py-2 rounded bg-green-600 hover:bg-green-500 text-white text-xs font-medium transition whitespace-nowrap">Generar Keys</button>
+                            </div>
+                            <div id="aat-gen-msg" class="text-[10px] text-gray-500 mt-1">Pega la private key de otra wallet para separar fondos del crypto arb.</div>
                         </div>
                     </div>
 
-                    <!-- Parámetros de trading -->
+                    <!-- Parametros -->
                     <div class="space-y-3">
                         <h4 class="text-xs text-gray-500 uppercase tracking-wider">Parametros</h4>
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1099,18 +1116,56 @@
                         </div>
                     </div>
                 </div>
-                <!-- Filtros extra -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label class="text-xs text-gray-400 block mb-1">Categorias Excluidas (coma separadas)</label>
-                        <input type="text" id="aat-excluded-cats" placeholder="sports, esports..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm text-purple-300">
-                    </div>
-                    <div class="flex items-center gap-3 pt-4">
-                        <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                            <input type="checkbox" id="aat-require-smart" class="rounded border-gray-600">
-                            Solo Smart Money (wallets en watchlist)
+                <!-- Categorias excluidas con checkboxes -->
+                <div class="space-y-2">
+                    <h4 class="text-xs text-gray-500 uppercase tracking-wider">Categorias Excluidas del Trading</h4>
+                    <p class="text-[10px] text-gray-600">Estas categorias NO se tradearán aunque generen alerta. Las alertas de Telegram no se ven afectadas.</p>
+                    <div class="flex flex-wrap gap-2" id="aat-cat-checks">
+                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
+                            <input type="checkbox" value="sports" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Sports
+                        </label>
+                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
+                            <input type="checkbox" value="esports" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Esports
+                        </label>
+                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
+                            <input type="checkbox" value="politics" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Politics
+                        </label>
+                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
+                            <input type="checkbox" value="crypto" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Crypto
+                        </label>
+                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
+                            <input type="checkbox" value="pop culture" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Pop Culture
+                        </label>
+                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
+                            <input type="checkbox" value="business" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Business
+                        </label>
+                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
+                            <input type="checkbox" value="science" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Science
+                        </label>
+                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
+                            <input type="checkbox" value="nba" class="aat-cat-cb rounded border-gray-600 text-purple-500"> NBA
+                        </label>
+                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
+                            <input type="checkbox" value="nfl" class="aat-cat-cb rounded border-gray-600 text-purple-500"> NFL
+                        </label>
+                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
+                            <input type="checkbox" value="soccer" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Soccer
                         </label>
                     </div>
+                    <!-- Custom tag input -->
+                    <div class="flex gap-2 items-center">
+                        <input type="text" id="aat-custom-cat" placeholder="Agregar categoria..." class="bg-gray-800/70 border border-gray-600 rounded px-3 py-1.5 text-xs text-purple-300 w-48" onkeydown="if(event.key==='Enter')addAatCustomCat()">
+                        <button onclick="addAatCustomCat()" class="px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-xs text-gray-300 transition">+ Agregar</button>
+                    </div>
+                    <div id="aat-custom-tags" class="flex flex-wrap gap-1.5"></div>
+                    <input type="hidden" id="aat-excluded-cats">
+                </div>
+                <!-- Smart money filter -->
+                <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                        <input type="checkbox" id="aat-require-smart" class="rounded border-gray-600">
+                        Solo Smart Money (wallets en watchlist)
+                    </label>
                 </div>
                 <div class="flex gap-3">
                     <button onclick="saveAatConfig()" class="px-4 py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">Guardar</button>
@@ -2475,6 +2530,8 @@ function showAatSub(sub){
     if(sub==='history')loadAatHistory();
 }
 
+let _aatCustomCats=[];
+
 async function loadAatConfig(){
     const c=await fetchJson('/api/alert-trading/config');
     if(!c)return;
@@ -2488,8 +2545,13 @@ async function loadAatConfig(){
     document.getElementById('aat-max-daily-loss').value=c.max_daily_loss||50;
     document.getElementById('aat-cooldown-hours').value=c.cooldown_hours||6;
     document.getElementById('aat-min-hitrate').value=c.min_wallet_hit_rate||0;
-    document.getElementById('aat-excluded-cats').value=c.excluded_categories||'';
     document.getElementById('aat-require-smart').checked=c.require_smart_money||false;
+    // Categorías: marcar checkboxes y cargar custom tags
+    const savedCats=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+    const knownVals=['sports','esports','politics','crypto','pop culture','business','science','nba','nfl','soccer'];
+    document.querySelectorAll('.aat-cat-cb').forEach(cb=>{cb.checked=savedCats.includes(cb.value);});
+    _aatCustomCats=savedCats.filter(c=>!knownVals.includes(c));
+    renderAatCustomTags();
     // Status cards
     const statusEl=document.getElementById('aat-status');
     if(c.connected){statusEl.textContent='Conectado';statusEl.className='text-sm font-bold text-green-400';}
@@ -2506,9 +2568,69 @@ async function loadAatConfig(){
     document.getElementById('aat-pnl-24h').className='text-lg font-bold mt-1 '+(pnl24>=0?'text-green-400':'text-red-400');
     document.getElementById('aat-open-pos').textContent=c.open_positions||'0';
     // Wallet status
-    const wi=document.getElementById('aat-wallet-info');
-    if(c.wallet_connected){wi.textContent='Conectada';wi.className='text-green-400 font-medium';}
-    else{wi.textContent='Sin configurar — ve a Crypto Arb';wi.className='text-red-400';}
+    if(c.wallet_connected){
+        document.getElementById('aat-wallet-connected').classList.remove('hidden');
+        document.getElementById('aat-wallet-form').classList.add('hidden');
+        document.getElementById('aat-wallet-addr').textContent=c.wallet_address?c.wallet_address.slice(0,6)+'...'+c.wallet_address.slice(-4):'—';
+        document.getElementById('aat-key-preview').textContent=c.api_key_preview||'—';
+        document.getElementById('aat-wallet-type').textContent=c.wallet_source||'—';
+    }else{
+        document.getElementById('aat-wallet-connected').classList.add('hidden');
+        document.getElementById('aat-wallet-form').classList.remove('hidden');
+    }
+}
+
+function collectAatCategories(){
+    const checked=[];
+    document.querySelectorAll('.aat-cat-cb:checked').forEach(cb=>checked.push(cb.value));
+    return[...checked,..._aatCustomCats].join(',');
+}
+
+function renderAatCustomTags(){
+    const el=document.getElementById('aat-custom-tags');
+    el.innerHTML=_aatCustomCats.map(c=>`<span class="inline-flex items-center gap-1 bg-red-900/30 text-red-300 rounded px-2 py-0.5 text-[10px]">${c}<button onclick="removeAatCustomCat('${c}')" class="text-red-400 hover:text-red-200 font-bold ml-0.5">&times;</button></span>`).join('');
+}
+
+function addAatCustomCat(){
+    const input=document.getElementById('aat-custom-cat');
+    const val=input.value.trim().toLowerCase();
+    if(!val)return;
+    if(!_aatCustomCats.includes(val)){_aatCustomCats.push(val);}
+    input.value='';
+    renderAatCustomTags();
+}
+
+function removeAatCustomCat(cat){
+    _aatCustomCats=_aatCustomCats.filter(c=>c!==cat);
+    renderAatCustomTags();
+}
+
+async function generateAatKeys(){
+    const pk=document.getElementById('aat-pk-input').value.trim();
+    if(!pk){document.getElementById('aat-gen-msg').textContent='Pega una private key primero.';document.getElementById('aat-gen-msg').className='text-[10px] text-red-400 mt-1';return;}
+    document.getElementById('aat-gen-msg').textContent='Generando API keys...';
+    document.getElementById('aat-gen-msg').className='text-[10px] text-yellow-400 mt-1';
+    try{
+        const r=await fetch('/api/alert-trading/generate-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({private_key:pk})});
+        const data=await r.json();
+        if(data.status==='ok'){
+            document.getElementById('aat-gen-msg').textContent='Wallet conectada: '+data.wallet;
+            document.getElementById('aat-gen-msg').className='text-[10px] text-green-400 mt-1';
+            document.getElementById('aat-pk-input').value='';
+            loadAatConfig();
+        }else{
+            document.getElementById('aat-gen-msg').textContent='Error: '+(data.error||'');
+            document.getElementById('aat-gen-msg').className='text-[10px] text-red-400 mt-1';
+        }
+    }catch(e){document.getElementById('aat-gen-msg').textContent='Error de conexion';document.getElementById('aat-gen-msg').className='text-[10px] text-red-400 mt-1';}
+}
+
+async function disconnectAatWallet(){
+    if(!confirm('Desconectar wallet propia del Alert Trading? Volverá a usar la wallet de Crypto Arb si existe.'))return;
+    try{
+        await fetch('/api/alert-trading/disconnect-wallet',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        loadAatConfig();
+    }catch(e){alert('Error: '+e.message);}
 }
 
 async function saveAatConfig(){
@@ -2523,7 +2645,7 @@ async function saveAatConfig(){
         max_daily_loss:parseFloat(document.getElementById('aat-max-daily-loss').value)||50,
         cooldown_hours:parseFloat(document.getElementById('aat-cooldown-hours').value)||6,
         min_wallet_hit_rate:parseFloat(document.getElementById('aat-min-hitrate').value)||0,
-        excluded_categories:document.getElementById('aat-excluded-cats').value,
+        excluded_categories:collectAatCategories(),
         require_smart_money:document.getElementById('aat-require-smart').checked,
     };
     try{

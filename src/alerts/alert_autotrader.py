@@ -48,9 +48,17 @@ class AlertAutoTrader:
                 "aat_max_daily_trades", "aat_max_daily_loss",
                 "aat_min_wallet_hit_rate", "aat_cooldown_hours",
                 "aat_excluded_categories", "aat_require_smart_money",
-                # Credenciales compartidas con crypto autotrader
+                # Credenciales propias del alert autotrader
+                "aat_api_key", "aat_api_secret", "aat_private_key", "aat_passphrase",
+                # Fallback: credenciales compartidas de crypto autotrader
                 "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
             ])
+            # Credenciales: usar propias si existen, sino fallback a compartidas
+            api_key = raw.get("aat_api_key") or raw.get("at_api_key", "")
+            api_secret = raw.get("aat_api_secret") or raw.get("at_api_secret", "")
+            private_key = raw.get("aat_private_key") or raw.get("at_private_key", "")
+            passphrase = raw.get("aat_passphrase") or raw.get("at_passphrase", "")
+
             self._config = {
                 "enabled": raw.get("aat_enabled") == "true",
                 "bet_size": float(raw.get("aat_bet_size", 10)),
@@ -68,11 +76,11 @@ class AlertAutoTrader:
                     if c.strip()
                 },
                 "require_smart_money": raw.get("aat_require_smart_money") == "true",
-                # Credenciales compartidas
-                "api_key": raw.get("at_api_key", ""),
-                "api_secret": raw.get("at_api_secret", ""),
-                "private_key": raw.get("at_private_key", ""),
-                "passphrase": raw.get("at_passphrase", ""),
+                "api_key": api_key,
+                "api_secret": api_secret,
+                "private_key": private_key,
+                "passphrase": passphrase,
+                "has_own_wallet": bool(raw.get("aat_private_key")),
             }
             self._enabled = self._config["enabled"]
 
