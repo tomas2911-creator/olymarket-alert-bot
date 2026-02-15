@@ -427,13 +427,13 @@
                 <table class="w-full text-sm">
                     <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
                         <th class="px-3 py-2 text-center">#</th>
-                        <th class="px-3 py-2 text-left">Wallet</th>
-                        <th class="px-3 py-2 text-center">SM Score</th>
-                        <th class="px-3 py-2 text-right">PnL</th>
-                        <th class="px-3 py-2 text-right">ROI</th>
-                        <th class="px-3 py-2 text-center">Win Rate</th>
-                        <th class="px-3 py-2 text-right">Volumen</th>
-                        <th class="px-3 py-2 text-center">Mercados</th>
+                        <th class="px-3 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('lb','wallet',render_lb)">Wallet <span id="si-lb-wallet" data-sg="lb" class="text-purple-400 hidden"></span></th>
+                        <th class="px-3 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('lb','sm',render_lb)">SM Score <span id="si-lb-sm" data-sg="lb" class="text-purple-400 hidden"></span></th>
+                        <th class="px-3 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('lb','pnl',render_lb)">PnL <span id="si-lb-pnl" data-sg="lb" class="text-purple-400 hidden"></span></th>
+                        <th class="px-3 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('lb','roi',render_lb)">ROI <span id="si-lb-roi" data-sg="lb" class="text-purple-400 hidden"></span></th>
+                        <th class="px-3 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('lb','wr',render_lb)">Win Rate <span id="si-lb-wr" data-sg="lb" class="text-purple-400 hidden"></span></th>
+                        <th class="px-3 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('lb','vol',render_lb)">Volumen <span id="si-lb-vol" data-sg="lb" class="text-purple-400 hidden"></span></th>
+                        <th class="px-3 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('lb','mkts',render_lb)">Mercados <span id="si-lb-mkts" data-sg="lb" class="text-purple-400 hidden"></span></th>
                         <th class="px-3 py-2 text-center">On-chain</th>
                         <th class="px-3 py-2 text-center">Explorar</th>
                     </tr></thead>
@@ -447,13 +447,13 @@
         <div id="panel-wallets" class="hidden overflow-x-auto">
             <table class="w-full text-sm">
                 <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-                    <th class="px-4 py-2 text-left">Wallet</th>
-                    <th class="px-4 py-2 text-left">Nombre</th>
-                    <th class="px-4 py-2 text-right">Alertas</th>
-                    <th class="px-4 py-2 text-right">Trades</th>
-                    <th class="px-4 py-2 text-right">Volumen</th>
-                    <th class="px-4 py-2 text-center">Max Score</th>
-                    <th class="px-4 py-2 text-center">Hit Rate</th>
+                    <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('wl','wallet',render_wl)">Wallet <span id="si-wl-wallet" data-sg="wl" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('wl','name',render_wl)">Nombre <span id="si-wl-name" data-sg="wl" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('wl','alerts',render_wl)">Alertas <span id="si-wl-alerts" data-sg="wl" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('wl','trades',render_wl)">Trades <span id="si-wl-trades" data-sg="wl" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('wl','vol',render_wl)">Volumen <span id="si-wl-vol" data-sg="wl" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('wl','score',render_wl)">Max Score <span id="si-wl-score" data-sg="wl" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('wl','hr',render_wl)">Hit Rate <span id="si-wl-hr" data-sg="wl" class="text-purple-400 hidden"></span></th>
                     <th class="px-4 py-2 text-center">Explorar</th>
                 </tr></thead>
                 <tbody id="wallets-body"></tbody>
@@ -465,13 +465,13 @@
         <div id="panel-markets" class="hidden overflow-x-auto">
             <table class="w-full text-sm">
                 <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-                    <th class="px-4 py-2 text-left">Mercado</th>
-                    <th class="px-4 py-2 text-center">Categoria</th>
-                    <th class="px-4 py-2 text-right">Trades</th>
-                    <th class="px-4 py-2 text-right">Volumen</th>
-                    <th class="px-4 py-2 text-center">Alertas</th>
-                    <th class="px-4 py-2 text-center">Cierre</th>
-                    <th class="px-4 py-2 text-center">Estado</th>
+                    <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('mk','market',render_mk)">Mercado <span id="si-mk-market" data-sg="mk" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('mk','cat',render_mk)">Categoria <span id="si-mk-cat" data-sg="mk" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('mk','trades',render_mk)">Trades <span id="si-mk-trades" data-sg="mk" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('mk','vol',render_mk)">Volumen <span id="si-mk-vol" data-sg="mk" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('mk','alerts',render_mk)">Alertas <span id="si-mk-alerts" data-sg="mk" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('mk','close',render_mk)">Cierre <span id="si-mk-close" data-sg="mk" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('mk','status',render_mk)">Estado <span id="si-mk-status" data-sg="mk" class="text-purple-400 hidden"></span></th>
                 </tr></thead>
                 <tbody id="markets-body"></tbody>
             </table>
@@ -482,12 +482,12 @@
         <div id="panel-coordination" class="hidden overflow-x-auto">
             <table class="w-full text-sm">
                 <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-                    <th class="px-4 py-2 text-left">Wallet A</th>
-                    <th class="px-4 py-2 text-left">Wallet B</th>
-                    <th class="px-4 py-2 text-center">Mercados Compartidos</th>
-                    <th class="px-4 py-2 text-center">Mismo Lado %</th>
-                    <th class="px-4 py-2 text-center">Avg Dif (seg)</th>
-                    <th class="px-4 py-2 text-center">Confianza</th>
+                    <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('co','wa',render_co)">Wallet A <span id="si-co-wa" data-sg="co" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('co','wb',render_co)">Wallet B <span id="si-co-wb" data-sg="co" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('co','shared',render_co)">Mercados Compartidos <span id="si-co-shared" data-sg="co" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('co','same',render_co)">Mismo Lado % <span id="si-co-same" data-sg="co" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('co','avgdif',render_co)">Avg Dif (seg) <span id="si-co-avgdif" data-sg="co" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('co','conf',render_co)">Confianza <span id="si-co-conf" data-sg="co" class="text-purple-400 hidden"></span></th>
                 </tr></thead>
                 <tbody id="coord-body"></tbody>
             </table>
@@ -513,13 +513,13 @@
             <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-                    <th class="px-4 py-2 text-left">Hora</th>
-                    <th class="px-4 py-2 text-left">Mercado</th>
-                    <th class="px-4 py-2 text-center">Side</th>
-                    <th class="px-4 py-2 text-right">Size</th>
-                    <th class="px-4 py-2 text-right">Precio</th>
-                    <th class="px-4 py-2 text-left">Wallet</th>
-                    <th class="px-4 py-2 text-center">Cat.</th>
+                    <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('fd','hora',render_fd)">Hora <span id="si-fd-hora" data-sg="fd" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('fd','market',render_fd)">Mercado <span id="si-fd-market" data-sg="fd" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('fd','side',render_fd)">Side <span id="si-fd-side" data-sg="fd" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('fd','size',render_fd)">Size <span id="si-fd-size" data-sg="fd" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('fd','price',render_fd)">Precio <span id="si-fd-price" data-sg="fd" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('fd','wallet',render_fd)">Wallet <span id="si-fd-wallet" data-sg="fd" class="text-purple-400 hidden"></span></th>
+                    <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('fd','cat',render_fd)">Cat. <span id="si-fd-cat" data-sg="fd" class="text-purple-400 hidden"></span></th>
                 </tr></thead>
                 <tbody id="feed-body"></tbody>
             </table>
@@ -605,15 +605,15 @@
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-                            <th class="px-4 py-2 text-left">Hora</th>
-                            <th class="px-4 py-2 text-center">Moneda</th>
-                            <th class="px-4 py-2 text-center">Dir</th>
-                            <th class="px-4 py-2 text-right">Spot %</th>
-                            <th class="px-4 py-2 text-right">Poly Odds</th>
-                            <th class="px-4 py-2 text-right">Fair Odds</th>
-                            <th class="px-4 py-2 text-right">Edge</th>
-                            <th class="px-4 py-2 text-center">Confianza</th>
-                            <th class="px-4 py-2 text-right">Cierre</th>
+                            <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','hora',render_cl)">Hora <span id="si-cl-hora" data-sg="cl" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','coin',render_cl)">Moneda <span id="si-cl-coin" data-sg="cl" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','dir',render_cl)">Dir <span id="si-cl-dir" data-sg="cl" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','spot',render_cl)">Spot % <span id="si-cl-spot" data-sg="cl" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','polyodds',render_cl)">Poly Odds <span id="si-cl-polyodds" data-sg="cl" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','fairodds',render_cl)">Fair Odds <span id="si-cl-fairodds" data-sg="cl" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','edge',render_cl)">Edge <span id="si-cl-edge" data-sg="cl" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','conf',render_cl)">Confianza <span id="si-cl-conf" data-sg="cl" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','close',render_cl)">Cierre <span id="si-cl-close" data-sg="cl" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center">Estado</th>
                             <th class="px-4 py-2 text-center">Ver</th>
                         </tr></thead>
@@ -649,13 +649,13 @@
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-                            <th class="px-4 py-2 text-left">Fecha</th>
-                            <th class="px-4 py-2 text-center">Moneda</th>
-                            <th class="px-4 py-2 text-center">Dir</th>
-                            <th class="px-4 py-2 text-right">Edge</th>
-                            <th class="px-4 py-2 text-center">Confianza</th>
-                            <th class="px-4 py-2 text-center">Resultado</th>
-                            <th class="px-4 py-2 text-right">PnL</th>
+                            <th class="px-4 py-2 text-left cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','fecha',render_ch)">Fecha <span id="si-ch-fecha" data-sg="ch" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','coin',render_ch)">Moneda <span id="si-ch-coin" data-sg="ch" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','dir',render_ch)">Dir <span id="si-ch-dir" data-sg="ch" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','edge',render_ch)">Edge <span id="si-ch-edge" data-sg="ch" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','conf',render_ch)">Confianza <span id="si-ch-conf" data-sg="ch" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','result',render_ch)">Resultado <span id="si-ch-result" data-sg="ch" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','pnl',render_ch)">PnL <span id="si-ch-pnl" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center">Ver</th>
                         </tr></thead>
                         <tbody id="crypto-hist-body"></tbody>
@@ -1061,6 +1061,32 @@ function statusBadge(a){
 }
 function polyLink(slug){return slug?`https://polymarket.com/event/${slug}`:'#'}
 function scanLink(addr){return`https://polygonscan.com/address/${addr}`}
+
+// ── Sistema genérico de sorting por columnas ──
+const _sortState={};
+function colSort(table,col,renderFn){
+    if(!_sortState[table])_sortState[table]={col:col,dir:'desc'};
+    const s=_sortState[table];
+    if(s.col===col)s.dir=s.dir==='asc'?'desc':'asc';
+    else{s.col=col;s.dir='desc';}
+    document.querySelectorAll(`[data-sg="${table}"]`).forEach(el=>{el.classList.add('hidden');el.textContent='';});
+    const icon=document.getElementById(`si-${table}-${col}`);
+    if(icon){icon.classList.remove('hidden');icon.textContent=s.dir==='asc'?'▲':'▼';}
+    renderFn();
+}
+function sortedData(table,data,valFn){
+    const s=_sortState[table]||{col:null,dir:'desc'};
+    const dir=s.dir==='asc'?1:-1;
+    return[...data].sort((a,b)=>{
+        const va=valFn(a,s.col),vb=valFn(b,s.col);
+        if(typeof va==='string'&&typeof vb==='string')return va<vb?-dir:va>vb?dir:0;
+        return((va||0)-(vb||0))*dir;
+    });
+}
+function thSort(table,col,label,align){
+    const al=align||'left';
+    return`<th class="px-4 py-2 text-${al} cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('${table}','${col}',render_${table})">${label} <span id="si-${table}-${col}" data-sg="${table}" class="text-purple-400 hidden"></span></th>`;
+}
 function polyProfile(addr){return`https://polymarket.com/profile/${addr}`}
 function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
@@ -1394,12 +1420,29 @@ function renderAlertsPage(){
 }
 
 // ── Load Wallets ──
+let _wlData=[];
 async function loadWallets(){
-    const wallets=await fetchJson('/api/wallets?limit=30');
+    _wlData=await fetchJson('/api/wallets?limit=30')||[];
+    render_wl();
+}
+function render_wl(){
     const body=document.getElementById('wallets-body'),empty=document.getElementById('wallets-empty');
-    if(!wallets||wallets.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    if(_wlData.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
     empty.classList.add('hidden');
-    body.innerHTML=wallets.map(w=>{
+    const sorted=sortedData('wl',_wlData,(w,col)=>{
+        const total=(w.win_count||0)+(w.loss_count||0);
+        switch(col){
+            case 'wallet':return(w.address||'').toLowerCase();
+            case 'name':return(w.name||w.pseudonym||'').toLowerCase();
+            case 'alerts':return w.alert_count||0;
+            case 'trades':return w.total_trades||0;
+            case 'vol':return w.total_volume||0;
+            case 'score':return w.max_score||0;
+            case 'hr':return total>0?w.win_count/total:0;
+            default:return 0;
+        }
+    });
+    body.innerHTML=sorted.map(w=>{
         const total=(w.win_count||0)+(w.loss_count||0);
         const hr=total>0?((w.win_count/total)*100).toFixed(0)+'%':'-';
         return`<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
@@ -1421,12 +1464,28 @@ async function loadWallets(){
 }
 
 // ── Load Markets ──
+let _mkData=[];
 async function loadMarkets(){
-    const markets=await fetchJson('/api/markets?limit=50');
+    _mkData=await fetchJson('/api/markets?limit=50')||[];
+    render_mk();
+}
+function render_mk(){
     const body=document.getElementById('markets-body'),empty=document.getElementById('markets-empty');
-    if(!markets||markets.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    if(_mkData.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
     empty.classList.add('hidden');
-    body.innerHTML=markets.map(m=>{
+    const sorted=sortedData('mk',_mkData,(m,col)=>{
+        switch(col){
+            case 'market':return(m.question||'').toLowerCase();
+            case 'cat':return(m.category||'').toLowerCase();
+            case 'trades':return m.trade_count||0;
+            case 'vol':return m.total_volume||0;
+            case 'alerts':return m.alert_count||0;
+            case 'close':return m.end_date?new Date(m.end_date).getTime():0;
+            case 'status':return m.resolved?1:0;
+            default:return 0;
+        }
+    });
+    body.innerHTML=sorted.map(m=>{
         const end=m.end_date?new Date(m.end_date):null;
         const daysLeft=end?Math.max(0,Math.ceil((end-Date.now())/86400000)):null;
         const catBadge=m.category?`<span class="px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-300">${m.category}</span>`:'';
@@ -1460,9 +1519,23 @@ function filterFeed(){
         if(q&&!(t.market_question||'').toLowerCase().includes(q)&&!(t.wallet_address||'').toLowerCase().includes(q)&&!(t.wallet_name||'').toLowerCase().includes(q))return false;
         return true;
     });
+    // Aplicar sorting
+    feedFiltered=sortedData('fd',feedFiltered,(t,col)=>{
+        switch(col){
+            case 'hora':return new Date(t.timestamp||0).getTime();
+            case 'market':return(t.market_question||'').toLowerCase();
+            case 'side':return(t.side||'')+(t.outcome||'');
+            case 'size':return t.size||0;
+            case 'price':return t.price||0;
+            case 'wallet':return(t.wallet_name||t.wallet_pseudonym||t.wallet_address||'').toLowerCase();
+            case 'cat':return(t.market_category||'').toLowerCase();
+            default:return 0;
+        }
+    });
     feedPage=0;
     renderFeedPage();
 }
+function render_fd(){feedPage=0;filterFeed();}
 function feedPageChange(dir){feedPage+=dir;renderFeedPage();}
 function renderFeedPage(){
     const body=document.getElementById('feed-body'),empty=document.getElementById('feed-empty');
@@ -1500,13 +1573,30 @@ function renderFeedPage(){
 }
 
 // ── Leaderboard ──
+let _lbData=[];
 async function loadLeaderboard(){
     const sort=document.getElementById('lb-sort').value;
-    const data=await fetchJson(`/api/leaderboard?limit=30&sort=${sort}`);
+    _lbData=await fetchJson(`/api/leaderboard?limit=30&sort=${sort}`)||[];
+    render_lb();
+}
+function render_lb(){
     const body=document.getElementById('lb-body'),empty=document.getElementById('lb-empty');
-    if(!data||data.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    if(_lbData.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
     empty.classList.add('hidden');
-    body.innerHTML=data.map((w,i)=>{
+    const sorted=sortedData('lb',_lbData,(w,col)=>{
+        const resolved=(w.win_count||0)+(w.loss_count||0);
+        switch(col){
+            case 'wallet':return(w.pseudonym||w.name||w.address||'').toLowerCase();
+            case 'sm':return w.smart_money_score||0;
+            case 'pnl':return w.total_pnl||0;
+            case 'roi':return w.roi_pct||0;
+            case 'wr':return resolved>0?w.win_count/resolved:0;
+            case 'vol':return w.total_volume||0;
+            case 'mkts':return w.correct_markets||0;
+            default:return 0;
+        }
+    });
+    body.innerHTML=sorted.map((w,i)=>{
         const resolved=(w.win_count||0)+(w.loss_count||0);
         const wr=resolved>0?((w.win_count/resolved)*100).toFixed(0)+'%':'-';
         const pnl=w.total_pnl||0;
@@ -1550,12 +1640,27 @@ async function loadLeaderboard(){
 }
 
 // ── Coordination ──
+let _coData=[];
 async function loadCoordination(){
-    const data=await fetchJson('/api/coordination?limit=30');
+    _coData=await fetchJson('/api/coordination?limit=30')||[];
+    render_co();
+}
+function render_co(){
     const body=document.getElementById('coord-body'),empty=document.getElementById('coord-empty');
-    if(!data||data.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    if(_coData.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
     empty.classList.add('hidden');
-    body.innerHTML=data.map(c=>{
+    const sorted=sortedData('co',_coData,(c,col)=>{
+        switch(col){
+            case 'wa':return(c.name_a||c.wallet_a||'').toLowerCase();
+            case 'wb':return(c.name_b||c.wallet_b||'').toLowerCase();
+            case 'shared':return c.shared_markets||0;
+            case 'same':return c.same_side_pct||0;
+            case 'avgdif':return c.avg_time_diff_sec||0;
+            case 'conf':return c.confidence||0;
+            default:return 0;
+        }
+    });
+    body.innerHTML=sorted.map(c=>{
         const conf=c.confidence||0;
         const confClass=conf>=70?'text-red-400':conf>=40?'text-yellow-400':'text-gray-400';
         const nameA=c.name_a||shortW(c.wallet_a);
@@ -1770,19 +1875,37 @@ async function loadCryptoPrices(){
     }
 }
 
+let _clData=[];
 async function loadCryptoLive(){
     const d=await fetchJson('/api/crypto-arb/live');
     if(!d)return;
+    _clData=d.signals||[];
+    render_cl();
+}
+function render_cl(){
     const body=document.getElementById('crypto-live-body');
     const empty=document.getElementById('crypto-live-empty');
-    const signals=d.signals||[];
-    if(signals.length===0){
+    if(_clData.length===0){
         body.innerHTML='';
         empty.classList.remove('hidden');
         return;
     }
     empty.classList.add('hidden');
-    body.innerHTML=signals.map(s=>{
+    const sorted=sortedData('cl',_clData,(s,col)=>{
+        switch(col){
+            case 'hora':return new Date(s.timestamp||0).getTime();
+            case 'coin':return(s.coin||'');
+            case 'dir':return s.direction||'';
+            case 'spot':return s.spot_change_pct||0;
+            case 'polyodds':return s.poly_odds||0;
+            case 'fairodds':return s.fair_odds||0;
+            case 'edge':return s.edge_pct||0;
+            case 'conf':return s.confidence||0;
+            case 'close':return s.time_remaining_sec||0;
+            default:return 0;
+        }
+    });
+    body.innerHTML=sorted.map(s=>{
         const dirColor=s.direction==='up'?'text-green-400':'text-red-400';
         const dirIcon=s.direction==='up'?'▲':'▼';
         const confBar=Math.round(s.confidence/10);
@@ -1844,18 +1967,33 @@ async function cleanSignals(){
     }catch(e){alert('Error de conexión');}
 }
 
+let _chData=[];
 async function loadCryptoHistory(){
     const coin=document.getElementById('crypto-coin-filter').value;
     const url=coin?`/api/crypto-arb/signals?coin=${coin}&limit=100`:'/api/crypto-arb/signals?limit=100';
-    const data=await fetchJson(url);
-    if(!data)return;
+    _chData=await fetchJson(url)||[];
+    render_ch();
+}
+function render_ch(){
     const body=document.getElementById('crypto-hist-body');
     const empty=document.getElementById('crypto-hist-empty');
     const count=document.getElementById('crypto-hist-count');
-    count.textContent=data.length+' señales';
-    if(data.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    count.textContent=_chData.length+' señales';
+    if(_chData.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
     empty.classList.add('hidden');
-    body.innerHTML=data.map(s=>{
+    const sorted=sortedData('ch',_chData,(s,col)=>{
+        switch(col){
+            case 'fecha':return new Date(s.created_at||0).getTime();
+            case 'coin':return(s.coin||'');
+            case 'dir':return s.direction||'';
+            case 'edge':return s.edge_pct||0;
+            case 'conf':return s.confidence||0;
+            case 'result':return s.resolved?(s.paper_result==='win'?2:0):1;
+            case 'pnl':return s.paper_pnl||0;
+            default:return 0;
+        }
+    });
+    body.innerHTML=sorted.map(s=>{
         const dirColor=s.direction==='up'?'text-green-400':'text-red-400';
         const dirIcon=s.direction==='up'?'▲':'▼';
         const ts=new Date(s.created_at);
