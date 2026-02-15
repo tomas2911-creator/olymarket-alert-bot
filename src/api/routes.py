@@ -35,6 +35,61 @@ async def dashboard():
     return HTMLResponse("<h1>Dashboard loading...</h1>")
 
 
+# ── Auth ─────────────────────────────────────────────────────────────
+
+@router.post("/api/auth/register")
+async def register(request: Request):
+    db = request.app.state.db
+    body = await request.json()
+    username = body.get("username", "").strip()
+    password = body.get("password", "")
+    email = body.get("email", "")
+    display_name = body.get("display_name", "")
+    if not username or not password:
+        return {"status": "error", "error": "Usuario y contraseña requeridos"}
+    if len(password) < 4:
+        return {"status": "error", "error": "Contraseña mínimo 4 caracteres"}
+    result = await db.create_user(username, password, email, display_name)
+    if "error" in result:
+        return {"status": "error", "error": result["error"]}
+    token = await db.create_session(result["id"])
+    return {"status": "ok", "user": result, "token": token}
+
+
+@router.post("/api/auth/login")
+async def login(request: Request):
+    db = request.app.state.db
+    body = await request.json()
+    username = body.get("username", "").strip()
+    password = body.get("password", "")
+    if not username or not password:
+        return {"status": "error", "error": "Usuario y contraseña requeridos"}
+    result = await db.verify_user(username, password)
+    if "error" in result:
+        return {"status": "error", "error": result["error"]}
+    token = await db.create_session(result["id"])
+    return {"status": "ok", "user": result, "token": token}
+
+
+@router.post("/api/auth/logout")
+async def logout(request: Request):
+    db = request.app.state.db
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if token:
+        await db.delete_session(token)
+    return {"status": "ok"}
+
+
+@router.get("/api/auth/me")
+async def get_me(request: Request):
+    db = request.app.state.db
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    user = await db.get_session_user(token)
+    if not user:
+        return {"status": "error", "error": "No autenticado"}
+    return {"status": "ok", "user": user}
+
+
 # ── Stats ────────────────────────────────────────────────────────────
 
 @router.get("/api/stats")

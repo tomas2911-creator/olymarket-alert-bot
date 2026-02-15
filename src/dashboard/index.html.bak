@@ -30,19 +30,6 @@
         .tab-btn.active { border-color: #6c5ce7; color: #a29bfe; }
         .tab-btn:not(.active) { border-color: transparent; color: #9ca3af; }
         .modal-bg { background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
-        /* Sidebar */
-        .sidebar { width: 240px; min-height: 100vh; background: #141425; border-right: 1px solid rgba(108,92,231,0.15); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 40; transition: transform 0.3s; }
-        .sidebar-nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; margin: 2px 8px; border-radius: 8px; font-size: 13px; color: #9ca3af; cursor: pointer; transition: all 0.15s; }
-        .sidebar-nav-item:hover { background: rgba(108,92,231,0.12); color: #d1d5db; }
-        .sidebar-nav-item.active { background: rgba(108,92,231,0.2); color: #a29bfe; font-weight: 600; }
-        .sidebar-nav-item .nav-icon { width: 18px; text-align: center; flex-shrink: 0; }
-        .main-content { margin-left: 240px; min-height: 100vh; }
-        .topbar { height: 52px; background: rgba(20,20,37,0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(108,92,231,0.1); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; position: sticky; top: 0; z-index: 30; }
-        @media (max-width: 768px) {
-            .sidebar { transform: translateX(-100%); }
-            .sidebar.open { transform: translateX(0); }
-            .main-content { margin-left: 0; }
-        }
         input[type=range] { accent-color: #6c5ce7; }
         .explorer-link { transition: color 0.15s; }
         .explorer-link:hover { color: #a29bfe; }
@@ -64,88 +51,25 @@
 </head>
 <body class="text-gray-200 min-h-screen">
 
-<!-- Login Screen -->
-<div id="login-screen" class="fixed inset-0 z-[200] flex items-center justify-center" style="background: #0f0f1a;">
-    <div class="glass glow rounded-2xl p-8 w-full max-w-sm mx-4 fade-in">
-        <div class="text-center mb-6">
-            <span class="text-4xl">🔍</span>
-            <h1 class="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mt-2">Polymarket Insider Alert</h1>
-            <p class="text-xs text-gray-500 mt-1">Inicia sesión para continuar</p>
-        </div>
-        <div id="login-form">
-            <div class="space-y-3">
-                <input type="text" id="auth-username" placeholder="Usuario" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-purple-500">
-                <input type="password" id="auth-password" placeholder="Contraseña" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-purple-500" onkeydown="if(event.key==='Enter')doLogin()">
-                <div id="auth-error" class="text-red-400 text-xs hidden"></div>
-                <button onclick="doLogin()" id="auth-btn" class="w-full py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">Iniciar Sesión</button>
-            </div>
-            <div class="text-center mt-4">
-                <button onclick="showRegister()" class="text-xs text-purple-400 hover:text-purple-300">¿No tienes cuenta? Regístrate</button>
-            </div>
-        </div>
-        <div id="register-form" class="hidden">
-            <div class="space-y-3">
-                <input type="text" id="reg-username" placeholder="Usuario" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-purple-500">
-                <input type="email" id="reg-email" placeholder="Email (opcional)" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-purple-500">
-                <input type="password" id="reg-password" placeholder="Contraseña (mín. 4 caracteres)" class="w-full bg-gray-800/70 border border-gray-600 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-purple-500" onkeydown="if(event.key==='Enter')doRegister()">
-                <div id="reg-error" class="text-red-400 text-xs hidden"></div>
-                <button onclick="doRegister()" class="w-full py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">Crear Cuenta</button>
-            </div>
-            <div class="text-center mt-4">
-                <button onclick="showLogin()" class="text-xs text-purple-400 hover:text-purple-300">Ya tengo cuenta</button>
-            </div>
-        </div>
+<!-- Header -->
+<header class="glass glass-header sticky top-0 z-50 px-3 sm:px-6 py-2 sm:py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+        <span class="text-xl sm:text-2xl">🔍</span>
+        <h1 class="text-sm sm:text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent truncate">
+            Polymarket Insider Alert
+        </h1>
     </div>
-</div>
-
-<!-- App Wrapper (hidden until auth) -->
-<div id="app-wrapper" class="hidden">
-
-<!-- Sidebar -->
-<aside class="sidebar" id="sidebar">
-    <div class="p-4 flex items-center gap-2 border-b border-gray-800/50">
-        <span class="text-xl">🔍</span>
-        <h1 class="text-sm font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Polymarket Alert</h1>
+    <div class="flex items-center gap-2 sm:gap-4 text-sm flex-shrink-0">
+        <button onclick="toggleConfig()" class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-purple-900/40 text-purple-300 hover:bg-purple-900/60 transition text-xs font-medium">
+            ⚙️ <span class="hidden sm:inline">Config</span>
+        </button>
+        <span class="flex items-center gap-1 sm:gap-2">
+            <span class="w-2 h-2 rounded-full bg-green-400 live-dot"></span>
+            <span id="uptime" class="text-gray-400 text-xs sm:text-sm">Conectando...</span>
+        </span>
+        <span id="last-update" class="text-gray-500 text-xs hidden sm:inline"></span>
     </div>
-    <nav class="flex-1 py-3 overflow-y-auto">
-        <div class="px-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Principal</span></div>
-        <div onclick="showTab('dashboard')" id="nav-dashboard" class="sidebar-nav-item active"><span class="nav-icon">📊</span>Dashboard</div>
-        <div onclick="showTab('alerts')" id="nav-alerts" class="sidebar-nav-item"><span class="nav-icon">🚨</span>Alertas</div>
-        <div onclick="showTab('leaderboard')" id="nav-leaderboard" class="sidebar-nav-item"><span class="nav-icon">🏆</span>Leaderboard</div>
-        <div onclick="showTab('wallets')" id="nav-wallets" class="sidebar-nav-item"><span class="nav-icon">👛</span>Wallets</div>
-        <div onclick="showTab('markets')" id="nav-markets" class="sidebar-nav-item"><span class="nav-icon">🏪</span>Mercados</div>
-        <div onclick="showTab('coordination')" id="nav-coordination" class="sidebar-nav-item"><span class="nav-icon">🔗</span>Coordinación</div>
-        <div onclick="showTab('feed')" id="nav-feed" class="sidebar-nav-item"><span class="nav-icon">📡</span>Feed</div>
-        <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Trading</span></div>
-        <div onclick="showTab('crypto')" id="nav-crypto" class="sidebar-nav-item"><span class="nav-icon">₿</span>Crypto Arb</div>
-        <div onclick="showTab('alerttrading')" id="nav-alerttrading" class="sidebar-nav-item"><span class="nav-icon">⚡</span>Alert Trading</div>
-        <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Sistema</span></div>
-        <div onclick="showTab('config')" id="nav-config" class="sidebar-nav-item"><span class="nav-icon">⚙️</span>Configuración</div>
-    </nav>
-    <div class="border-t border-gray-800/50 p-3">
-        <div class="flex items-center gap-3 px-2">
-            <div class="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center text-sm">👤</div>
-            <div class="flex-1 min-w-0">
-                <div class="text-xs font-medium truncate" id="sidebar-username">Usuario</div>
-                <div class="text-[10px] text-gray-500 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-400 live-dot"></span><span id="uptime">Conectando...</span></div>
-            </div>
-            <button onclick="doLogout()" class="text-gray-500 hover:text-red-400 transition text-xs" title="Cerrar sesión">🚪</button>
-        </div>
-    </div>
-</aside>
-
-<!-- Main Content -->
-<div class="main-content">
-    <!-- Top Bar -->
-    <div class="topbar">
-        <div class="flex items-center gap-3">
-            <button onclick="document.getElementById('sidebar').classList.toggle('open')" class="md:hidden text-gray-400 hover:text-white">☰</button>
-            <h2 class="text-sm font-semibold" id="page-title">Dashboard</h2>
-        </div>
-        <div class="flex items-center gap-3">
-            <span id="last-update" class="text-gray-500 text-xs"></span>
-        </div>
-    </div>
+</header>
 
 <!-- Config Panel (hidden by default) -->
 <div id="config-panel" class="hidden max-w-7xl mx-auto px-4 pt-4 space-y-4">
@@ -393,39 +317,51 @@
     </div>
 </div>
 
-<main class="px-4 py-4 space-y-4">
+<main class="max-w-7xl mx-auto px-4 py-4 space-y-4">
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Alertas Totales</div><div class="text-2xl font-bold mt-1" id="stat-total-alerts">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Alertas 24h</div><div class="text-2xl font-bold mt-1 text-purple-400" id="stat-alerts-24h">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Hit Rate</div><div class="text-2xl font-bold mt-1" id="stat-hit-rate">-</div><div class="text-xs text-gray-500" id="stat-resolved-detail"></div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Score Promedio</div><div class="text-2xl font-bold mt-1 text-pink-400" id="stat-avg-score">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Trades Procesados</div><div class="text-2xl font-bold mt-1" id="stat-trades">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Wallets Flaggeadas</div><div class="text-2xl font-bold mt-1 text-yellow-400" id="stat-wallets">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Correctas</div><div class="text-2xl font-bold mt-1 text-green-400" id="stat-correct">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Watchlist</div><div class="text-2xl font-bold mt-1 text-yellow-400" id="stat-watchlist">-</div></div>
+        <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Sesion</div><div class="text-lg font-bold mt-1" id="stat-session">-</div></div>
+    </div>
 
-    <!-- Dashboard Panel (stats + charts) -->
-    <div id="panel-dashboard">
-        <div class="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Alertas Totales</div><div class="text-2xl font-bold mt-1" id="stat-total-alerts">-</div></div>
-            <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Alertas 24h</div><div class="text-2xl font-bold mt-1 text-purple-400" id="stat-alerts-24h">-</div></div>
-            <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Hit Rate</div><div class="text-2xl font-bold mt-1" id="stat-hit-rate">-</div><div class="text-xs text-gray-500" id="stat-resolved-detail"></div></div>
-            <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Score Promedio</div><div class="text-2xl font-bold mt-1 text-pink-400" id="stat-avg-score">-</div></div>
-            <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Trades Procesados</div><div class="text-2xl font-bold mt-1" id="stat-trades">-</div></div>
-            <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Wallets Flaggeadas</div><div class="text-2xl font-bold mt-1 text-yellow-400" id="stat-wallets">-</div></div>
-            <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Correctas</div><div class="text-2xl font-bold mt-1 text-green-400" id="stat-correct">-</div></div>
-            <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Watchlist</div><div class="text-2xl font-bold mt-1 text-yellow-400" id="stat-watchlist">-</div></div>
-            <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Sesion</div><div class="text-lg font-bold mt-1" id="stat-session">-</div></div>
+    <!-- Charts Row (compact) -->
+    <div class="grid grid-cols-3 gap-3">
+        <div class="glass glow rounded-lg p-3">
+            <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Alertas/Dia</h3>
+            <div style="position:relative;height:80px"><canvas id="chart-alerts-day"></canvas></div>
         </div>
-        <div class="grid grid-cols-3 gap-3 mt-3">
-            <div class="glass glow rounded-lg p-3">
-                <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Alertas/Dia</h3>
-                <div style="position:relative;height:80px"><canvas id="chart-alerts-day"></canvas></div>
-            </div>
-            <div class="glass glow rounded-lg p-3">
-                <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Scores</h3>
-                <div style="position:relative;height:80px"><canvas id="chart-scores"></canvas></div>
-            </div>
-            <div class="glass glow rounded-lg p-3">
-                <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Categorias</h3>
-                <div style="position:relative;height:80px"><canvas id="chart-categories"></canvas></div>
-            </div>
+        <div class="glass glow rounded-lg p-3">
+            <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Scores</h3>
+            <div style="position:relative;height:80px"><canvas id="chart-scores"></canvas></div>
+        </div>
+        <div class="glass glow rounded-lg p-3">
+            <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Categorias</h3>
+            <div style="position:relative;height:80px"><canvas id="chart-categories"></canvas></div>
         </div>
     </div>
 
-    <!-- Alerts Panel -->
-        <div id="panel-alerts" class="hidden">
+    <!-- Main Tabs -->
+    <div class="glass glow rounded-xl overflow-hidden">
+        <div class="flex border-b border-gray-700/50 overflow-x-auto crypto-subtabs">
+            <button onclick="showTab('alerts')" id="tab-alerts" class="tab-btn active px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">🚨 Alertas</button>
+            <button onclick="showTab('leaderboard')" id="tab-leaderboard" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">🏆 Leaderboard</button>
+            <button onclick="showTab('wallets')" id="tab-wallets" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">👛 Wallets</button>
+            <button onclick="showTab('markets')" id="tab-markets" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">📊 Mercados</button>
+            <button onclick="showTab('coordination')" id="tab-coordination" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">🔗 Coordinacion</button>
+            <button onclick="showTab('feed')" id="tab-feed" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">⚡ Feed</button>
+            <button onclick="showTab('crypto')" id="tab-crypto" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">₿ Crypto Arb</button>
+            <button onclick="showTab('alerttrading')" id="tab-alerttrading" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">🤖 Alert Trading</button>
+        </div>
+
+        <!-- Alerts Panel -->
+        <div id="panel-alerts">
             <div class="px-4 py-2 flex gap-2 items-center border-b border-gray-800/50">
                 <input type="text" id="alert-search" placeholder="Buscar mercado o wallet..." class="bg-gray-800/50 rounded px-3 py-1.5 text-xs text-gray-200 w-64 focus:outline-none focus:ring-1 focus:ring-purple-500" oninput="filterAlerts()">
                 <select id="alert-score-filter" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none" onchange="filterAlerts()">
@@ -1561,12 +1497,8 @@
             </div>
         </div>
 
-    <!-- Config Panel (como sección del sidebar) -->
-    <div id="panel-config" class="hidden"></div>
-
+    </div>
 </main>
-</div><!-- /main-content -->
-</div><!-- /app-wrapper -->
 
 <!-- Wallet Detail Modal -->
 <div id="wallet-modal" class="hidden fixed inset-0 z-[100] modal-bg flex items-start justify-center pt-16 px-4" onclick="if(event.target===this)closeWalletModal()">
@@ -1636,82 +1568,13 @@
 </footer>
 
 <script>
-// ── Auth State ──
-let _authToken = localStorage.getItem('pm_token') || '';
-let _currentUser = null;
-
 // ── State ──
 let alertsChart=null, scoresChart=null, catChart=null;
 let allAlerts = [];
 const ALL_CATEGORIES = ['politics','sports','nba','nfl','nhl','mlb','mls','soccer','esports','crypto-prices','crypto-price','updown','entertainment','science','technology','business','culture','pop-culture'];
 
-// ── Auth Functions ──
-function showRegister(){ document.getElementById('login-form').classList.add('hidden'); document.getElementById('register-form').classList.remove('hidden'); }
-function showLogin(){ document.getElementById('register-form').classList.add('hidden'); document.getElementById('login-form').classList.remove('hidden'); }
-
-async function doLogin(){
-    const u=document.getElementById('auth-username').value.trim();
-    const p=document.getElementById('auth-password').value;
-    const errEl=document.getElementById('auth-error');
-    errEl.classList.add('hidden');
-    if(!u||!p){errEl.textContent='Completa todos los campos';errEl.classList.remove('hidden');return;}
-    try{
-        const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
-        const data=await r.json();
-        if(data.status==='ok'){
-            _authToken=data.token; _currentUser=data.user;
-            localStorage.setItem('pm_token',_authToken);
-            enterApp();
-        }else{errEl.textContent=data.error||'Error de login';errEl.classList.remove('hidden');}
-    }catch(e){errEl.textContent='Error de conexión';errEl.classList.remove('hidden');}
-}
-
-async function doRegister(){
-    const u=document.getElementById('reg-username').value.trim();
-    const e=document.getElementById('reg-email').value.trim();
-    const p=document.getElementById('reg-password').value;
-    const errEl=document.getElementById('reg-error');
-    errEl.classList.add('hidden');
-    if(!u||!p){errEl.textContent='Usuario y contraseña requeridos';errEl.classList.remove('hidden');return;}
-    try{
-        const r=await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,email:e,password:p})});
-        const data=await r.json();
-        if(data.status==='ok'){
-            _authToken=data.token; _currentUser=data.user;
-            localStorage.setItem('pm_token',_authToken);
-            enterApp();
-        }else{errEl.textContent=data.error||'Error de registro';errEl.classList.remove('hidden');}
-    }catch(err){errEl.textContent='Error de conexión';errEl.classList.remove('hidden');}
-}
-
-async function doLogout(){
-    try{await fetch('/api/auth/logout',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});}catch(e){}
-    _authToken=''; _currentUser=null;
-    localStorage.removeItem('pm_token');
-    document.getElementById('app-wrapper').classList.add('hidden');
-    document.getElementById('login-screen').classList.remove('hidden');
-}
-
-async function checkSession(){
-    if(!_authToken){return false;}
-    try{
-        const r=await fetch('/api/auth/me',{headers:{'Authorization':'Bearer '+_authToken}});
-        const data=await r.json();
-        if(data.status==='ok'){_currentUser=data.user;return true;}
-    }catch(e){}
-    _authToken='';localStorage.removeItem('pm_token');
-    return false;
-}
-
-function enterApp(){
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('app-wrapper').classList.remove('hidden');
-    document.getElementById('sidebar-username').textContent=_currentUser?.display_name||_currentUser?.username||'Usuario';
-    loadConfig();refresh();
-}
-
 // ── Helpers ──
-async function fetchJson(url){try{const h={};if(_authToken)h['Authorization']='Bearer '+_authToken;const r=await fetch(url,{headers:h});return r.ok?await r.json():null}catch{return null}}
+async function fetchJson(url){try{const r=await fetch(url);return r.ok?await r.json():null}catch{return null}}
 function fmt(n){return n!=null?n.toLocaleString():'-'}
 function fmtUsd(n){return n!=null?'$'+n.toLocaleString(undefined,{maximumFractionDigits:0}):'-'}
 function shortW(a){return !a||a.length<10?a||'?':a.slice(0,6)+'...'+a.slice(-4)}
@@ -1753,32 +1616,22 @@ function thSort(table,col,label,align){
 function polyProfile(addr){return`https://polymarket.com/profile/${addr}`}
 function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
-// ── Sidebar Navigation ──
-const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',alerttrading:'Alert Trading',config:'Configuración'};
+// ── Tabs ──
 function showTab(t){
-    ['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading','config'].forEach(id=>{
-        const panel=document.getElementById('panel-'+id);
-        if(panel)panel.classList.toggle('hidden',id!==t);
-        const nav=document.getElementById('nav-'+id);
-        if(nav){nav.classList.toggle('active',id===t);}
+    ['alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading'].forEach(id=>{
+        document.getElementById('panel-'+id).classList.toggle('hidden',id!==t);
+        document.getElementById('tab-'+id).classList.toggle('active',id===t);
     });
-    // Config panel especial (ya existe fuera de main)
-    const cfgPanel=document.getElementById('config-panel');
-    if(cfgPanel)cfgPanel.classList.toggle('hidden',t!=='config');
-    document.getElementById('page-title').textContent=PAGE_TITLES[t]||t;
-    if(t==='alerts')loadAlerts();
     if(t==='markets')loadMarkets();
     if(t==='feed')loadFeed();
     if(t==='leaderboard')loadLeaderboard();
     if(t==='coordination')loadCoordination();
     if(t==='crypto')loadCryptoTab();
     if(t==='alerttrading')loadAatConfig();
-    // Cerrar sidebar en mobile
-    document.getElementById('sidebar').classList.remove('open');
 }
 
 // ── Config ──
-function toggleConfig(){showTab('config')}
+function toggleConfig(){document.getElementById('config-panel').classList.toggle('hidden')}
 
 function toggleModuleSection(){
     // Mostrar/ocultar secciones de config según checkbox
@@ -3285,7 +3138,7 @@ async function loadAatWalletRanking(){
         const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
         return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
             <td class="p-2">${medal}</td>
-            <td class="p-2 font-mono text-purple-300 cursor-pointer" onclick="openWallet('${addr}')">${short}</td>
+            <td class="p-2 font-mono text-purple-300 cursor-pointer" onclick="openWalletModal('${addr}')">${short}</td>
             <td class="p-2 text-center">${total}</td>
             <td class="p-2 text-center"><span class="text-green-400">${wins}W</span>/<span class="text-red-400">${losses}L</span></td>
             <td class="p-2 text-center">${wr}</td>
@@ -3350,16 +3203,8 @@ async function runBacktest(){
 
 // ── Init ──
 async function refresh(){await Promise.all([loadStats(),loadAlerts(),loadWallets(),loadCharts()]);}
-
-(async function init(){
-    const ok=await checkSession();
-    if(ok){
-        enterApp();
-    }else{
-        document.getElementById('login-screen').classList.remove('hidden');
-    }
-    setInterval(()=>{if(_authToken)refresh()},30000);
-})();
+loadConfig();refresh();
+setInterval(refresh,30000);
 </script>
 </body>
 </html>

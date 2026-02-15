@@ -289,6 +289,138 @@ class Database:
                     ON alert_autotrades(condition_id);
             """)
 
+            # Tabla de usuarios
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id          SERIAL PRIMARY KEY,
+                    username    TEXT UNIQUE NOT NULL,
+                    email       TEXT UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    display_name TEXT DEFAULT '',
+                    created_at  TIMESTAMPTZ DEFAULT NOW(),
+                    last_login  TIMESTAMPTZ
+                );
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    token       TEXT PRIMARY KEY,
+                    user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    created_at  TIMESTAMPTZ DEFAULT NOW(),
+                    expires_at  TIMESTAMPTZ
+                );
+                CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
+                CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at);
+            """)
+            # Migración: agregar user_id a bot_config para config por usuario
+            user_migrations = [
+                "ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
+                "ALTER TABLE alert_autotrades ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
+                "ALTER TABLE autotrades ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
+                # Índice único compuesto para config por usuario
+                "DROP INDEX IF EXISTS bot_config_pkey",
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_bot_config_key_user ON bot_config(key, user_id)",
+            ]
+            for m in user_migrations:
+                try:
+                    await conn.execute(m)
+                except Exception:
+                    pass
+
+    # ── Auth ───────────────────────────────────────────────────────────
+
+    async def create_user(self, username: str, password: str, email: str = "", display_name: str = "") -> dict:
+        """Crear usuario con password hasheado."""
+        import hashlib, secrets
+        salt = secrets.token_hex(16)
+        pw_hash = hashlib.sha256((salt + password).encode()).hexdigest() + ":" + salt
+        async with self._pool.acquire() as conn:
+            try:
+                row = await conn.fetchrow("""
+                    INSERT INTO users (username, email, password_hash, display_name)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id, username, display_name, created_at
+                """, username.lower().strip(), email.strip(), pw_hash, display_name or username)
+                return {"id": row["id"], "username": row["username"], "display_name": row["display_name"]}
+            except asyncpg.UniqueViolationError:
+                return {"error": "Usuario ya existe"}
+
+    async def verify_user(self, username: str, password: str) -> dict:
+        """Verificar credenciales y retornar usuario."""
+        import hashlib
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM users WHERE username = $1", username.lower().strip()
+            )
+            if not row:
+                return {"error": "Usuario no encontrado"}
+            stored = row["password_hash"]
+            pw_hash_str, salt = stored.rsplit(":", 1)
+            check = hashlib.sha256((salt + password).encode()).hexdigest()
+            if check != pw_hash_str:
+                return {"error": "Contraseña incorrecta"}
+            await conn.execute(
+                "UPDATE users SET last_login = NOW() WHERE id = $1", row["id"]
+            )
+            return {"id": row["id"], "username": row["username"], "display_name": row["display_name"] or row["username"]}
+
+    async def create_session(self, user_id: int) -> str:
+        """Crear sesión y retornar token."""
+        import secrets
+        token = secrets.token_urlsafe(32)
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO user_sessions (token, user_id, expires_at)
+                VALUES ($1, $2, NOW() + INTERVAL '30 days')
+            """, token, user_id)
+        return token
+
+    async def get_session_user(self, token: str) -> dict:
+        """Obtener usuario de una sesión válida."""
+        if not token:
+            return {}
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT u.id, u.username, u.display_name, u.email
+                FROM user_sessions s JOIN users u ON s.user_id = u.id
+                WHERE s.token = $1 AND s.expires_at > NOW()
+            """, token)
+            if row:
+                return dict(row)
+        return {}
+
+    async def delete_session(self, token: str):
+        """Cerrar sesión."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("DELETE FROM user_sessions WHERE token = $1", token)
+
+    async def get_config_for_user(self, user_id: int, keys: list) -> dict:
+        """Obtener config específica de un usuario."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT key, value FROM bot_config WHERE key = ANY($1) AND user_id = $2",
+                keys, user_id
+            )
+            result = {r["key"]: r["value"] for r in rows}
+            # Fallback a config global (user_id=1) si no hay config de usuario
+            if len(result) < len(keys):
+                missing = [k for k in keys if k not in result]
+                rows2 = await conn.fetch(
+                    "SELECT key, value FROM bot_config WHERE key = ANY($1) AND user_id = 1",
+                    missing
+                )
+                for r in rows2:
+                    result[r["key"]] = r["value"]
+            return result
+
+    async def set_config_for_user(self, user_id: int, data: dict):
+        """Guardar config para un usuario específico."""
+        async with self._pool.acquire() as conn:
+            for key, value in data.items():
+                await conn.execute("""
+                    INSERT INTO bot_config (key, value, user_id)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (key, user_id)
+                    DO UPDATE SET value = $2
+                """, key, str(value), user_id)
+
     # ── Wallet Stats ──────────────────────────────────────────────────
 
     async def get_wallet_stats(self, address: str) -> Optional[WalletStats]:
