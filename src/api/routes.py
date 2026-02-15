@@ -697,6 +697,11 @@ async def get_autotrade_config(request: Request):
         "at_max_daily_loss", "at_max_daily_trades", "at_cooldown_sec",
         "at_coins", "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
     ])
+    # Estadísticas reales del autotrader
+    stats = await db.get_autotrade_stats()
+    # Estado del motor
+    autotrader = getattr(request.app.state, 'autotrader', None)
+    at_status = autotrader.get_status() if autotrader else {}
     return {
         "enabled": raw.get("at_enabled") == "true",
         "bet_size": float(raw.get("at_bet_size", 5)),
@@ -713,9 +718,13 @@ async def get_autotrade_config(request: Request):
         "api_secret_set": bool(raw.get("at_api_secret")),
         "private_key_set": bool(raw.get("at_private_key")),
         "passphrase_set": bool(raw.get("at_passphrase")),
+        "connected": at_status.get("connected", False),
         "balance": None,
-        "open_positions": 0,
-        "pnl_today": 0,
+        "open_positions": stats.get("open_positions", 0),
+        "pnl_today": stats.get("pnl_24h", 0),
+        "trades_today": stats.get("trades_24h", 0),
+        "total_pnl": stats.get("total_pnl", 0),
+        "win_rate": stats.get("win_rate", 0),
     }
 
 
@@ -757,27 +766,43 @@ async def save_autotrade_config(request: Request):
         data["at_passphrase"] = body["passphrase"]
     if data:
         await db.set_config_bulk(data)
+    # Recargar config en el autotrader si existe
+    autotrader = getattr(request.app.state, 'autotrader', None)
+    if autotrader:
+        try:
+            await autotrader.reload_config()
+        except Exception:
+            pass
     return {"status": "ok"}
 
 
 @router.get("/api/crypto-arb/autotrade-test")
 async def test_autotrade_connection(request: Request):
     """Probar conexión a Polymarket CLOB con las credenciales guardadas."""
+    autotrader = getattr(request.app.state, 'autotrader', None)
+    if autotrader:
+        result = await autotrader.test_connection()
+        return result
+    # Fallback sin autotrader
     db = request.app.state.db
     raw = await db.get_config_bulk(["at_api_key", "at_api_secret", "at_private_key"])
     if not raw.get("at_api_key") or not raw.get("at_api_secret"):
-        return {"connected": False, "error": "No hay credenciales configuradas. Guarda tu API Key y Secret primero."}
+        return {"connected": False, "error": "No hay credenciales configuradas."}
     try:
         import httpx
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get("https://clob.polymarket.com/time")
             if resp.status_code == 200:
-                return {
-                    "connected": True,
-                    "clob_time": resp.json(),
-                    "balance": None,
-                    "note": "Conexión al CLOB exitosa. Para balance se necesita autenticación con py-clob-client."
-                }
+                return {"connected": True, "balance": None, "note": "Conexión al CLOB exitosa."}
             return {"connected": False, "error": f"CLOB respondió con status {resp.status_code}"}
     except Exception as e:
         return {"connected": False, "error": str(e)}
+
+
+@router.get("/api/crypto-arb/autotrades")
+async def get_autotrades(request: Request, hours: int = 48, limit: int = 50):
+    """Obtener historial de autotrades ejecutados."""
+    db = request.app.state.db
+    trades = await db.get_autotrades(hours=hours, limit=limit)
+    stats = await db.get_autotrade_stats()
+    return {"trades": trades, "stats": stats}

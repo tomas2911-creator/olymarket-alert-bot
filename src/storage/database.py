@@ -217,6 +217,39 @@ class Database:
                     ON crypto_signals(resolved);
             """)
 
+            # Tabla de autotrades (trades reales ejecutados)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS autotrades (
+                    id              SERIAL PRIMARY KEY,
+                    condition_id    TEXT NOT NULL,
+                    order_id        TEXT DEFAULT '',
+                    coin            TEXT NOT NULL,
+                    direction       TEXT NOT NULL,
+                    side            TEXT DEFAULT 'BUY',
+                    price           DOUBLE PRECISION,
+                    size_usd        DOUBLE PRECISION,
+                    shares          DOUBLE PRECISION,
+                    token_id        TEXT,
+                    edge_pct        DOUBLE PRECISION,
+                    confidence      DOUBLE PRECISION,
+                    event_slug      TEXT DEFAULT '',
+                    order_type      TEXT DEFAULT 'limit',
+                    status          TEXT DEFAULT 'filled',
+                    error           TEXT,
+                    resolved        BOOLEAN DEFAULT FALSE,
+                    result          TEXT,
+                    pnl             DOUBLE PRECISION DEFAULT 0,
+                    resolved_at     TIMESTAMPTZ,
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_autotrades_created
+                    ON autotrades(created_at);
+                CREATE INDEX IF NOT EXISTS idx_autotrades_resolved
+                    ON autotrades(resolved);
+                CREATE INDEX IF NOT EXISTS idx_autotrades_cid
+                    ON autotrades(condition_id);
+            """)
+
     # ── Wallet Stats ──────────────────────────────────────────────────
 
     async def get_wallet_stats(self, address: str) -> Optional[WalletStats]:
@@ -1294,6 +1327,93 @@ class Database:
                     }
                     for r in by_coin
                 ],
+            }
+
+
+    # ── Autotrades ──────────────────────────────────────────────────────
+
+    async def record_autotrade(self, trade: dict):
+        """Guardar un trade ejecutado (o rechazado) por el autotrader."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO autotrades
+                    (condition_id, order_id, coin, direction, side, price, size_usd,
+                     shares, token_id, edge_pct, confidence, event_slug,
+                     order_type, status, error)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            """,
+                trade.get("condition_id", ""),
+                trade.get("order_id", ""),
+                trade.get("coin", ""),
+                trade.get("direction", ""),
+                trade.get("side", "BUY"),
+                trade.get("price", 0),
+                trade.get("size_usd", 0),
+                trade.get("shares", 0),
+                trade.get("token_id", ""),
+                trade.get("edge_pct", 0),
+                trade.get("confidence", 0),
+                trade.get("event_slug", ""),
+                trade.get("order_type", "limit"),
+                trade.get("status", "filled"),
+                trade.get("error"),
+            )
+
+    async def resolve_autotrade(self, condition_id: str, result: str, pnl: float):
+        """Marcar un autotrade como resuelto."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE autotrades
+                SET resolved = TRUE, result = $2, pnl = $3, resolved_at = NOW()
+                WHERE condition_id = $1 AND resolved = FALSE
+            """, condition_id, result, pnl)
+
+    async def get_autotrades(self, hours: int = 24, limit: int = 100) -> list[dict]:
+        """Obtener autotrades recientes."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT * FROM autotrades
+                WHERE created_at > NOW() - INTERVAL '1 hour' * $1
+                ORDER BY created_at DESC LIMIT $2
+            """, hours, limit)
+            return [_serialize_row(r) for r in rows]
+
+    async def get_open_autotrades(self) -> list[dict]:
+        """Obtener autotrades no resueltos (posiciones abiertas)."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT * FROM autotrades
+                WHERE resolved = FALSE AND status = 'filled'
+                ORDER BY created_at DESC
+            """)
+            return [_serialize_row(r) for r in rows]
+
+    async def get_autotrade_stats(self) -> dict:
+        """Estadísticas de autotrading."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT
+                    COUNT(*) FILTER (WHERE status = 'filled') as total_trades,
+                    COUNT(*) FILTER (WHERE resolved AND result = 'win') as wins,
+                    COUNT(*) FILTER (WHERE resolved AND result = 'loss') as losses,
+                    COUNT(*) FILTER (WHERE NOT resolved AND status = 'filled') as open_positions,
+                    COALESCE(SUM(pnl) FILTER (WHERE resolved), 0) as total_pnl,
+                    COALESCE(SUM(size_usd) FILTER (WHERE status = 'filled'), 0) as total_volume,
+                    COALESCE(SUM(pnl) FILTER (WHERE resolved AND created_at > NOW() - INTERVAL '24 hours'), 0) as pnl_24h,
+                    COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours' AND status = 'filled') as trades_24h
+                FROM autotrades
+            """)
+            total = (row["wins"] or 0) + (row["losses"] or 0)
+            return {
+                "total_trades": row["total_trades"] or 0,
+                "wins": row["wins"] or 0,
+                "losses": row["losses"] or 0,
+                "open_positions": row["open_positions"] or 0,
+                "win_rate": round((row["wins"] / total * 100) if total else 0, 1),
+                "total_pnl": round(float(row["total_pnl"] or 0), 2),
+                "total_volume": round(float(row["total_volume"] or 0), 2),
+                "pnl_24h": round(float(row["pnl_24h"] or 0), 2),
+                "trades_24h": row["trades_24h"] or 0,
             }
 
 

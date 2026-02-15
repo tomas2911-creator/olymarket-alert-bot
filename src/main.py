@@ -26,6 +26,7 @@ from src.api.polygonscan import get_wallet_onchain_info
 from src.crypto_arb.binance_feed import BinanceFeed
 from src.crypto_arb.detector import CryptoArbDetector
 from src.crypto_arb.backtester import CryptoArbBacktester
+from src.crypto_arb.autotrader import AutoTrader
 
 structlog.configure(
     processors=[
@@ -61,6 +62,7 @@ class PolymarketAlertBot:
         self.binance_feed = None
         self.crypto_detector = None
         self.backtester = CryptoArbBacktester()
+        self.autotrader = None
 
     async def start(self):
         """Inicializar DB y marcar como running."""
@@ -102,6 +104,9 @@ class PolymarketAlertBot:
             pairs = [c["binance_pair"] for c in config.CRYPTO_ARB_COINS]
             self.binance_feed = BinanceFeed(pairs=pairs)
             self.crypto_detector = CryptoArbDetector(self.binance_feed)
+            # Inicializar autotrader
+            self.autotrader = AutoTrader(self.db)
+            await self.autotrader.initialize()
             # Lanzar feed y detector como tasks
             asyncio.create_task(self._run_binance_feed())
             asyncio.create_task(self._run_crypto_detector())
@@ -193,6 +198,9 @@ class PolymarketAlertBot:
                 try:
                     await self.process_crypto_signals()
                     await self.resolve_crypto_signals()
+                    # Resolver autotrades abiertos
+                    if self.autotrader:
+                        await self.autotrader.resolve_trades()
                 except Exception as e:
                     print(f"Error en crypto arb: {e}", flush=True)
 
@@ -581,6 +589,13 @@ class PolymarketAlertBot:
 
             if saved:
                 print(f"Crypto signals guardadas: {saved}", flush=True)
+
+            # Pasar señales al autotrader para ejecución real
+            if self.autotrader and signals:
+                try:
+                    await self.autotrader.process_signals(signals)
+                except Exception as e:
+                    print(f"Error en autotrader.process_signals: {e}", flush=True)
         except Exception as e:
             print(f"Error procesando crypto signals: {e}", flush=True)
 
@@ -760,6 +775,7 @@ async def lifespan(app: FastAPI):
     await bot.start()
     app.state.db = bot.db
     app.state.bot = bot
+    app.state.autotrader = bot.autotrader
     # Lanzar polling en background
     polling_task = asyncio.create_task(bot.run_polling_loop())
     print(f"Dashboard activo en puerto {config.DASHBOARD_PORT}", flush=True)

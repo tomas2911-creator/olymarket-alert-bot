@@ -712,7 +712,7 @@
                                 <input type="password" id="at-passphrase" placeholder="Passphrase..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
                             </div>
                         </div>
-                        <p class="text-[10px] text-gray-600">Las credenciales se guardan encriptadas en el servidor. Nunca se exponen en el frontend.</p>
+                        <p class="text-[10px] text-gray-600">Las credenciales se guardan en el servidor (DB privada Railway). Nunca se exponen en el frontend.</p>
                     </div>
 
                     <!-- Trading Parameters -->
@@ -784,6 +784,10 @@
                                 <input type="checkbox" id="at-coin-sol" checked class="accent-purple-500">
                                 <span class="text-sm font-medium">SOL</span>
                             </label>
+                            <label class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-4 py-2 cursor-pointer">
+                                <input type="checkbox" id="at-coin-xrp" class="accent-purple-500">
+                                <span class="text-sm font-medium">XRP</span>
+                            </label>
                         </div>
                     </div>
 
@@ -806,6 +810,18 @@
                             <div>
                                 <div class="text-[10px] text-gray-500 uppercase">PnL Hoy (real)</div>
                                 <div class="text-sm font-bold" id="at-pnl-today">$0.00</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] text-gray-500 uppercase">Trades Hoy</div>
+                                <div class="text-sm font-bold" id="at-trades-today">0</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] text-gray-500 uppercase">PnL Total</div>
+                                <div class="text-sm font-bold" id="at-total-pnl">$0.00</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] text-gray-500 uppercase">Win Rate</div>
+                                <div class="text-sm font-bold" id="at-win-rate">-</div>
                             </div>
                         </div>
                     </div>
@@ -2129,9 +2145,12 @@ async function loadAutotradeConfig(){
     document.getElementById('at-coin-btc').checked=c.coins?.includes('BTC')!==false;
     document.getElementById('at-coin-eth').checked=c.coins?.includes('ETH')!==false;
     document.getElementById('at-coin-sol').checked=c.coins?.includes('SOL')!==false;
+    document.getElementById('at-coin-xrp').checked=c.coins?.includes('XRP')===true;
     // Status
     const connEl=document.getElementById('at-conn-status');
-    if(c.enabled&&c.api_key_set){
+    if(c.connected){
+        connEl.textContent='Conectado';connEl.className='text-sm font-bold text-green-400';
+    }else if(c.enabled&&c.api_key_set){
         connEl.textContent='Listo';connEl.className='text-sm font-bold text-yellow-400';
     }else if(!c.enabled){
         connEl.textContent='Desactivado';connEl.className='text-sm font-bold text-gray-500';
@@ -2140,7 +2159,16 @@ async function loadAutotradeConfig(){
     }
     document.getElementById('at-balance').textContent=c.balance?`$${c.balance.toFixed(2)}`:'-';
     document.getElementById('at-open-positions').textContent=c.open_positions||'0';
-    document.getElementById('at-pnl-today').textContent=`$${(c.pnl_today||0).toFixed(2)}`;
+    const pnlToday=c.pnl_today||0;
+    document.getElementById('at-pnl-today').textContent=`$${pnlToday.toFixed(2)}`;
+    document.getElementById('at-pnl-today').className='text-sm font-bold '+(pnlToday>=0?'text-green-400':'text-red-400');
+    document.getElementById('at-trades-today').textContent=c.trades_today||'0';
+    const totalPnl=c.total_pnl||0;
+    document.getElementById('at-total-pnl').textContent=`$${totalPnl.toFixed(2)}`;
+    document.getElementById('at-total-pnl').className='text-sm font-bold '+(totalPnl>=0?'text-green-400':'text-red-400');
+    document.getElementById('at-win-rate').textContent=c.win_rate?`${c.win_rate}%`:'-';
+    // Cargar trades ejecutados
+    loadAutotradeHistory();
 }
 
 async function saveAutotradeConfig(){
@@ -2148,6 +2176,7 @@ async function saveAutotradeConfig(){
     if(document.getElementById('at-coin-btc').checked)coins.push('BTC');
     if(document.getElementById('at-coin-eth').checked)coins.push('ETH');
     if(document.getElementById('at-coin-sol').checked)coins.push('SOL');
+    if(document.getElementById('at-coin-xrp').checked)coins.push('XRP');
     const apiKey=document.getElementById('at-api-key').value;
     const apiSecret=document.getElementById('at-api-secret').value;
     const privateKey=document.getElementById('at-private-key').value;
@@ -2182,6 +2211,45 @@ async function saveAutotradeConfig(){
         setTimeout(()=>st.classList.add('hidden'),3000);
         loadAutotradeConfig();
     }catch(e){alert('Error de conexión');}
+}
+
+async function loadAutotradeHistory(){
+    const d=await fetchJson('/api/crypto-arb/autotrades?hours=48&limit=30');
+    if(!d)return;
+    const body=document.getElementById('at-trades-body');
+    const trades=d.trades||[];
+    if(trades.length===0){
+        body.innerHTML='<tr><td colspan="7" class="text-center py-4 text-gray-600 text-xs">Sin trades ejecutados aún</td></tr>';
+        return;
+    }
+    body.innerHTML=trades.map(t=>{
+        const ts=new Date(t.created_at);
+        const time=ts.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        const date=ts.toLocaleDateString('es',{month:'short',day:'numeric'});
+        const dirColor=t.direction==='up'?'text-green-400':'text-red-400';
+        const dirIcon=t.direction==='up'?'▲':'▼';
+        let statusBadge='';
+        if(t.status==='rejected'){
+            statusBadge='<span class="px-1.5 py-0.5 rounded text-[10px] bg-red-900/50 text-red-400">Rechazado</span>';
+        }else if(t.resolved){
+            statusBadge=t.result==='win'
+                ?'<span class="px-1.5 py-0.5 rounded text-[10px] bg-green-900/50 text-green-400">WIN</span>'
+                :'<span class="px-1.5 py-0.5 rounded text-[10px] bg-red-900/50 text-red-400">LOSS</span>';
+        }else{
+            statusBadge='<span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-700 text-gray-400">Abierto</span>';
+        }
+        const pnl=t.pnl||0;
+        const pnlColor=pnl>=0?'text-green-400':'text-red-400';
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="px-3 py-1.5 text-gray-400">${date} ${time}</td>
+            <td class="px-3 py-1.5 text-center font-bold">${t.coin}</td>
+            <td class="px-3 py-1.5 text-center ${dirColor} font-bold">${dirIcon}</td>
+            <td class="px-3 py-1.5 text-right font-mono">$${(t.size_usd||0).toFixed(0)}</td>
+            <td class="px-3 py-1.5 text-right font-mono">${(t.price||0).toFixed(2)}</td>
+            <td class="px-3 py-1.5 text-center">${statusBadge}</td>
+            <td class="px-3 py-1.5 text-right font-mono ${pnlColor}">${t.resolved?'$'+pnl.toFixed(2):'-'}</td>
+        </tr>`;
+    }).join('');
 }
 
 async function testAutotradeConnection(){
