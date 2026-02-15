@@ -331,7 +331,7 @@ class PolymarketClient:
                 market_slug=item.get("eventSlug", item.get("slug", market_data.get("slug", ""))),
                 wallet_address=item.get("proxyWallet", item.get("maker_address", "unknown")),
                 side=item.get("side", "BUY"),
-                size=float(item.get("size", 0)),
+                size=float(item.get("size", 0)) * float(item.get("price", 0)),
                 price=float(item.get("price", 0)),
                 timestamp=timestamp,
                 outcome=item.get("outcome", "Yes"),
