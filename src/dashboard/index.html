@@ -586,11 +586,10 @@
                 </div>
             </div>
 
-            <!-- Sub-tabs: Señales / Backtest / Config -->
+            <!-- Sub-tabs: Señales / Historial / Autotrading / Config -->
             <div class="flex border-b border-gray-700/30 px-4 gap-1 crypto-subtabs">
                 <button onclick="showCryptoSub('signals')" id="csub-signals" class="px-3 py-2 text-xs font-medium border-b-2 border-purple-500 text-purple-300">Señales en Vivo</button>
                 <button onclick="showCryptoSub('history')" id="csub-history" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Historial</button>
-                <button onclick="showCryptoSub('backtest')" id="csub-backtest" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Backtest</button>
                 <button onclick="showCryptoSub('autotrade')" id="csub-autotrade" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Autotrading</button>
                 <button onclick="showCryptoSub('cconfig')" id="csub-cconfig" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Config</button>
             </div>
@@ -658,82 +657,6 @@
                 </div>
             </div>
 
-            <!-- Crypto Sub: Backtest -->
-            <div id="cpanel-backtest" class="hidden">
-                <div class="p-4 space-y-4">
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div>
-                            <label class="text-xs text-gray-400 block mb-1">Días</label>
-                            <input type="number" id="bt-days" value="7" min="1" max="30" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                        </div>
-                        <div>
-                            <label class="text-xs text-gray-400 block mb-1">Bet Size ($)</label>
-                            <input type="number" id="bt-bet" value="100" min="10" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                        </div>
-                        <div>
-                            <label class="text-xs text-gray-400 block mb-1">Max Odds</label>
-                            <input type="number" id="bt-odds" value="0.65" min="0.5" max="0.85" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                        </div>
-                        <div class="flex items-end">
-                            <button onclick="runBacktest()" id="bt-run" class="w-full px-4 py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">
-                                Ejecutar Backtest
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Backtest Results -->
-                    <div id="bt-results" class="hidden space-y-3">
-                        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                            <div class="bg-gray-800/40 rounded-lg p-3">
-                                <div class="text-gray-500 text-[10px] uppercase">Trades</div>
-                                <div class="text-lg font-bold" id="bt-total">0</div>
-                            </div>
-                            <div class="bg-gray-800/40 rounded-lg p-3">
-                                <div class="text-gray-500 text-[10px] uppercase">Win Rate</div>
-                                <div class="text-lg font-bold text-green-400" id="bt-winrate">0%</div>
-                            </div>
-                            <div class="bg-gray-800/40 rounded-lg p-3">
-                                <div class="text-gray-500 text-[10px] uppercase">PnL Total</div>
-                                <div class="text-lg font-bold" id="bt-pnl">$0</div>
-                            </div>
-                            <div class="bg-gray-800/40 rounded-lg p-3">
-                                <div class="text-gray-500 text-[10px] uppercase">ROI</div>
-                                <div class="text-lg font-bold" id="bt-roi">0%</div>
-                            </div>
-                            <div class="bg-gray-800/40 rounded-lg p-3">
-                                <div class="text-gray-500 text-[10px] uppercase">Mejor Trade</div>
-                                <div class="text-sm font-bold text-green-400" id="bt-best">$0</div>
-                            </div>
-                            <div class="bg-gray-800/40 rounded-lg p-3">
-                                <div class="text-gray-500 text-[10px] uppercase">Max Drawdown</div>
-                                <div class="text-sm font-bold text-red-400" id="bt-dd">$0</div>
-                            </div>
-                        </div>
-
-                        <!-- PnL by coin -->
-                        <div class="grid grid-cols-3 gap-3" id="bt-coins"></div>
-
-                        <!-- Backtest trades table -->
-                        <div class="overflow-x-auto" style="max-height:300px;overflow-y:auto">
-                            <table class="w-full text-sm">
-                                <thead class="sticky top-0 bg-dark-800"><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-                                    <th class="px-3 py-2 text-left">Fecha</th>
-                                    <th class="px-3 py-2 text-center">Moneda</th>
-                                    <th class="px-3 py-2 text-center">Dir</th>
-                                    <th class="px-3 py-2 text-right">Entry</th>
-                                    <th class="px-3 py-2 text-center">Resultado</th>
-                                    <th class="px-3 py-2 text-right">PnL</th>
-                                </tr></thead>
-                                <tbody id="bt-trades-body"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div id="bt-loading" class="hidden text-center py-8">
-                        <div class="text-purple-400 text-sm">Ejecutando backtest...</div>
-                        <div class="text-gray-500 text-xs mt-1">Esto puede tardar unos segundos</div>
-                    </div>
-                </div>
-            </div>
 
             <!-- Crypto Sub: Autotrading -->
             <div id="cpanel-autotrade" class="hidden">
@@ -1673,7 +1596,7 @@ async function loadCharts(){
 let cryptoRefreshInterval=null;
 
 function showCryptoSub(sub){
-    ['signals','history','backtest','autotrade','cconfig'].forEach(s=>{
+    ['signals','history','autotrade','cconfig'].forEach(s=>{
         const el=document.getElementById('cpanel-'+s);
         if(el)el.classList.toggle('hidden',s!==sub);
         const btn=document.getElementById('csub-'+s);
@@ -1859,92 +1782,6 @@ async function loadCryptoHistory(){
     }).join('');
 }
 
-async function runBacktest(){
-    const btn=document.getElementById('bt-run');
-    const loading=document.getElementById('bt-loading');
-    const results=document.getElementById('bt-results');
-    btn.disabled=true;btn.textContent='Ejecutando...';
-    loading.classList.remove('hidden');
-    results.classList.add('hidden');
-    const body={
-        days:parseInt(document.getElementById('bt-days').value)||7,
-        bet_size:parseFloat(document.getElementById('bt-bet').value.replace(',','.'))||100,
-        max_odds:parseFloat(document.getElementById('bt-odds').value.replace(',','.'))||0.65,
-    };
-    await fetch('/api/crypto-arb/backtest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    // Poll para resultado — esperar a que termine (status != running)
-    let tries=0;
-    const poll=setInterval(async()=>{
-        tries++;
-        const r=await fetchJson('/api/crypto-arb/backtest');
-        if(!r)return;
-        // Si sigue corriendo, seguir polleando
-        if(r.status==='running'||r.status==='no_data'){
-            if(tries>60){
-                clearInterval(poll);
-                loading.classList.add('hidden');
-                btn.disabled=false;btn.textContent='Ejecutar Backtest';
-                results.classList.remove('hidden');
-                results.innerHTML='<div class="text-center py-8 text-yellow-400">Timeout — el backtest sigue corriendo en background. Recargá la página en unos segundos.</div>';
-            }
-            return;
-        }
-        // Resultado listo
-        clearInterval(poll);
-        loading.classList.add('hidden');
-        btn.disabled=false;btn.textContent='Ejecutar Backtest';
-        if(r.total_trades>0){
-            showBacktestResults(r);
-        }else{
-            results.classList.remove('hidden');
-            results.innerHTML='<div class="text-center py-8 text-gray-400"><p class="text-lg mb-2">No se encontraron mercados crypto up/down resueltos</p><p class="text-xs">Probá con más días (14 o 30) para ampliar la búsqueda</p></div>';
-        }
-    },3000);
-}
-
-function showBacktestResults(r){
-    document.getElementById('bt-results').classList.remove('hidden');
-    document.getElementById('bt-total').textContent=r.total_trades;
-    document.getElementById('bt-winrate').textContent=r.win_rate.toFixed(1)+'%';
-    const pnlEl=document.getElementById('bt-pnl');
-    pnlEl.textContent='$'+r.total_pnl.toFixed(2);
-    pnlEl.className='text-lg font-bold '+(r.total_pnl>=0?'text-green-400':'text-red-400');
-    const roiEl=document.getElementById('bt-roi');
-    roiEl.textContent=r.roi_pct.toFixed(1)+'%';
-    roiEl.className='text-lg font-bold '+(r.roi_pct>=0?'text-green-400':'text-red-400');
-    document.getElementById('bt-best').textContent='$'+r.best_trade.toFixed(2);
-    document.getElementById('bt-dd').textContent='$'+r.max_drawdown.toFixed(2);
-    // By coin
-    const coinsDiv=document.getElementById('bt-coins');
-    if(r.by_coin){
-        coinsDiv.innerHTML=Object.entries(r.by_coin).map(([coin,d])=>{
-            const wr=d.wins+d.losses>0?((d.wins/(d.wins+d.losses))*100).toFixed(1):'0';
-            return`<div class="bg-gray-800/40 rounded-lg p-3">
-                <div class="text-xs text-gray-500 font-bold">${coin}</div>
-                <div class="text-sm mt-1">W:${d.wins} L:${d.losses} (${wr}%)</div>
-                <div class="text-sm font-mono ${d.pnl>=0?'text-green-400':'text-red-400'}">$${d.pnl.toFixed(2)}</div>
-            </div>`;
-        }).join('');
-    }
-    // Trades
-    const tbody=document.getElementById('bt-trades-body');
-    if(r.trades){
-        tbody.innerHTML=r.trades.map(t=>{
-            const dirColor=t.direction==='up'?'text-green-400':'text-red-400';
-            const resBadge=t.result==='win'
-                ?'<span class="px-1.5 py-0.5 rounded text-xs bg-green-900/50 text-green-400">WIN</span>'
-                :'<span class="px-1.5 py-0.5 rounded text-xs bg-red-900/50 text-red-400">LOSS</span>';
-            return`<tr class="border-b border-gray-800/30">
-                <td class="px-3 py-1.5 text-xs text-gray-400">${t.timestamp?new Date(t.timestamp).toLocaleDateString():'-'}</td>
-                <td class="px-3 py-1.5 text-center text-xs font-bold">${t.coin}</td>
-                <td class="px-3 py-1.5 text-center text-xs ${dirColor}">${t.direction.toUpperCase()}</td>
-                <td class="px-3 py-1.5 text-right text-xs font-mono">${t.entry_odds.toFixed(2)}</td>
-                <td class="px-3 py-1.5 text-center">${resBadge}</td>
-                <td class="px-3 py-1.5 text-right text-xs font-mono ${t.pnl>=0?'text-green-400':'text-red-400'}">$${t.pnl.toFixed(2)}</td>
-            </tr>`;
-        }).join('');
-    }
-}
 
 async function loadCryptoConfig(){
     const c=await fetchJson('/api/crypto-arb/config');
