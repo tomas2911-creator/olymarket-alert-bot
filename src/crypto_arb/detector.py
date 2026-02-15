@@ -253,7 +253,14 @@ class CryptoArbDetector:
             direction = momentum["direction"]
 
             # ¿Movimiento suficiente en spot?
-            if change_pct < config.CRYPTO_ARB_MIN_MOVE_PCT:
+            # Umbral adaptativo: mercados cortos (5m) necesitan menos movimiento
+            min_move = config.CRYPTO_ARB_MIN_MOVE_PCT
+            question_lower = mdata.get("question", "").lower()
+            if "5m" in mdata.get("question", "") or "-5m-" in question_lower or time_remaining <= 360:
+                min_move = min(min_move, 0.04)  # 5min: 0.04% es significativo
+            elif time_remaining <= 960:
+                min_move = min(min_move, 0.08)  # 15min: 0.08%
+            if change_pct < min_move:
                 continue
 
             # Obtener odds de Polymarket para el outcome correcto
@@ -322,16 +329,21 @@ class CryptoArbDetector:
         base = 0.5
 
         # Factor momentum: más movimiento = más probabilidad
+        # Umbrales adaptativos según tiempo restante
         if change_pct >= 0.5:
             base = 0.92
         elif change_pct >= 0.3:
             base = 0.85
         elif change_pct >= 0.2:
             base = 0.78
-        elif change_pct >= 0.15:
+        elif change_pct >= 0.12:
             base = 0.72
+        elif change_pct >= 0.06:
+            base = 0.66
+        elif change_pct >= 0.04:
+            base = 0.62
         else:
-            base = 0.65
+            base = 0.58
 
         # Factor tiempo: más tiempo restante = más incertidumbre
         if time_remaining > 600:  # >10 min
@@ -360,8 +372,12 @@ class CryptoArbDetector:
             score += 25
         elif change_pct >= 0.2:
             score += 20
-        elif change_pct >= 0.15:
+        elif change_pct >= 0.12:
+            score += 18
+        elif change_pct >= 0.06:
             score += 15
+        elif change_pct >= 0.04:
+            score += 12
 
         # Edge vs odds actuales (0-30)
         edge = fair_odds - poly_odds
@@ -372,7 +388,9 @@ class CryptoArbDetector:
         elif edge >= 0.15:
             score += 20
         elif edge >= 0.10:
-            score += 15
+            score += 18
+        elif edge >= 0.05:
+            score += 14
 
         # Consistencia del momentum (0-20)
         ticks = momentum.get("ticks", 0)
@@ -381,12 +399,14 @@ class CryptoArbDetector:
         elif ticks >= 20:
             score += 15
         elif ticks >= 10:
-            score += 10
+            score += 12
+        elif ticks >= 5:
+            score += 8
 
-        # Timing (0-20) — sweet spot es 3-8 min antes del cierre
-        if 180 <= time_remaining <= 480:
+        # Timing (0-20) — sweet spot es 2-8 min antes del cierre
+        if 120 <= time_remaining <= 480:
             score += 20
-        elif 120 <= time_remaining <= 720:
+        elif 60 <= time_remaining <= 720:
             score += 15
         else:
             score += 5
