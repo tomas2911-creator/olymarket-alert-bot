@@ -253,8 +253,10 @@ class PolymarketAlertBot:
             wallet_stats = await self.db.get_wallet_stats(trade.wallet_address)
             market_baseline = await self.db.get_market_baseline(trade.market_id)
         except Exception as e:
-            print(f"ERROR contexto DB: {e} | wallet={trade.wallet_address[:12]} market={trade.market_slug}", flush=True)
+            err_msg = f"contexto DB: {e} | wallet={trade.wallet_address[:12]} market={trade.market_slug}"
+            print(f"ERROR {err_msg}", flush=True)
             self._debug["errors"] = self._debug.get("errors", 0) + 1
+            self._debug["last_error"] = err_msg
             return
 
         # Clustering: buscar wallets que apostaron igual recientemente
@@ -335,8 +337,10 @@ class PolymarketAlertBot:
                 sniper_cluster_size=sniper_cluster_size,
             )
         except Exception as e:
-            print(f"ERROR analyzer: {e} | size=${trade.size} wallet={trade.wallet_address[:12]} market={trade.market_slug}", flush=True)
+            err_msg = f"analyzer: {e} | size=${trade.size} wallet={trade.wallet_address[:12]} market={trade.market_slug}"
+            print(f"ERROR {err_msg}", flush=True)
             self._debug["errors"] = self._debug.get("errors", 0) + 1
+            self._debug["last_error"] = err_msg
             return
 
         # Copy-trade: si wallet está en watchlist, alertar aunque score sea bajo
