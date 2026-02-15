@@ -190,14 +190,15 @@ async def get_alerts(request: Request, limit: int = 50):
 
 @router.delete("/api/alerts")
 async def delete_alerts(request: Request, older_than_hours: int = 24):
-    """Borrar alertas más viejas que N horas."""
+    """Borrar alertas más viejas que N horas (solo del usuario actual)."""
     db = request.app.state.db
+    uid = await get_user_id(request)
     try:
         from datetime import timedelta
         cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
         async with db._pool.acquire() as conn:
             result = await conn.execute(
-                "DELETE FROM alerts WHERE created_at < $1", cutoff
+                "DELETE FROM alerts WHERE created_at < $1 AND user_id = $2", cutoff, uid
             )
             deleted = int(result.split(" ")[-1]) if result else 0
         return {"status": "ok", "deleted": deleted, "older_than_hours": older_than_hours}
@@ -624,14 +625,21 @@ async def delete_crypto_signals(request: Request, older_than_hours: int = 24):
 
 @router.delete("/api/reset-all")
 async def reset_all_data(request: Request):
-    """Borrar TODOS los datos: wallets, trades, baselines, markets, alertas."""
+    """Borrar TODOS los datos del usuario actual."""
     db = request.app.state.db
+    uid = await get_user_id(request)
     try:
         async with db._pool.acquire() as conn:
             counts = {}
-            for table in ["trades", "wallets", "wallet_links", "market_baselines", "markets_tracked", "alerts", "crypto_signals", "autotrades", "alert_autotrades"]:
-                result = await conn.execute(f"DELETE FROM {table}")
+            # Tablas con user_id — filtrar por usuario
+            for table in ["alerts", "autotrades", "alert_autotrades"]:
+                result = await conn.execute(f"DELETE FROM {table} WHERE user_id = $1", uid)
                 counts[table] = int(result.split(" ")[-1]) if result else 0
+            # Tablas globales (sin user_id) — solo borrar si es user 1
+            if uid == 1:
+                for table in ["trades", "wallets", "wallet_links", "market_baselines", "markets_tracked", "crypto_signals"]:
+                    result = await conn.execute(f"DELETE FROM {table}")
+                    counts[table] = int(result.split(" ")[-1]) if result else 0
         return {"status": "ok", "deleted": counts}
     except Exception as e:
         return {"status": "error", "error": str(e)}
@@ -766,47 +774,47 @@ async def update_crypto_config(request: Request, body: CryptoConfigUpdate):
     updated = {}
     data = {}
     if body.min_price_move_pct is not None:
-        config.CRYPTO_ARB_MIN_MOVE_PCT = body.min_price_move_pct
+        if uid == 1: config.CRYPTO_ARB_MIN_MOVE_PCT = body.min_price_move_pct
         updated["min_price_move_pct"] = body.min_price_move_pct
         data["crypto_min_move_pct"] = str(body.min_price_move_pct)
     if body.max_poly_odds is not None:
-        config.CRYPTO_ARB_MAX_POLY_ODDS = body.max_poly_odds
+        if uid == 1: config.CRYPTO_ARB_MAX_POLY_ODDS = body.max_poly_odds
         updated["max_poly_odds"] = body.max_poly_odds
         data["crypto_max_poly_odds"] = str(body.max_poly_odds)
     if body.min_confidence_pct is not None:
-        config.CRYPTO_ARB_MIN_CONFIDENCE = body.min_confidence_pct
+        if uid == 1: config.CRYPTO_ARB_MIN_CONFIDENCE = body.min_confidence_pct
         updated["min_confidence_pct"] = body.min_confidence_pct
         data["crypto_min_confidence"] = str(body.min_confidence_pct)
     if body.paper_bet_size is not None:
-        config.CRYPTO_ARB_PAPER_BET = body.paper_bet_size
+        if uid == 1: config.CRYPTO_ARB_PAPER_BET = body.paper_bet_size
         updated["paper_bet_size"] = body.paper_bet_size
         data["crypto_paper_bet"] = str(body.paper_bet_size)
     if body.max_daily_signals is not None:
-        config.CRYPTO_ARB_MAX_DAILY = body.max_daily_signals
+        if uid == 1: config.CRYPTO_ARB_MAX_DAILY = body.max_daily_signals
         updated["max_daily_signals"] = body.max_daily_signals
         data["crypto_max_daily"] = str(body.max_daily_signals)
     if body.telegram_alerts is not None:
-        config.CRYPTO_ARB_TELEGRAM = body.telegram_alerts
+        if uid == 1: config.CRYPTO_ARB_TELEGRAM = body.telegram_alerts
         updated["telegram_alerts"] = body.telegram_alerts
         data["crypto_telegram"] = str(body.telegram_alerts)
     if body.strategy is not None and body.strategy in ("divergence", "score"):
-        config.CRYPTO_ARB_STRATEGY = body.strategy
+        if uid == 1: config.CRYPTO_ARB_STRATEGY = body.strategy
         updated["strategy"] = body.strategy
         data["crypto_strategy"] = body.strategy
     if body.min_score is not None:
-        config.CRYPTO_ARB_MIN_SCORE = body.min_score
+        if uid == 1: config.CRYPTO_ARB_MIN_SCORE = body.min_score
         updated["min_score"] = body.min_score
         data["crypto_min_score"] = str(body.min_score)
     if body.entry_max_time_sec is not None:
-        config.CRYPTO_ARB_ENTRY_MAX_TIME = body.entry_max_time_sec
+        if uid == 1: config.CRYPTO_ARB_ENTRY_MAX_TIME = body.entry_max_time_sec
         updated["entry_max_time_sec"] = body.entry_max_time_sec
         data["crypto_entry_max_time"] = str(body.entry_max_time_sec)
     if body.min_distance_atr is not None:
-        config.CRYPTO_ARB_MIN_DISTANCE_ATR = body.min_distance_atr
+        if uid == 1: config.CRYPTO_ARB_MIN_DISTANCE_ATR = body.min_distance_atr
         updated["min_distance_atr"] = body.min_distance_atr
         data["crypto_min_distance_atr"] = str(body.min_distance_atr)
     if body.min_trend_consistency is not None:
-        config.CRYPTO_ARB_MIN_TREND_CONSISTENCY = body.min_trend_consistency
+        if uid == 1: config.CRYPTO_ARB_MIN_TREND_CONSISTENCY = body.min_trend_consistency
         updated["min_trend_consistency"] = body.min_trend_consistency
         data["crypto_min_trend_consistency"] = str(body.min_trend_consistency)
     if data:
@@ -826,6 +834,9 @@ async def get_autotrade_config(request: Request):
         "at_max_odds", "at_max_positions", "at_order_type",
         "at_max_daily_loss", "at_max_daily_trades", "at_cooldown_sec",
         "at_coins", "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
+        "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
+        "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
+        "at_slippage_max_pct",
     ], user_id=uid)
     # Estadísticas reales del autotrader
     stats = await db.get_autotrade_stats(user_id=uid)
@@ -857,6 +868,13 @@ async def get_autotrade_config(request: Request):
         "trades_today": stats.get("trades_24h", 0),
         "total_pnl": stats.get("total_pnl", 0),
         "win_rate": stats.get("win_rate", 0),
+        "stop_loss_enabled": raw.get("at_stop_loss_enabled") == "true",
+        "stop_loss_pct": float(raw.get("at_stop_loss_pct", 25)),
+        "take_profit_pct": float(raw.get("at_take_profit_pct", 30)),
+        "max_holding_sec": int(raw.get("at_max_holding_sec", 1800)),
+        "trailing_stop_enabled": raw.get("at_trailing_stop_enabled") == "true",
+        "trailing_stop_pct": float(raw.get("at_trailing_stop_pct", 15)),
+        "slippage_max_pct": float(raw.get("at_slippage_max_pct", 3.0)),
     }
 
 
@@ -897,6 +915,21 @@ async def save_autotrade_config(request: Request):
         data["at_private_key"] = body["private_key"]
     if "passphrase" in body:
         data["at_passphrase"] = body["passphrase"]
+    # Stop-Loss / Take-Profit / Risk Management
+    if "stop_loss_enabled" in body:
+        data["at_stop_loss_enabled"] = "true" if body["stop_loss_enabled"] else "false"
+    if "stop_loss_pct" in body:
+        data["at_stop_loss_pct"] = str(body["stop_loss_pct"])
+    if "take_profit_pct" in body:
+        data["at_take_profit_pct"] = str(body["take_profit_pct"])
+    if "max_holding_sec" in body:
+        data["at_max_holding_sec"] = str(body["max_holding_sec"])
+    if "trailing_stop_enabled" in body:
+        data["at_trailing_stop_enabled"] = "true" if body["trailing_stop_enabled"] else "false"
+    if "trailing_stop_pct" in body:
+        data["at_trailing_stop_pct"] = str(body["trailing_stop_pct"])
+    if "slippage_max_pct" in body:
+        data["at_slippage_max_pct"] = str(body["slippage_max_pct"])
     if data:
         await db.set_config_bulk(data, user_id=uid)
     # Recargar config en el autotrader si existe (solo user 1 retrocompat)
@@ -1503,7 +1536,8 @@ async def get_alert_trades(request: Request, hours: int = 168, limit: int = 50):
 @router.get("/api/heatmap")
 async def get_heatmap(request: Request):
     db = request.app.state.db
-    data = await db.get_heatmap_data()
+    uid = await get_user_id(request)
+    data = await db.get_heatmap_data(user_id=uid)
     return data
 
 @router.get("/api/journal")
@@ -1599,6 +1633,8 @@ async def get_features_v8(request: Request):
         "event_driven": _b("feature_event_driven", config.FEATURE_EVENT_DRIVEN),
         "spike_detection": _b("feature_spike_detection", config.FEATURE_SPIKE_DETECTION),
         "cross_platform_arb": _b("feature_cross_platform", config.FEATURE_CROSS_PLATFORM),
+        "rsi": _b("feature_rsi", config.FEATURE_RSI),
+        "macd": _b("feature_macd", config.FEATURE_MACD),
     }
 
 @router.post("/api/features/v8")
@@ -1620,6 +1656,8 @@ async def save_features_v8(request: Request):
         "event_driven": "feature_event_driven",
         "spike_detection": "feature_spike_detection",
         "cross_platform_arb": "feature_cross_platform",
+        "rsi": "feature_rsi",
+        "macd": "feature_macd",
     }
     import src.config as cfg
     save_data = {}
@@ -1690,9 +1728,12 @@ async def save_telegram_config(request: Request):
 @router.post("/api/telegram/test")
 async def test_telegram(request: Request):
     import httpx
-    # Leer token real de config (no el enmascarado)
-    token = config.TELEGRAM_BOT_TOKEN
-    chat_ids_str = config.TELEGRAM_CHAT_IDS
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    saved = await db.get_config(user_id=uid)
+    # Leer token per-user desde DB con fallback a config global
+    token = saved.get("telegram_bot_token") or config.TELEGRAM_BOT_TOKEN
+    chat_ids_str = saved.get("telegram_chat_ids") or config.TELEGRAM_CHAT_IDS
     if not token:
         return {"status": "error", "error": "No hay Bot Token configurado"}
     if not chat_ids_str:
@@ -1709,3 +1750,151 @@ async def test_telegram(request: Request):
         return {"status": "ok"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+# ── Kalshi Arbitrage ─────────────────────────────────────────────
+
+@router.get("/api/kalshi/arb")
+async def get_kalshi_arb(request: Request):
+    """Escanear oportunidades de arbitraje cross-platform Polymarket vs Kalshi.
+    Compara precios de eventos similares en ambas plataformas.
+    """
+    import httpx
+    from datetime import datetime, timezone
+
+    min_edge = config.CROSS_PLATFORM_MIN_EDGE
+    opportunities = []
+    markets_scanned = 0
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            # 1. Obtener eventos activos de Kalshi
+            kalshi_events = []
+            try:
+                resp = await client.get(
+                    "https://api.elections.kalshi.com/trade-api/v2/events",
+                    params={"status": "open", "limit": 50},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    kalshi_events = data.get("events", [])
+            except Exception:
+                # Kalshi API puede requerir auth o cambiar — fallback a mercados
+                try:
+                    resp = await client.get(
+                        "https://api.elections.kalshi.com/trade-api/v2/markets",
+                        params={"status": "open", "limit": 100},
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        kalshi_markets = data.get("markets", [])
+                        # Agrupar por categoría para matching
+                        for km in kalshi_markets:
+                            kalshi_events.append({
+                                "title": km.get("title", ""),
+                                "ticker": km.get("ticker", ""),
+                                "yes_ask": km.get("yes_ask", 0) / 100.0 if km.get("yes_ask") else None,
+                                "no_ask": km.get("no_ask", 0) / 100.0 if km.get("no_ask") else None,
+                                "category": km.get("category", ""),
+                            })
+                except Exception:
+                    pass
+
+            if not kalshi_events:
+                return {
+                    "opportunities": [],
+                    "markets_scanned": 0,
+                    "last_scan": datetime.now(timezone.utc).isoformat(),
+                    "error": "No se pudo conectar a Kalshi API (puede requerir auth)"
+                }
+
+            # 2. Obtener mercados populares de Polymarket para comparar
+            poly_markets = []
+            try:
+                resp2 = await client.get(
+                    f"{config.GAMMA_API_URL}/markets",
+                    params={"active": True, "closed": False, "limit": 100, "order": "liquidity", "ascending": False},
+                )
+                if resp2.status_code == 200:
+                    poly_markets = resp2.json()
+            except Exception:
+                pass
+
+            markets_scanned = len(kalshi_events) + len(poly_markets)
+
+            # 3. Matching por palabras clave en títulos
+            for ke in kalshi_events:
+                k_title = (ke.get("title") or ke.get("event_title", "")).lower()
+                k_yes = ke.get("yes_ask") or ke.get("yes_price", 0)
+                if isinstance(k_yes, (int, float)) and k_yes > 1:
+                    k_yes = k_yes / 100.0  # Kalshi usa centavos
+                if not k_title or not k_yes:
+                    continue
+
+                # Buscar match en Polymarket
+                for pm in poly_markets:
+                    p_question = (pm.get("question") or "").lower()
+                    p_price = None
+
+                    # Extraer precio YES de Polymarket
+                    op = pm.get("outcomePrices")
+                    if op:
+                        try:
+                            if isinstance(op, str):
+                                import json
+                                prices = json.loads(op)
+                            else:
+                                prices = op
+                            if prices:
+                                p_price = float(prices[0])
+                        except Exception:
+                            pass
+
+                    if not p_price:
+                        continue
+
+                    # Matching simple: al menos 3 palabras significativas en comun
+                    k_words = set(w for w in k_title.split() if len(w) > 3)
+                    p_words = set(w for w in p_question.split() if len(w) > 3)
+                    common = k_words & p_words
+                    if len(common) < 3:
+                        continue
+
+                    # Calcular edge
+                    edge_pct = abs(p_price - k_yes) * 100
+                    if edge_pct < min_edge:
+                        continue
+
+                    # Determinar accion
+                    if p_price < k_yes:
+                        action = "Comprar YES en Poly"
+                    else:
+                        action = "Comprar YES en Kalshi"
+
+                    opportunities.append({
+                        "event": pm.get("question", "")[:80],
+                        "poly_price": round(p_price, 3),
+                        "kalshi_price": round(k_yes, 3),
+                        "edge_pct": round(edge_pct, 1),
+                        "action": action,
+                        "category": ke.get("category", pm.get("groupItemTitle", "")),
+                        "kalshi_ticker": ke.get("ticker", ""),
+                        "poly_id": pm.get("conditionId", ""),
+                    })
+
+            # Ordenar por edge descendente
+            opportunities.sort(key=lambda x: -x["edge_pct"])
+
+    except Exception as e:
+        return {
+            "opportunities": [],
+            "markets_scanned": markets_scanned,
+            "last_scan": datetime.now(timezone.utc).isoformat(),
+            "error": str(e),
+        }
+
+    return {
+        "opportunities": opportunities[:30],
+        "markets_scanned": markets_scanned,
+        "last_scan": datetime.now(timezone.utc).isoformat(),
+    }

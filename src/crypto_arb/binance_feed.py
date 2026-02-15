@@ -178,6 +178,104 @@ class BinanceFeed:
             "ticks_used": len(ticks),
         }
 
+    def get_rsi(self, pair: str, period: int = 14, candle_sec: int = 10) -> Optional[dict]:
+        """Calcular RSI (Relative Strength Index).
+        Agrupa ticks en velas de candle_sec y calcula RSI clásico de Wilder.
+        period: número de velas para el cálculo (default 14).
+        """
+        ticks = self.get_sampled_history(pair, period * candle_sec * 2)
+        if len(ticks) < period * 2:
+            return None
+        # Agrupar en velas (close de cada candle_sec)
+        closes = []
+        bucket_start = ticks[0].ts
+        last_price = ticks[0].price
+        for t in ticks[1:]:
+            if t.ts - bucket_start >= candle_sec:
+                closes.append(last_price)
+                bucket_start = t.ts
+            last_price = t.price
+        closes.append(last_price)
+        if len(closes) < period + 1:
+            return None
+        # Calcular ganancias y pérdidas
+        gains = []
+        losses = []
+        for i in range(1, len(closes)):
+            diff = closes[i] - closes[i - 1]
+            gains.append(max(diff, 0))
+            losses.append(max(-diff, 0))
+        # EMA de Wilder (SMA para primera ventana, luego suavizado)
+        avg_gain = sum(gains[:period]) / period
+        avg_loss = sum(losses[:period]) / period
+        for i in range(period, len(gains)):
+            avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+            avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        if avg_loss == 0:
+            rsi = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100.0 - (100.0 / (1.0 + rs))
+        return {
+            "rsi": round(rsi, 2),
+            "overbought": rsi > 70,
+            "oversold": rsi < 30,
+            "candles_used": len(closes),
+        }
+
+    def get_macd(self, pair: str, fast: int = 12, slow: int = 26, signal: int = 9,
+                 candle_sec: int = 10) -> Optional[dict]:
+        """Calcular MACD (Moving Average Convergence Divergence).
+        Usa EMA rápida y lenta sobre velas de candle_sec segundos.
+        """
+        needed = slow * candle_sec * 3
+        ticks = self.get_sampled_history(pair, needed)
+        if len(ticks) < slow * 2:
+            return None
+        # Agrupar en velas (close)
+        closes = []
+        bucket_start = ticks[0].ts
+        last_price = ticks[0].price
+        for t in ticks[1:]:
+            if t.ts - bucket_start >= candle_sec:
+                closes.append(last_price)
+                bucket_start = t.ts
+            last_price = t.price
+        closes.append(last_price)
+        if len(closes) < slow + signal:
+            return None
+
+        def ema(data, span):
+            """Calcular EMA sobre lista de precios."""
+            mult = 2.0 / (span + 1)
+            result = [data[0]]
+            for i in range(1, len(data)):
+                result.append(data[i] * mult + result[-1] * (1 - mult))
+            return result
+
+        ema_fast = ema(closes, fast)
+        ema_slow = ema(closes, slow)
+        # MACD line = EMA rápida - EMA lenta
+        macd_line = [ema_fast[i] - ema_slow[i] for i in range(len(closes))]
+        # Signal line = EMA del MACD
+        signal_line = ema(macd_line, signal)
+        # Histogram = MACD - Signal
+        histogram = macd_line[-1] - signal_line[-1]
+        # Detectar cruce reciente
+        prev_hist = macd_line[-2] - signal_line[-2] if len(macd_line) >= 2 else 0
+        bullish_cross = prev_hist < 0 and histogram >= 0
+        bearish_cross = prev_hist > 0 and histogram <= 0
+        return {
+            "macd": round(macd_line[-1], 6),
+            "signal": round(signal_line[-1], 6),
+            "histogram": round(histogram, 6),
+            "bullish": histogram > 0,
+            "bearish": histogram < 0,
+            "bullish_cross": bullish_cross,
+            "bearish_cross": bearish_cross,
+            "candles_used": len(closes),
+        }
+
     def get_momentum(self, pair: str, seconds: int = 180) -> Optional[dict]:
         """Calcular momentum: cambio % y dirección en ventana de tiempo."""
         ticks = self.get_history(pair, seconds)

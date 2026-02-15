@@ -188,6 +188,34 @@ FEATURE_VWAP = _features.get("vwap", False)
 VWAP_LOOKBACK_SEC = _vwap.get("lookback_sec", 300)
 VWAP_MIN_DEVIATION_PCT = _vwap.get("min_deviation_pct", 0.05)  # desviación mín para señal
 
+# -- RSI Indicator (Crypto Arb) --
+_rsi = _yaml.get("rsi", {})
+FEATURE_RSI = _features.get("rsi", False)
+RSI_PERIOD = _rsi.get("period", 14)
+RSI_CANDLE_SEC = _rsi.get("candle_sec", 10)
+RSI_OVERBOUGHT = _rsi.get("overbought", 70)
+RSI_OVERSOLD = _rsi.get("oversold", 30)
+RSI_BOOST_PCT = _rsi.get("boost_pct", 10)  # % boost al score si RSI confirma dirección
+
+# -- MACD Indicator (Crypto Arb) --
+_macd = _yaml.get("macd", {})
+FEATURE_MACD = _features.get("macd", False)
+MACD_FAST = _macd.get("fast", 12)
+MACD_SLOW = _macd.get("slow", 26)
+MACD_SIGNAL = _macd.get("signal", 9)
+MACD_CANDLE_SEC = _macd.get("candle_sec", 10)
+MACD_BOOST_PCT = _macd.get("boost_pct", 10)  # % boost al score si MACD confirma
+
+# -- Stop-Loss / Take-Profit para Crypto Autotrader --
+_at_risk = _yaml.get("at_risk_management", {})
+FEATURE_AT_STOP_LOSS = _features.get("at_stop_loss", False)
+AT_STOP_LOSS_PCT = _at_risk.get("stop_loss_pct", 25)  # % pérdida para vender
+AT_TAKE_PROFIT_PCT = _at_risk.get("take_profit_pct", 30)  # % ganancia para vender
+AT_MAX_HOLDING_SEC = _at_risk.get("max_holding_sec", 1800)  # máx 30 min holding
+AT_TRAILING_STOP_ENABLED = _at_risk.get("trailing_stop", False)
+AT_TRAILING_STOP_PCT = _at_risk.get("trailing_stop_pct", 15)
+AT_SLIPPAGE_MAX_PCT = _at_risk.get("slippage_max_pct", 3.0)  # máx spread para entrar
+
 # -- Order Book Depth Crypto (Crypto Arb) --
 _obd_crypto = _yaml.get("orderbook_crypto", {})
 FEATURE_ORDERBOOK_CRYPTO = _features.get("orderbook_crypto", False)
@@ -411,3 +439,24 @@ def restore_from_db(saved: dict):
     cfg.SPIKE_MAX_DAILY = _int("spike_max_daily", cfg.SPIKE_MAX_DAILY)
     cfg.FEATURE_CROSS_PLATFORM = _bool("feature_cross_platform", cfg.FEATURE_CROSS_PLATFORM)
     cfg.CROSS_PLATFORM_MIN_EDGE = _float("cross_platform_min_edge", cfg.CROSS_PLATFORM_MIN_EDGE)
+
+    # === v9.0: RSI / MACD / SL-TP ===
+    cfg.FEATURE_RSI = _bool("feature_rsi", cfg.FEATURE_RSI)
+    cfg.RSI_PERIOD = _int("rsi_period", cfg.RSI_PERIOD)
+    cfg.RSI_CANDLE_SEC = _int("rsi_candle_sec", cfg.RSI_CANDLE_SEC)
+    cfg.RSI_OVERBOUGHT = _int("rsi_overbought", cfg.RSI_OVERBOUGHT)
+    cfg.RSI_OVERSOLD = _int("rsi_oversold", cfg.RSI_OVERSOLD)
+    cfg.RSI_BOOST_PCT = _int("rsi_boost_pct", cfg.RSI_BOOST_PCT)
+    cfg.FEATURE_MACD = _bool("feature_macd", cfg.FEATURE_MACD)
+    cfg.MACD_FAST = _int("macd_fast", cfg.MACD_FAST)
+    cfg.MACD_SLOW = _int("macd_slow", cfg.MACD_SLOW)
+    cfg.MACD_SIGNAL = _int("macd_signal", cfg.MACD_SIGNAL)
+    cfg.MACD_CANDLE_SEC = _int("macd_candle_sec", cfg.MACD_CANDLE_SEC)
+    cfg.MACD_BOOST_PCT = _int("macd_boost_pct", cfg.MACD_BOOST_PCT)
+    cfg.FEATURE_AT_STOP_LOSS = _bool("feature_at_stop_loss", cfg.FEATURE_AT_STOP_LOSS)
+    cfg.AT_STOP_LOSS_PCT = _float("at_stop_loss_pct", cfg.AT_STOP_LOSS_PCT)
+    cfg.AT_TAKE_PROFIT_PCT = _float("at_take_profit_pct", cfg.AT_TAKE_PROFIT_PCT)
+    cfg.AT_MAX_HOLDING_SEC = _int("at_max_holding_sec", cfg.AT_MAX_HOLDING_SEC)
+    cfg.AT_TRAILING_STOP_ENABLED = _bool("at_trailing_stop_enabled", cfg.AT_TRAILING_STOP_ENABLED)
+    cfg.AT_TRAILING_STOP_PCT = _float("at_trailing_stop_pct", cfg.AT_TRAILING_STOP_PCT)
+    cfg.AT_SLIPPAGE_MAX_PCT = _float("at_slippage_max_pct", cfg.AT_SLIPPAGE_MAX_PCT)

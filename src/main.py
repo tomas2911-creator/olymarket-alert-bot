@@ -330,7 +330,10 @@ class PolymarketAlertBot:
                 try:
                     await self.process_crypto_signals()
                     await self.resolve_crypto_signals()
-                    # Resolver autotrades abiertos
+                    # Risk management: SL/TP/trailing/max holding
+                    if self.autotrader:
+                        await self.autotrader.check_risk_management()
+                    # Resolver autotrades abiertos (mercados cerrados)
                     if self.autotrader:
                         await self.autotrader.resolve_trades()
                 except Exception as e:
@@ -1025,6 +1028,7 @@ async def lifespan(app: FastAPI):
     app.state.bot = bot
     app.state.autotrader = bot.autotrader
     app.state.alert_autotrader = bot.alert_autotrader
+    app.state.crypto_detector = bot.crypto_detector
     # v8.0 módulos
     app.state.market_maker = bot.market_maker
     app.state.spike_detector = bot.spike_detector

@@ -1755,7 +1755,7 @@ class Database:
         async with self._pool.acquire() as conn:
             await conn.execute("""
                 UPDATE alert_autotrades
-                SET shares = $2, size_usd = shares * price
+                SET shares = $2, size_usd = $2 * price
                 WHERE condition_id = $1 AND resolved = FALSE
             """, condition_id, new_shares)
 
@@ -1984,10 +1984,11 @@ class Database:
                 )
 
     # ── v8.0: Heatmap ────────────────────────────────────────────
-    async def get_heatmap_data(self):
+    async def get_heatmap_data(self, user_id: int = 1):
         """Volumen y alertas por categoría para heatmap.
         Usa market_category de trades, con fallback a markets_tracked.category
-        y a la categoría del slug (crypto-prices, sports, etc.)."""
+        y a la categoría del slug (crypto-prices, sports, etc.).
+        Alertas filtradas por user_id."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 WITH trade_cats AS (
@@ -2031,6 +2032,7 @@ class Database:
                     FROM alerts a
                     LEFT JOIN markets_tracked mt ON a.market_id = mt.condition_id
                     WHERE a.created_at > NOW() - INTERVAL '30 days'
+                      AND a.user_id = $1
                     GROUP BY COALESCE(NULLIF(a.market_category, ''), NULLIF(mt.category, ''), 'other')
                 )
                 SELECT
@@ -2045,7 +2047,7 @@ class Database:
                 FROM trade_stats t
                 FULL OUTER JOIN alert_stats a ON t.category = a.category
                 ORDER BY COALESCE(t.total_volume, 0) DESC
-            """)
+            """, user_id)
             return [dict(r) for r in rows]
 
     # ── v8.0: ML Training Data ────────────────────────────────────
@@ -2088,7 +2090,7 @@ class Database:
             rows = await conn.fetch("""
                 SELECT * FROM markets_tracked
                 WHERE end_date IS NULL OR end_date > NOW()
-                ORDER BY trade_count DESC
+                ORDER BY updated_at DESC
                 LIMIT 100
             """)
             return [dict(r) for r in rows]
