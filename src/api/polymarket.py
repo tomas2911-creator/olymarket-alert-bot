@@ -8,6 +8,7 @@ import structlog
 
 from src.models import Market, Trade
 from src import config
+from src.infra.rate_limiter import get_limiter
 
 logger = structlog.get_logger()
 
@@ -65,13 +66,24 @@ class PolymarketClient:
             raise RuntimeError("Cliente no inicializado. Usa 'async with'.")
         return self._client
 
+    async def _rate_limited_get(self, url: str, **kwargs) -> httpx.Response:
+        """GET con rate limiting y backoff automático."""
+        limiter = get_limiter()
+        await limiter.acquire()
+        response = await self.client.get(url, **kwargs)
+        if response.status_code == 429 or response.status_code >= 500:
+            limiter.report_error(response.status_code)
+        else:
+            limiter.report_success()
+        return response
+
     # ── Trades ────────────────────────────────────────────────────────
 
     async def get_recent_trades(self, limit: int = 200) -> list[Trade]:
         """Obtener trades recientes, filtrados y enriquecidos."""
         try:
             fetch_limit = limit * 4
-            response = await self.client.get(
+            response = await self._rate_limited_get(
                 f"{config.DATA_API_URL}/trades",
                 params={"limit": fetch_limit},
             )
@@ -137,7 +149,7 @@ class PolymarketClient:
                 params["active"] = "true"
                 params["closed"] = "false"
 
-            response = await self.client.get(
+            response = await self._rate_limited_get(
                 f"{config.GAMMA_API_URL}/markets", params=params,
             )
             response.raise_for_status()

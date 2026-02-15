@@ -151,6 +151,33 @@ class BinanceFeed:
         elapsed = recent[-1].ts - recent[0].ts
         return len(recent) / elapsed if elapsed > 0 else 0
 
+    def get_vwap(self, pair: str, seconds: int = 600) -> Optional[dict]:
+        """Calcular VWAP (Volume Weighted Average Price) aproximado.
+        Usa intensidad de ticks como proxy de volumen (sin volumen real de WS).
+        """
+        ticks = self.get_sampled_history(pair, seconds)
+        if len(ticks) < 10:
+            return None
+        # VWAP simplificado: ponderar precios por "actividad" (cambio absoluto)
+        total_weight = 0.0
+        weighted_price = 0.0
+        for i in range(1, len(ticks)):
+            weight = abs(ticks[i].price - ticks[i-1].price) + 0.001  # evitar 0
+            weighted_price += ticks[i].price * weight
+            total_weight += weight
+        if total_weight <= 0:
+            return None
+        vwap = weighted_price / total_weight
+        current = ticks[-1].price
+        deviation_pct = abs(current - vwap) / vwap * 100 if vwap > 0 else 0
+        return {
+            "vwap": round(vwap, 4),
+            "current": round(current, 4),
+            "deviation_pct": round(deviation_pct, 4),
+            "above_vwap": current > vwap,
+            "ticks_used": len(ticks),
+        }
+
     def get_momentum(self, pair: str, seconds: int = 180) -> Optional[dict]:
         """Calcular momentum: cambio % y dirección en ventana de tiempo."""
         ticks = self.get_history(pair, seconds)

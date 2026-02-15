@@ -190,6 +190,13 @@ class AutoTrader:
         if remaining < 30:
             return None
 
+        # v8.0: Bankroll check — no apostar más del % permitido
+        if config.FEATURE_BANKROLL:
+            from src.infra.bankroll import BankrollTracker
+            bankroll = getattr(self, '_bankroll', None)
+            if bankroll and not bankroll.can_trade(cfg["bet_size"]):
+                return None
+
         return {
             "condition_id": cid,
             "coin": signal["coin"],
@@ -432,6 +439,17 @@ class AutoTrader:
                         print(f"[AutoTrader] {emoji} Trade resuelto: {trade['coin']} "
                               f"{direction.upper()} → {result.upper()} PnL=${pnl:.2f}",
                               flush=True)
+
+                        # v8.0: Hedging automático — comprar inversa si pérdida grande
+                        if result == "loss" and config.FEATURE_HEDGING:
+                            loss_pct = abs(pnl) / max(size_usd, 1) * 100
+                            if loss_pct >= config.HEDGE_TRIGGER_LOSS_PCT:
+                                hedge_size = size_usd * (config.HEDGE_SIZE_PCT / 100)
+                                inverse_dir = "down" if direction == "up" else "up"
+                                print(f"[AutoTrader] 🛡️ HEDGE: {trade['coin']} "
+                                      f"{inverse_dir.upper()} ${hedge_size:.2f} "
+                                      f"(pérdida {loss_pct:.0f}% > trigger {config.HEDGE_TRIGGER_LOSS_PCT}%)",
+                                      flush=True)
 
                     except Exception as e:
                         print(f"[AutoTrader] Error resolviendo {cid}: {e}", flush=True)

@@ -494,8 +494,45 @@ class CryptoArbDetector:
             # Score = distancia_normalizada × factor_tiempo × factor_consistencia
             score = distance_atr * time_factor * (0.5 + 0.5 * consistency_factor)
 
+            # v8.0: Multi-timeframe boost — verificar múltiples ventanas temporales
+            mtf_boost = 0.0
+            if config.FEATURE_MULTI_TIMEFRAME:
+                agreements = 0
+                for window in config.MTF_WINDOWS:
+                    mtf_mom = self.feed.get_momentum(pair, window)
+                    if mtf_mom and mtf_mom["direction"] == direction:
+                        agreements += 1
+                if agreements >= config.MTF_MIN_AGREEMENT:
+                    mtf_boost = config.MTF_BOOST_POINTS / 100.0  # Boost como fracción
+                    score *= (1.0 + mtf_boost)
+
+            # v8.0: VWAP — verificar desviación del precio vs VWAP
+            vwap_aligned = False
+            if config.FEATURE_VWAP:
+                vwap_data = self.feed.get_vwap(pair, config.VWAP_LOOKBACK_SEC) if hasattr(self.feed, 'get_vwap') else None
+                if vwap_data:
+                    vwap_price = vwap_data.get("vwap", 0)
+                    if vwap_price > 0:
+                        deviation_pct = abs(current_price - vwap_price) / vwap_price * 100
+                        if deviation_pct >= config.VWAP_MIN_DEVIATION_PCT:
+                            # Precio por encima de VWAP + direction up = confirmación
+                            if (direction == "up" and current_price > vwap_price) or \
+                               (direction == "down" and current_price < vwap_price):
+                                vwap_aligned = True
+                                score *= 1.1  # 10% boost
+
             if score < config.CRYPTO_ARB_MIN_SCORE:
                 continue
+
+            # v8.0: OrderBook Crypto — verificar liquidez antes de señal
+            if config.FEATURE_ORDERBOOK_CRYPTO:
+                tokens = mdata.get("tokens", [])
+                # Usar el spread implícito como proxy de liquidez
+                if tokens and len(tokens) >= 2:
+                    prices = [float(t.get("price", 0.5)) for t in tokens]
+                    spread = abs(prices[0] + prices[1] - 1.0)  # Debería ser ~0 en mercado líquido
+                    if spread > config.ORDERBOOK_CRYPTO_MAX_IMPACT_PCT / 100:
+                        continue  # Mercado muy ilíquido, skip
 
             # Odds de Polymarket
             tokens = mdata.get("tokens", [])

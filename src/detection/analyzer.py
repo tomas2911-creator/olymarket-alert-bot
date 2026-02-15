@@ -38,6 +38,9 @@ class AnomalyAnalyzer:
         near_resolution: bool = False,
         same_market_trade_count: int = 0,
         wallet_resolved_wins: int = 0,
+        # v8.0: news catalyst + ML
+        news_mentions: int = 0,
+        ml_prediction: Optional[float] = None,
     ) -> AlertCandidate:
         score = 0
         triggers: list[str] = []
@@ -199,6 +202,23 @@ class AnomalyAnalyzer:
         if wallet_resolved_wins >= config.REPEAT_WINNER_MIN_WINS:
             score += config.REPEAT_WINNER_POINTS
             triggers.append(f"🏆 Repeat winner ({wallet_resolved_wins} wins)")
+
+        # ── Señales v8.0 ──────────────────────────────────────────────
+
+        # 23. NEWS CATALYST: mercado tiene pico de noticias recientes
+        if config.FEATURE_NEWS_CATALYST and news_mentions >= config.NEWS_MIN_MENTIONS:
+            score += config.NEWS_CATALYST_POINTS
+            triggers.append(f"📰 News catalyst ({news_mentions} menciones)")
+
+        # ML SCORING: ajustar score final con predicción de ML
+        if config.FEATURE_ML_SCORING and ml_prediction is not None and ml_prediction != 0.5:
+            ml_weight = config.ML_WEIGHT  # 0-1: cuánto pesa ML vs scoring tradicional
+            ml_boost = (ml_prediction - 0.5) * 10  # -5 a +5 puntos
+            score = int(score * (1 - ml_weight) + (score + ml_boost) * ml_weight)
+            if ml_prediction >= 0.7:
+                triggers.append(f"🤖 ML: {ml_prediction:.0%} confianza")
+            elif ml_prediction <= 0.3:
+                triggers.append(f"🤖 ML: baja confianza ({ml_prediction:.0%})")
 
         return AlertCandidate(
             trade=trade,

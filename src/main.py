@@ -279,8 +279,18 @@ class PolymarketAlertBot:
                     try:
                         if self.market_maker:
                             await self.market_maker.tick()
+                        if self.spike_detector:
+                            spike_markets = [{
+                                "condition_id": m.condition_id,
+                                "market_id": m.condition_id,
+                                "price": m.volume_24h / max(m.liquidity, 1) if m.liquidity else 0.5,
+                                "question": m.question,
+                            } for m in markets[:50]] if markets else []
+                            spike_signals = await self.spike_detector.tick(spike_markets)
+                            if spike_signals:
+                                print(f"[SpikeDetector] {len(spike_signals)} spikes detectados", flush=True)
                     except Exception as e:
-                        print(f"Error market maker: {e}", flush=True)
+                        print(f"Error market maker/spike: {e}", flush=True)
 
                 # Cada 3 ciclos (~3 min): event driven + cross platform
                 if cycle % 3 == 0:
@@ -461,7 +471,35 @@ class PolymarketAlertBot:
             except Exception:
                 pass
 
-        # Analizar con todas las señales (v6.0)
+        # v8.0: News Catalyst — buscar menciones en noticias
+        news_mentions = 0
+        if config.FEATURE_NEWS_CATALYST and hasattr(self, 'news_catalyst') and self.news_catalyst:
+            try:
+                news_result = await self.news_catalyst.check_news_for_market(trade.market_question or "")
+                news_mentions = news_result.get("mentions", 0)
+            except Exception:
+                pass
+
+        # v8.0: ML Scoring — predecir probabilidad de acierto
+        ml_prediction = None
+        if config.FEATURE_ML_SCORING and hasattr(self, 'ml_scorer') and self.ml_scorer:
+            try:
+                ml_prediction = self.ml_scorer.predict({
+                    "score": 0,  # se recalcula después, pero damos contexto
+                    "wallet_trades": wallet_stats.total_trades if wallet_stats else 0,
+                    "wallet_winrate": wallet_stats.hit_rate if wallet_stats else 0,
+                    "market_volume": market_baseline.total_volume if market_baseline else 0,
+                    "size_usd": trade.size,
+                    "num_triggers": 0,
+                    "hour_of_day": trade.timestamp.hour if trade.timestamp else 12,
+                    "is_contrarian": 1 if market_price and market_price < 0.2 else 0,
+                    "has_cluster": 1 if cluster and len(cluster) >= 3 else 0,
+                    "is_accumulation": 1 if accumulation_info and accumulation_info.get("count", 0) >= 2 else 0,
+                })
+            except Exception:
+                pass
+
+        # Analizar con todas las señales (v6.0 + v8.0)
         try:
             candidate = self.analyzer.analyze(
                 trade, wallet_stats, market_baseline, cluster,
@@ -471,6 +509,8 @@ class PolymarketAlertBot:
                 wallet_category_shift=wallet_category_shift,
                 cross_basket_count=cross_basket_count,
                 sniper_cluster_size=sniper_cluster_size,
+                news_mentions=news_mentions,
+                ml_prediction=ml_prediction,
             )
         except Exception as e:
             err_msg = f"analyzer: {e} | size=${trade.size} wallet={trade.wallet_address[:12]} market={trade.market_slug}"
@@ -555,6 +595,19 @@ class PolymarketAlertBot:
                         market=trade.market_slug,
                         score=candidate.score,
                         copy_trade=is_copy)
+
+            # v8.0: Push Notifications — guardar en DB para dashboard
+            if config.FEATURE_PUSH_NOTIFICATIONS and candidate.score >= config.PUSH_MIN_SCORE:
+                try:
+                    level = "critical" if candidate.score >= 12 else "high" if candidate.score >= 8 else "medium"
+                    await self.db.create_notification(
+                        title=f"Alerta Score {candidate.score}",
+                        message=f"{trade.market_question[:80]} | ${trade.size:,.0f} | {', '.join(candidate.triggers[:3])}",
+                        level=level,
+                    )
+                except Exception:
+                    pass
+
             # Alert AutoTrader: evaluar copy-trade automático
             if self.alert_autotrader:
                 try:

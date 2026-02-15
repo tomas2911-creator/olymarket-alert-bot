@@ -266,6 +266,21 @@ class AlertAutoTrader:
         if trade.market_id in self._open_positions:
             return None
 
+        # Filtro: Correlation Filter — no duplicar riesgo en mercados correlacionados
+        if config.FEATURE_CORRELATION_FILTER and self._open_positions:
+            market_q = (trade.market_question or "").lower()
+            for pos_cid, pos in self._open_positions.items():
+                pos_q = (pos.get("market_question", "") or "").lower()
+                if not market_q or not pos_q:
+                    continue
+                # Calcular overlap de palabras clave
+                words_new = set(w for w in market_q.split() if len(w) > 3)
+                words_pos = set(w for w in pos_q.split() if len(w) > 3)
+                if words_new and words_pos:
+                    overlap = len(words_new & words_pos) / max(len(words_new | words_pos), 1) * 100
+                    if overlap >= config.CORRELATION_MIN_OVERLAP:
+                        return None  # Mercado muy similar a posición abierta
+
         # Cooldown general entre trades
         now = time.time()
         if now - self._last_trade_time < 10:  # 10 seg mínimo entre trades
