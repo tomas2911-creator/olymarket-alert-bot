@@ -144,6 +144,13 @@ CRYPTO_ARB_LOOKBACK_SEC = _crypto.get("lookback_seconds", 180)
 CRYPTO_ARB_PAPER_BET = _crypto.get("paper_bet_size", 100)
 CRYPTO_ARB_MAX_DAILY = _crypto.get("max_daily_signals", 500)
 CRYPTO_ARB_TELEGRAM = _crypto.get("telegram_alerts", True)
+# Estrategia: "divergence" (antigua) o "score" (nueva basada en price_to_beat)
+CRYPTO_ARB_STRATEGY = _crypto.get("strategy", "score")
+# Params estrategia score-based
+CRYPTO_ARB_MIN_SCORE = _crypto.get("min_score", 0.40)
+CRYPTO_ARB_ENTRY_MAX_TIME = _crypto.get("entry_max_time_sec", 180)
+CRYPTO_ARB_MIN_DISTANCE_ATR = _crypto.get("min_distance_atr", 0.3)
+CRYPTO_ARB_MIN_TREND_CONSISTENCY = _crypto.get("min_trend_consistency", 0.55)
 
 # === Dashboard ===
 DASHBOARD_PORT = int(os.getenv("PORT", 8080))
@@ -228,3 +235,10 @@ def restore_from_db(saved: dict):
     cfg.CRYPTO_ARB_PAPER_BET = _float("crypto_paper_bet", cfg.CRYPTO_ARB_PAPER_BET)
     cfg.CRYPTO_ARB_MAX_DAILY = _int("crypto_max_daily", cfg.CRYPTO_ARB_MAX_DAILY)
     cfg.CRYPTO_ARB_TELEGRAM = _bool("crypto_telegram", cfg.CRYPTO_ARB_TELEGRAM)
+    # Estrategia
+    if "crypto_strategy" in saved:
+        cfg.CRYPTO_ARB_STRATEGY = saved["crypto_strategy"]
+    cfg.CRYPTO_ARB_MIN_SCORE = _float("crypto_min_score", cfg.CRYPTO_ARB_MIN_SCORE)
+    cfg.CRYPTO_ARB_ENTRY_MAX_TIME = _int("crypto_entry_max_time", cfg.CRYPTO_ARB_ENTRY_MAX_TIME)
+    cfg.CRYPTO_ARB_MIN_DISTANCE_ATR = _float("crypto_min_distance_atr", cfg.CRYPTO_ARB_MIN_DISTANCE_ATR)
+    cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY = _float("crypto_min_trend_consistency", cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY)

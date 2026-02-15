@@ -606,6 +606,11 @@ async def get_crypto_config():
         "paper_bet_size": config.CRYPTO_ARB_PAPER_BET,
         "max_daily_signals": config.CRYPTO_ARB_MAX_DAILY,
         "telegram_alerts": config.CRYPTO_ARB_TELEGRAM,
+        "strategy": config.CRYPTO_ARB_STRATEGY,
+        "min_score": config.CRYPTO_ARB_MIN_SCORE,
+        "entry_max_time_sec": config.CRYPTO_ARB_ENTRY_MAX_TIME,
+        "min_distance_atr": config.CRYPTO_ARB_MIN_DISTANCE_ATR,
+        "min_trend_consistency": config.CRYPTO_ARB_MIN_TREND_CONSISTENCY,
     }
 
 
@@ -616,6 +621,11 @@ class CryptoConfigUpdate(BaseModel):
     paper_bet_size: float | None = None
     max_daily_signals: int | None = None
     telegram_alerts: bool | None = None
+    strategy: str | None = None
+    min_score: float | None = None
+    entry_max_time_sec: int | None = None
+    min_distance_atr: float | None = None
+    min_trend_consistency: float | None = None
 
 
 @router.post("/api/crypto-arb/config")
@@ -647,6 +657,26 @@ async def update_crypto_config(request: Request, body: CryptoConfigUpdate):
         config.CRYPTO_ARB_TELEGRAM = body.telegram_alerts
         updated["telegram_alerts"] = body.telegram_alerts
         data["crypto_telegram"] = str(body.telegram_alerts)
+    if body.strategy is not None and body.strategy in ("divergence", "score"):
+        config.CRYPTO_ARB_STRATEGY = body.strategy
+        updated["strategy"] = body.strategy
+        data["crypto_strategy"] = body.strategy
+    if body.min_score is not None:
+        config.CRYPTO_ARB_MIN_SCORE = body.min_score
+        updated["min_score"] = body.min_score
+        data["crypto_min_score"] = str(body.min_score)
+    if body.entry_max_time_sec is not None:
+        config.CRYPTO_ARB_ENTRY_MAX_TIME = body.entry_max_time_sec
+        updated["entry_max_time_sec"] = body.entry_max_time_sec
+        data["crypto_entry_max_time"] = str(body.entry_max_time_sec)
+    if body.min_distance_atr is not None:
+        config.CRYPTO_ARB_MIN_DISTANCE_ATR = body.min_distance_atr
+        updated["min_distance_atr"] = body.min_distance_atr
+        data["crypto_min_distance_atr"] = str(body.min_distance_atr)
+    if body.min_trend_consistency is not None:
+        config.CRYPTO_ARB_MIN_TREND_CONSISTENCY = body.min_trend_consistency
+        updated["min_trend_consistency"] = body.min_trend_consistency
+        data["crypto_min_trend_consistency"] = str(body.min_trend_consistency)
     if data:
         await db.set_config_bulk(data)
     return {"status": "ok", "updated": updated}

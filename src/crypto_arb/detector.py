@@ -35,6 +35,8 @@ class CryptoSignal:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     end_date: Optional[datetime] = None  # Fecha de cierre del mercado
     event_slug: str = ""         # Slug del evento en Polymarket
+    strategy: str = ""           # "divergence" o "score"
+    score_details: dict = field(default_factory=dict)  # Detalles del score
     resolved: bool = False       # Si ya se resolvió
     result: Optional[str] = None # "win" o "loss"
     paper_pnl: float = 0.0      # PnL simulado
@@ -66,12 +68,14 @@ COIN_MAP = {
     "bitcoin": "BTC", "btc": "BTC",
     "ethereum": "ETH", "eth": "ETH",
     "solana": "SOL", "sol": "SOL",
+    "xrp": "XRP", "ripple": "XRP",
 }
 
 PAIR_MAP = {
     "BTC": "btcusdt",
     "ETH": "ethusdt",
     "SOL": "solusdt",
+    "XRP": "xrpusdt",
 }
 
 
@@ -99,8 +103,11 @@ class CryptoArbDetector:
                     await self._scan_active_markets()
                     self._last_scan = now
 
-                # Buscar divergencias cada 3 segundos
-                signals = await self._check_divergences()
+                # Buscar señales cada 3 segundos según estrategia activa
+                if config.CRYPTO_ARB_STRATEGY == "divergence":
+                    signals = await self._check_divergences()
+                else:
+                    signals = await self._check_score_strategy()
                 for signal in signals:
                     self._record_signal(signal)
 
@@ -139,6 +146,8 @@ class CryptoArbDetector:
                     slug_templates.append(("ETH", "eth-updown-15m", 900))
                 if "SOL" in enabled_coins:
                     slug_templates.append(("SOL", "sol-updown-15m", 900))
+                if "XRP" in enabled_coins:
+                    slug_templates.append(("XRP", "xrp-updown-15m", 900))
 
                 new_active = {}
                 slugs_checked = 0
@@ -193,7 +202,10 @@ class CryptoArbDetector:
                                     "coin": coin,
                                     "end_date": end_date,
                                     "event_slug": slug,
+                                    "open_ts": ts,       # Timestamp de apertura del mercado
+                                    "interval": interval, # Duración en segundos (300 o 900)
                                     "tokens": [],
+                                    "price_to_beat": None, # Se llena después
                                 }
                         except Exception:
                             pass
@@ -207,6 +219,37 @@ class CryptoArbDetector:
                         if resp2.status_code == 200:
                             clob = resp2.json()
                             mdata["tokens"] = clob.get("tokens", [])
+                    except Exception:
+                        pass
+
+                # Obtener price_to_beat para cada mercado (Binance klines o historia local)
+                for cid, mdata in new_active.items():
+                    if mdata.get("price_to_beat"):
+                        continue
+                    pair = PAIR_MAP.get(mdata["coin"], "")
+                    open_ts = mdata.get("open_ts", 0)
+                    if not pair or not open_ts:
+                        continue
+                    # Intento 1: historia local de ticks
+                    local_price = self.feed.get_price_at_time(pair, float(open_ts), tolerance_sec=10.0)
+                    if local_price:
+                        mdata["price_to_beat"] = local_price
+                        continue
+                    # Intento 2: Binance klines API (1 vela de 1 minuto)
+                    try:
+                        resp3 = await client.get(
+                            "https://api.binance.com/api/v3/klines",
+                            params={
+                                "symbol": pair.upper(),
+                                "interval": "1m",
+                                "startTime": int(open_ts * 1000),
+                                "limit": 1,
+                            },
+                        )
+                        if resp3.status_code == 200:
+                            klines = resp3.json()
+                            if klines:
+                                mdata["price_to_beat"] = float(klines[0][1])  # Open price
                     except Exception:
                         pass
 
@@ -324,6 +367,161 @@ class CryptoArbDetector:
                 time_remaining_sec=int(time_remaining),
                 end_date=mdata.get("end_date"),
                 event_slug=mdata.get("event_slug", ""),
+                strategy="divergence",
+            )
+            signals.append(signal)
+
+        return signals
+
+    async def _check_score_strategy(self) -> list[CryptoSignal]:
+        """Estrategia score-based: compara precio actual vs price_to_beat,
+        normalizado por ATR, consistencia de tendencia y tiempo restante.
+
+        Genera señal solo cuando el score compuesto supera el umbral.
+        Diseñada para apostar tarde con alta certeza.
+        """
+        signals = []
+        now = datetime.now(timezone.utc)
+
+        for cid, mdata in self._active_markets.items():
+            coin = mdata["coin"]
+            pair = PAIR_MAP.get(coin)
+            if not pair:
+                continue
+
+            # Verificar tiempo restante
+            end_date = mdata.get("end_date")
+            if not end_date:
+                continue
+            try:
+                time_remaining = (end_date - now).total_seconds()
+            except TypeError:
+                continue
+
+            # Solo apostar cuando queda poco tiempo (late entry)
+            if time_remaining < 10:  # Muy poco, ya casi cerró
+                continue
+            if time_remaining > config.CRYPTO_ARB_ENTRY_MAX_TIME:
+                continue
+
+            # Necesitamos price_to_beat
+            price_to_beat = mdata.get("price_to_beat")
+            if not price_to_beat or price_to_beat <= 0:
+                continue
+
+            # Precio actual de Binance
+            current_price = self.feed.get_price(pair)
+            if not current_price or current_price <= 0:
+                continue
+
+            # Distancia al price_to_beat
+            price_diff = current_price - price_to_beat
+            direction = "up" if price_diff > 0 else "down"
+            abs_diff = abs(price_diff)
+
+            # ATR para normalizar
+            interval = mdata.get("interval", 300)
+            atr = self.feed.get_atr(pair, window_sec=min(interval, 600))
+            if not atr or atr <= 0:
+                # Fallback: usar volatilidad del momentum
+                momentum = self.feed.get_momentum(pair, 120)
+                if momentum and momentum.get("volatility", 0) > 0:
+                    atr = momentum["last_price"] * momentum["volatility"] / 100 * 10
+                else:
+                    continue
+
+            # Distancia normalizada por ATR
+            distance_atr = abs_diff / atr if atr > 0 else 0
+
+            # Filtro mínimo de distancia
+            if distance_atr < config.CRYPTO_ARB_MIN_DISTANCE_ATR:
+                continue
+
+            # Consistencia de tendencia (últimos 60-120 seg)
+            trend_window = min(int(time_remaining * 0.8), 120)
+            trend = self.feed.get_trend_consistency(pair, max(trend_window, 30))
+            trend_consistency = 0.5
+            trend_aligned = False
+            if trend:
+                trend_consistency = trend["consistency"]
+                trend_aligned = trend["direction"] == direction
+
+            # La tendencia debe estar alineada con la dirección
+            if not trend_aligned and trend_consistency > 0.6:
+                continue  # Tendencia fuerte en contra, no apostar
+
+            # Filtro mínimo de consistencia
+            if trend_aligned and trend_consistency < config.CRYPTO_ARB_MIN_TREND_CONSISTENCY:
+                continue
+
+            # ── Calcular score compuesto ──
+            total_time = float(interval)
+            time_factor = 1.0 - (time_remaining / total_time)
+            time_factor = max(0.0, min(time_factor, 1.0))
+
+            # Factor consistencia: 0.5-1.0 → mapeado a 0.0-1.0
+            consistency_factor = (trend_consistency - 0.5) * 2.0 if trend_aligned else 0.0
+            consistency_factor = max(0.0, min(consistency_factor, 1.0))
+
+            # Score = distancia_normalizada × factor_tiempo × factor_consistencia
+            score = distance_atr * time_factor * (0.5 + 0.5 * consistency_factor)
+
+            if score < config.CRYPTO_ARB_MIN_SCORE:
+                continue
+
+            # Odds de Polymarket
+            tokens = mdata.get("tokens", [])
+            up_odds = down_odds = None
+            for tok in tokens:
+                outcome = tok.get("outcome", "").lower()
+                price = float(tok.get("price", 0.5))
+                if outcome == "up":
+                    up_odds = price
+                elif outcome == "down":
+                    down_odds = price
+
+            if up_odds is None or down_odds is None:
+                continue
+
+            poly_odds = up_odds if direction == "up" else down_odds
+
+            # Estimar probabilidad real basada en el score
+            # Score 0.4 → ~65%, Score 0.7 → ~80%, Score 1.0+ → ~90%
+            fair_odds = min(0.55 + score * 0.35, 0.95)
+
+            edge_pct = (fair_odds - poly_odds) * 100
+            confidence = min(score * 100, 100)
+
+            # Detalles del score para el dashboard
+            score_details = {
+                "price_to_beat": round(price_to_beat, 2),
+                "current_price": round(current_price, 2),
+                "price_diff": round(price_diff, 2),
+                "distance_atr": round(distance_atr, 3),
+                "time_factor": round(time_factor, 3),
+                "trend_consistency": round(trend_consistency, 3),
+                "trend_aligned": trend_aligned,
+                "consistency_factor": round(consistency_factor, 3),
+                "atr": round(atr, 2),
+                "score": round(score, 3),
+            }
+
+            signal = CryptoSignal(
+                coin=coin,
+                direction=direction,
+                spot_change_pct=round((price_diff / price_to_beat) * 100, 4) if price_to_beat else 0,
+                poly_odds=poly_odds,
+                fair_odds=fair_odds,
+                confidence=confidence,
+                edge_pct=edge_pct,
+                condition_id=cid,
+                market_question=mdata["question"],
+                spot_price=current_price,
+                time_remaining_sec=int(time_remaining),
+                end_date=mdata.get("end_date"),
+                event_slug=mdata.get("event_slug", ""),
+                strategy="score",
+                score_details=score_details,
             )
             signals.append(signal)
 
@@ -468,6 +666,8 @@ class CryptoArbDetector:
                 "timestamp": s.timestamp.isoformat(),
                 "event_slug": s.event_slug,
                 "polymarket_url": f"https://polymarket.com/event/{s.event_slug}" if s.event_slug else "",
+                "strategy": s.strategy,
+                "score_details": s.score_details,
                 "resolved": s.resolved,
                 "result": s.result,
                 "paper_pnl": s.paper_pnl,

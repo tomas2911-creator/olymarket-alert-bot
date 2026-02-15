@@ -33,6 +33,11 @@ class BinanceFeed:
         self._history: dict[str, deque[PriceTick]] = {
             p: deque(maxlen=max_history) for p in self.pairs
         }
+        # Historia muestreada: 1 tick/segundo, 30 min de datos
+        self._sampled: dict[str, deque[PriceTick]] = {
+            p: deque(maxlen=1800) for p in self.pairs
+        }
+        self._last_sample_ts: dict[str, float] = {p: 0.0 for p in self.pairs}
         self._latest: dict[str, float] = {}
         self._running = False
         self._ws_connected = False
@@ -52,6 +57,99 @@ class BinanceFeed:
             return []
         cutoff = time.time() - seconds
         return [t for t in self._history[pair] if t.ts >= cutoff]
+
+    def get_sampled_history(self, pair: str, seconds: int = 900) -> list[PriceTick]:
+        """Ticks muestreados (1/seg) de los últimos N segundos. Más historia que get_history."""
+        pair = pair.lower()
+        if pair not in self._sampled:
+            return []
+        cutoff = time.time() - seconds
+        return [t for t in self._sampled[pair] if t.ts >= cutoff]
+
+    def get_price_at_time(self, pair: str, target_ts: float, tolerance_sec: float = 5.0) -> Optional[float]:
+        """Buscar el precio más cercano a un timestamp dado."""
+        pair = pair.lower()
+        ticks = list(self._sampled.get(pair, []))
+        if not ticks:
+            return None
+        best = None
+        best_diff = float('inf')
+        for t in ticks:
+            diff = abs(t.ts - target_ts)
+            if diff < best_diff:
+                best_diff = diff
+                best = t.price
+        return best if best_diff <= tolerance_sec else None
+
+    def get_atr(self, pair: str, window_sec: int = 300, candle_sec: int = 10) -> Optional[float]:
+        """Calcular ATR (Average True Range) en ventana de tiempo.
+        Agrupa ticks en velas de candle_sec segundos y calcula el rango promedio.
+        """
+        ticks = self.get_sampled_history(pair, window_sec)
+        if len(ticks) < 10:
+            return None
+        # Agrupar en velas
+        candles = []
+        bucket_start = ticks[0].ts
+        bucket_high = bucket_low = ticks[0].price
+        prev_close = ticks[0].price
+        for t in ticks[1:]:
+            if t.ts - bucket_start >= candle_sec:
+                # True Range = max(high-low, |high-prev_close|, |low-prev_close|)
+                tr = max(
+                    bucket_high - bucket_low,
+                    abs(bucket_high - prev_close),
+                    abs(bucket_low - prev_close)
+                )
+                candles.append(tr)
+                prev_close = t.price
+                bucket_start = t.ts
+                bucket_high = bucket_low = t.price
+            else:
+                bucket_high = max(bucket_high, t.price)
+                bucket_low = min(bucket_low, t.price)
+        if not candles:
+            return None
+        return sum(candles) / len(candles)
+
+    def get_trend_consistency(self, pair: str, seconds: int = 120) -> Optional[dict]:
+        """Calcular qué tan consistente es la tendencia reciente.
+        Retorna % de ticks que van en la dirección dominante.
+        """
+        ticks = self.get_sampled_history(pair, seconds)
+        if len(ticks) < 5:
+            return None
+        up_moves = 0
+        down_moves = 0
+        for i in range(1, len(ticks)):
+            if ticks[i].price > ticks[i-1].price:
+                up_moves += 1
+            elif ticks[i].price < ticks[i-1].price:
+                down_moves += 1
+        total_moves = up_moves + down_moves
+        if total_moves == 0:
+            return {"direction": "flat", "consistency": 0.5, "up_ratio": 0.5}
+        dominant = "up" if up_moves >= down_moves else "down"
+        consistency = max(up_moves, down_moves) / total_moves
+        return {
+            "direction": dominant,
+            "consistency": round(consistency, 3),
+            "up_ratio": round(up_moves / total_moves, 3),
+            "up_moves": up_moves,
+            "down_moves": down_moves,
+        }
+
+    def get_volume_intensity(self, pair: str, seconds: int = 60) -> Optional[float]:
+        """Intensidad de volumen: trades por segundo en la ventana reciente."""
+        pair = pair.lower()
+        if pair not in self._history:
+            return None
+        cutoff = time.time() - seconds
+        recent = [t for t in self._history[pair] if t.ts >= cutoff]
+        if len(recent) < 2:
+            return None
+        elapsed = recent[-1].ts - recent[0].ts
+        return len(recent) / elapsed if elapsed > 0 else 0
 
     def get_momentum(self, pair: str, seconds: int = 180) -> Optional[dict]:
         """Calcular momentum: cambio % y dirección en ventana de tiempo."""
@@ -136,6 +234,10 @@ class BinanceFeed:
                             if pair in self._history:
                                 self._history[pair].append(PriceTick(price, ts))
                                 self._latest[pair] = price
+                                # Muestrear 1 tick/segundo para historia larga
+                                if ts - self._last_sample_ts.get(pair, 0) >= 1.0:
+                                    self._sampled[pair].append(PriceTick(price, ts))
+                                    self._last_sample_ts[pair] = ts
                     except (ValueError, KeyError):
                         pass
             except websockets.ConnectionClosed:
@@ -215,6 +317,10 @@ class BinanceFeed:
                             now = time.time()
                             self._history[pair].append(PriceTick(price, now))
                             self._latest[pair] = price
+                            # Muestrear 1 tick/segundo para historia larga
+                            if now - self._last_sample_ts.get(pair, 0) >= 1.0:
+                                self._sampled[pair].append(PriceTick(price, now))
+                                self._last_sample_ts[pair] = now
                             got_any = True
 
                     if got_any:
@@ -244,6 +350,7 @@ class BinanceFeed:
                 p: {
                     "price": self._latest.get(p),
                     "ticks": len(self._history.get(p, [])),
+                    "sampled_ticks": len(self._sampled.get(p, [])),
                 }
                 for p in self.pairs
             },
