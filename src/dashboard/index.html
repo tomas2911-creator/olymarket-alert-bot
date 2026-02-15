@@ -1173,8 +1173,116 @@
                     </div>
                     <div id="aat-pending-count" class="text-[10px] text-yellow-400 hidden"></div>
                 </div>
-                <!-- Smart money filter -->
-                <div class="flex items-center gap-3">
+                <!-- Kelly Criterion -->
+                <div class="space-y-2 border-t border-green-800/30 pt-3">
+                    <div class="flex items-center gap-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Kelly Criterion (Sizing Dinamico)</h4>
+                        <label class="toggle-switch" style="transform:scale(0.8)">
+                            <input type="checkbox" id="aat-kelly-enabled">
+                            <div class="toggle-slider"></div>
+                        </label>
+                    </div>
+                    <p class="text-[10px] text-gray-600">Calcula el tamaño optimo de cada apuesta basado en probabilidad estimada (score + hit rate). Mas confianza = apuesta mas grande.</p>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Fraccion Kelly (0.1-0.5)</label>
+                            <input type="number" id="aat-kelly-fraction" value="0.25" min="0.1" max="0.5" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">0.25 = 1/4 Kelly (conservador). 0.5 = 1/2 Kelly (agresivo)</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Trailing Stop Loss -->
+                <div class="space-y-2 border-t border-yellow-800/30 pt-3">
+                    <div class="flex items-center gap-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Trailing Stop Loss</h4>
+                        <label class="toggle-switch" style="transform:scale(0.8)">
+                            <input type="checkbox" id="aat-trailing-enabled">
+                            <div class="toggle-slider"></div>
+                        </label>
+                    </div>
+                    <p class="text-[10px] text-gray-600">Vende si el precio cae X% desde el maximo alcanzado. Protege ganancias sin salir demasiado temprano.</p>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Caida desde maximo (%)</label>
+                            <input type="number" id="aat-trailing-pct" value="15" min="3" max="50" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">Ej: 15 = vende si cae 15% desde el precio mas alto</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Partial Profit Taking -->
+                <div class="space-y-2 border-t border-emerald-800/30 pt-3">
+                    <div class="flex items-center gap-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Partial Profit Taking</h4>
+                        <label class="toggle-switch" style="transform:scale(0.8)">
+                            <input type="checkbox" id="aat-partial-enabled">
+                            <div class="toggle-slider"></div>
+                        </label>
+                    </div>
+                    <p class="text-[10px] text-gray-600">Vende una fraccion al primer target y deja el resto correr hasta el TP completo o trailing stop.</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Partial TP (%)</label>
+                            <input type="number" id="aat-partial-pct" value="30" min="5" max="200" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-emerald-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">Ej: 30 = vende fraccion si sube +30%</p>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Fraccion a vender (%)</label>
+                            <input type="number" id="aat-partial-fraction" value="50" min="10" max="90" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-emerald-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">Ej: 50 = vende la mitad</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Auto-scaling por PNL -->
+                <div class="space-y-2 border-t border-cyan-800/30 pt-3">
+                    <div class="flex items-center gap-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Auto-Scaling por PNL</h4>
+                        <label class="toggle-switch" style="transform:scale(0.8)">
+                            <input type="checkbox" id="aat-autoscale-enabled">
+                            <div class="toggle-slider"></div>
+                        </label>
+                    </div>
+                    <p class="text-[10px] text-gray-600">Ajusta el tamaño de apuesta automaticamente: ganas mas → apuestas mas, pierdes → apuestas menos.</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Boost al ganar (%/10$)</label>
+                            <input type="number" id="aat-scale-win" value="10" min="0" max="50" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-cyan-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">+10% bet por cada $10 ganados</p>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Reducir al perder (%/10$)</label>
+                            <input type="number" id="aat-scale-loss" value="20" min="0" max="50" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-cyan-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">-20% bet por cada $10 perdidos</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Gestion de Riesgo -->
+                <div class="space-y-2 border-t border-red-800/30 pt-3">
+                    <h4 class="text-xs text-gray-500 uppercase tracking-wider">Gestion de Riesgo Avanzada</h4>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Max Drawdown ($)</label>
+                            <input type="number" id="aat-max-drawdown" value="0" min="0" max="1000" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-red-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">0 = off. Pausa si drawdown >= $X</p>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Max por Categoria</label>
+                            <input type="number" id="aat-max-cat-exposure" value="0" min="0" max="10" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-red-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">0 = off. Max posiciones por cat</p>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Min Liquidez ($)</label>
+                            <input type="number" id="aat-min-liquidity" value="0" min="0" max="100000" step="1000" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-red-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">0 = off. No entrar si liquidez < $X</p>
+                        </div>
+                    </div>
+                    <div id="aat-drawdown-warning" class="text-[10px] text-red-400 font-bold hidden">🚨 DRAWDOWN PAUSADO — Trading detenido</div>
+                </div>
+                <!-- Auto Exit on Sell + Smart money filter -->
+                <div class="flex items-center gap-4 flex-wrap border-t border-gray-800/30 pt-3">
+                    <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                        <input type="checkbox" id="aat-auto-exit" class="rounded border-gray-600">
+                        Auto-Exit si insider vende
+                    </label>
                     <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
                         <input type="checkbox" id="aat-require-smart" class="rounded border-gray-600">
                         Solo Smart Money (wallets en watchlist)
@@ -2571,6 +2679,28 @@ async function loadAatConfig(){
     document.getElementById('aat-confirm-max-hours').value=c.confirm_max_hours!=null?c.confirm_max_hours:6;
     const pendEl=document.getElementById('aat-pending-count');
     if(c.pending_confirmations>0){pendEl.textContent='⏳ '+c.pending_confirmations+' alerta(s) esperando confirmación';pendEl.classList.remove('hidden');}else{pendEl.classList.add('hidden');}
+    // Kelly Criterion
+    document.getElementById('aat-kelly-enabled').checked=c.kelly_enabled||false;
+    document.getElementById('aat-kelly-fraction').value=c.kelly_base_fraction!=null?c.kelly_base_fraction:0.25;
+    // Trailing Stop
+    document.getElementById('aat-trailing-enabled').checked=c.trailing_stop_enabled||false;
+    document.getElementById('aat-trailing-pct').value=c.trailing_stop_pct!=null?c.trailing_stop_pct:15;
+    // Partial TP
+    document.getElementById('aat-partial-enabled').checked=c.partial_tp_enabled||false;
+    document.getElementById('aat-partial-pct').value=c.partial_tp_pct!=null?c.partial_tp_pct:30;
+    document.getElementById('aat-partial-fraction').value=c.partial_tp_fraction!=null?c.partial_tp_fraction:50;
+    // Auto-scaling
+    document.getElementById('aat-autoscale-enabled').checked=c.auto_scale_enabled||false;
+    document.getElementById('aat-scale-win').value=c.auto_scale_win_boost!=null?c.auto_scale_win_boost:10;
+    document.getElementById('aat-scale-loss').value=c.auto_scale_loss_reduce!=null?c.auto_scale_loss_reduce:20;
+    // Risk management
+    document.getElementById('aat-max-drawdown').value=c.max_drawdown||0;
+    document.getElementById('aat-max-cat-exposure').value=c.max_category_exposure||0;
+    document.getElementById('aat-min-liquidity').value=c.min_market_liquidity||0;
+    const ddWarn=document.getElementById('aat-drawdown-warning');
+    if(c.drawdown_paused){ddWarn.classList.remove('hidden');}else{ddWarn.classList.add('hidden');}
+    // Auto-exit
+    document.getElementById('aat-auto-exit').checked=c.auto_exit_on_sell||false;
     // Categorías: pills rojo/verde (mismo estilo que config alertas)
     const excludedCats=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
     const pillsCont=document.getElementById('aat-cat-pills');
@@ -2666,6 +2796,26 @@ async function saveAatConfig(){
         confirm_hours:parseFloat(document.getElementById('aat-confirm-hours').value)||1,
         confirm_min_pct:parseFloat(document.getElementById('aat-confirm-min-pct').value)||3,
         confirm_max_hours:parseFloat(document.getElementById('aat-confirm-max-hours').value)||6,
+        // Kelly
+        kelly_enabled:document.getElementById('aat-kelly-enabled').checked,
+        kelly_base_fraction:parseFloat(document.getElementById('aat-kelly-fraction').value)||0.25,
+        // Trailing
+        trailing_stop_enabled:document.getElementById('aat-trailing-enabled').checked,
+        trailing_stop_pct:parseFloat(document.getElementById('aat-trailing-pct').value)||15,
+        // Partial
+        partial_tp_enabled:document.getElementById('aat-partial-enabled').checked,
+        partial_tp_pct:parseFloat(document.getElementById('aat-partial-pct').value)||30,
+        partial_tp_fraction:parseFloat(document.getElementById('aat-partial-fraction').value)||50,
+        // Auto-scaling
+        auto_scale_enabled:document.getElementById('aat-autoscale-enabled').checked,
+        auto_scale_win_boost:parseFloat(document.getElementById('aat-scale-win').value)||10,
+        auto_scale_loss_reduce:parseFloat(document.getElementById('aat-scale-loss').value)||20,
+        // Risk
+        max_drawdown:parseFloat(document.getElementById('aat-max-drawdown').value)||0,
+        max_category_exposure:parseInt(document.getElementById('aat-max-cat-exposure').value)||0,
+        min_market_liquidity:parseFloat(document.getElementById('aat-min-liquidity').value)||0,
+        // Auto-exit
+        auto_exit_on_sell:document.getElementById('aat-auto-exit').checked,
     };
     try{
         const r=await fetch('/api/alert-trading/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});

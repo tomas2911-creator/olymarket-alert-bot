@@ -1538,6 +1538,62 @@ class Database:
             """)
             return [_serialize_row(r) for r in rows]
 
+    async def update_alert_autotrade_shares(self, condition_id: str, new_shares: float):
+        """Actualizar shares restantes después de partial profit taking."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE alert_autotrades
+                SET shares = $2, size_usd = shares * price
+                WHERE condition_id = $1 AND resolved = FALSE
+            """, condition_id, new_shares)
+
+    async def get_alert_pnl_history(self, days: int = 30) -> list[dict]:
+        """Obtener historial de PnL para gráfico de evolución."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT DATE(resolved_at) as date,
+                       SUM(pnl) as daily_pnl,
+                       COUNT(*) as trades,
+                       SUM(CASE WHEN result IN ('win','take_profit','trailing_stop','partial_tp') THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN result IN ('loss','stop_loss') THEN 1 ELSE 0 END) as losses
+                FROM alert_autotrades
+                WHERE resolved = TRUE AND resolved_at > NOW() - INTERVAL '1 day' * $1
+                GROUP BY DATE(resolved_at)
+                ORDER BY date ASC
+            """, days)
+            result = []
+            cumulative = 0
+            for r in rows:
+                cumulative += float(r["daily_pnl"] or 0)
+                result.append({
+                    "date": r["date"].isoformat() if r["date"] else "",
+                    "daily_pnl": round(float(r["daily_pnl"] or 0), 2),
+                    "cumulative_pnl": round(cumulative, 2),
+                    "trades": int(r["trades"] or 0),
+                    "wins": int(r["wins"] or 0),
+                    "losses": int(r["losses"] or 0),
+                })
+            return result
+
+    async def get_alert_wallet_ranking(self, limit: int = 20) -> list[dict]:
+        """Ranking de wallets por profit generado en copy-trades."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT wallet_address,
+                       COUNT(*) as total_trades,
+                       SUM(CASE WHEN result IN ('win','take_profit','trailing_stop') THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN result IN ('loss','stop_loss') THEN 1 ELSE 0 END) as losses,
+                       SUM(pnl) as total_pnl,
+                       AVG(alert_score) as avg_score
+                FROM alert_autotrades
+                WHERE resolved = TRUE AND wallet_address != ''
+                GROUP BY wallet_address
+                HAVING COUNT(*) >= 2
+                ORDER BY SUM(pnl) DESC
+                LIMIT $1
+            """, limit)
+            return [dict(r) for r in rows]
+
     async def get_alert_autotrade_stats(self) -> dict:
         """Estadísticas de alert autotrading."""
         async with self._pool.acquire() as conn:

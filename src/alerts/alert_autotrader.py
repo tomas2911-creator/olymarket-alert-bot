@@ -37,6 +37,10 @@ class AlertAutoTrader:
         self._trades_today_date: str = ""
         self._open_positions: dict[str, dict] = {}
         self._pending_confirmations: dict[str, dict] = {}
+        self._trailing_highs: dict[str, float] = {}  # cid -> max_price visto
+        self._partial_sold: set[str] = set()  # cid que ya hicieron partial TP
+        self._peak_balance: float = 0.0  # Para max drawdown tracking
+        self._drawdown_paused = False
         self._initialized = False
 
     async def initialize(self):
@@ -51,6 +55,22 @@ class AlertAutoTrader:
                 "aat_excluded_categories", "aat_require_smart_money",
                 "aat_take_profit_enabled", "aat_take_profit_pct", "aat_stop_loss_pct",
                 "aat_confirm_enabled", "aat_confirm_hours", "aat_confirm_min_pct", "aat_confirm_max_hours",
+                # Fase 4 — Kelly Criterion
+                "aat_kelly_enabled", "aat_kelly_base_fraction",
+                # Fase 4 — Trailing Stop Loss
+                "aat_trailing_stop_enabled", "aat_trailing_stop_pct",
+                # Fase 4 — Partial Profit Taking
+                "aat_partial_tp_enabled", "aat_partial_tp_pct", "aat_partial_tp_fraction",
+                # Fase 4 — Auto Exit on insider SELL
+                "aat_auto_exit_on_sell",
+                # Fase 4 — Filtro liquidez mínima
+                "aat_min_market_liquidity",
+                # Fase 4 — Auto-scaling por PNL
+                "aat_auto_scale_enabled", "aat_auto_scale_win_boost", "aat_auto_scale_loss_reduce",
+                # Fase 4 — Diversificación forzada
+                "aat_max_category_exposure",
+                # Fase 4 — Max drawdown
+                "aat_max_drawdown",
                 # Credenciales propias del alert autotrader (NO usa las de Crypto Arb)
                 "aat_api_key", "aat_api_secret", "aat_private_key", "aat_passphrase",
             ])
@@ -83,6 +103,28 @@ class AlertAutoTrader:
                 "confirm_hours": float(raw.get("aat_confirm_hours", 1)),
                 "confirm_min_pct": float(raw.get("aat_confirm_min_pct", 3)),
                 "confirm_max_hours": float(raw.get("aat_confirm_max_hours", 6)),
+                # Kelly Criterion
+                "kelly_enabled": raw.get("aat_kelly_enabled") == "true",
+                "kelly_base_fraction": float(raw.get("aat_kelly_base_fraction", 0.25)),
+                # Trailing Stop Loss
+                "trailing_stop_enabled": raw.get("aat_trailing_stop_enabled") == "true",
+                "trailing_stop_pct": float(raw.get("aat_trailing_stop_pct", 15)),
+                # Partial Profit Taking
+                "partial_tp_enabled": raw.get("aat_partial_tp_enabled") == "true",
+                "partial_tp_pct": float(raw.get("aat_partial_tp_pct", 30)),
+                "partial_tp_fraction": float(raw.get("aat_partial_tp_fraction", 50)),
+                # Auto Exit on insider SELL
+                "auto_exit_on_sell": raw.get("aat_auto_exit_on_sell") == "true",
+                # Filtro liquidez mínima
+                "min_market_liquidity": float(raw.get("aat_min_market_liquidity", 0)),
+                # Auto-scaling por PNL
+                "auto_scale_enabled": raw.get("aat_auto_scale_enabled") == "true",
+                "auto_scale_win_boost": float(raw.get("aat_auto_scale_win_boost", 10)),
+                "auto_scale_loss_reduce": float(raw.get("aat_auto_scale_loss_reduce", 20)),
+                # Diversificación forzada
+                "max_category_exposure": int(raw.get("aat_max_category_exposure", 0)),
+                # Max drawdown
+                "max_drawdown": float(raw.get("aat_max_drawdown", 0)),
                 "api_key": api_key,
                 "api_secret": api_secret,
                 "private_key": private_key,
@@ -229,6 +271,31 @@ class AlertAutoTrader:
         if now - self._last_trade_time < 10:  # 10 seg mínimo entre trades
             return None
 
+        # Filtro: max drawdown — pausar si drawdown excede límite
+        if cfg.get("max_drawdown", 0) > 0 and self._drawdown_paused:
+            return None
+
+        # Filtro: diversificación forzada por categoría
+        max_cat = cfg.get("max_category_exposure", 0)
+        if max_cat > 0:
+            cat = (trade.market_category or "").lower()
+            if cat:
+                cat_count = sum(1 for p in self._open_positions.values()
+                                if (p.get("category", "") or "").lower() == cat)
+                if cat_count >= max_cat:
+                    return None
+
+        # ── Calcular bet_size (base o Kelly) ──
+        bet_size = cfg["bet_size"]
+
+        # Kelly Criterion: sizing dinámico basado en probabilidad estimada
+        if cfg.get("kelly_enabled"):
+            bet_size = self._kelly_bet_size(candidate, trade, cfg)
+
+        # Auto-scaling por PNL: ajustar bet_size según rendimiento del día
+        if cfg.get("auto_scale_enabled"):
+            bet_size = self._auto_scale_bet(bet_size, cfg)
+
         return {
             "condition_id": trade.market_id,
             "market_slug": trade.market_slug,
@@ -243,9 +310,71 @@ class AlertAutoTrader:
             "alert_score": candidate.score,
             "triggers": ", ".join(candidate.triggers[:5]),
             "wallet_hit_rate": candidate.wallet_hit_rate or 0,
-            "bet_size": cfg["bet_size"],
+            "bet_size": round(bet_size, 2),
             "category": trade.market_category or "",
         }
+
+    def _kelly_bet_size(self, candidate, trade, cfg: dict) -> float:
+        """Calcular bet size usando Kelly Criterion simplificado.
+        Kelly fraction = (p * b - q) / b
+        donde p = probabilidad estimada de ganar, q = 1-p, b = odds netas
+        """
+        base_bet = cfg["bet_size"]
+        kelly_fraction = cfg.get("kelly_base_fraction", 0.25)
+
+        # Estimar probabilidad de ganar basada en score + hit rate
+        score = candidate.score
+        max_score = 30  # Score máximo práctico
+        score_prob = min(0.5 + (score / max_score) * 0.3, 0.85)  # 50%-85%
+
+        # Ajustar por hit rate de la wallet si disponible
+        hr = candidate.wallet_hit_rate or 0
+        if hr >= 70:
+            score_prob = min(score_prob + 0.05, 0.90)
+        elif hr >= 80:
+            score_prob = min(score_prob + 0.10, 0.92)
+
+        # Odds netas: cuánto ganamos por cada $1 apostado
+        price = trade.price
+        if price and 0 < price < 1:
+            b = (1.0 / price) - 1  # Ej: precio 0.40 → ganamos $1.50 por $1
+        else:
+            b = 1.0
+
+        p = score_prob
+        q = 1 - p
+
+        # Kelly = (p*b - q) / b
+        kelly = (p * b - q) / b if b > 0 else 0
+        kelly = max(kelly, 0)  # No apostar si Kelly negativo
+
+        # Usar fracción de Kelly (más conservador)
+        fraction = kelly * kelly_fraction
+        fraction = max(0.05, min(fraction, 0.5))  # 5%-50% del bankroll base
+
+        adjusted_bet = base_bet * (fraction / 0.25)  # Normalizado al 25%
+        adjusted_bet = max(1.0, min(adjusted_bet, base_bet * 3))  # Min $1, max 3x base
+
+        return adjusted_bet
+
+    def _auto_scale_bet(self, bet_size: float, cfg: dict) -> float:
+        """Ajustar bet_size según PNL del día: ganar más → subir, perder → bajar."""
+        daily_pnl = sum(t.get("pnl", 0) for t in self._trades_today if t.get("resolved"))
+        win_boost = cfg.get("auto_scale_win_boost", 10) / 100  # % a subir por cada $10 ganados
+        loss_reduce = cfg.get("auto_scale_loss_reduce", 20) / 100  # % a bajar por cada $10 perdidos
+
+        if daily_pnl > 0:
+            # Escalar hacia arriba: +win_boost% por cada $10 de profit
+            scale = 1 + (daily_pnl / 10) * win_boost
+            scale = min(scale, 2.0)  # Max 2x
+        elif daily_pnl < 0:
+            # Escalar hacia abajo: -loss_reduce% por cada $10 de pérdida
+            scale = 1 + (daily_pnl / 10) * loss_reduce  # daily_pnl es negativo
+            scale = max(scale, 0.3)  # Min 30%
+        else:
+            scale = 1.0
+
+        return bet_size * scale
 
     # ── Ejecución de órdenes ─────────────────────────────────────────
 
@@ -491,17 +620,27 @@ class AlertAutoTrader:
         except Exception as e:
             print(f"[AlertTrader] Error en check_pending_confirmations: {e}", flush=True)
 
-    # ── Take Profit / Stop Loss ────────────────────────────────────────
+    # ── Take Profit / Stop Loss / Trailing / Partial ────────────────────
 
     async def check_take_profits(self):
-        """Revisar posiciones abiertas y vender si alcanzan take profit o stop loss."""
+        """Revisar posiciones abiertas: TP fijo, partial TP, trailing stop, stop loss."""
         cfg = self._config
-        if not cfg.get("take_profit_enabled") or not self._open_positions or not self._client:
+        if not self._open_positions or not self._client:
             return
 
+        tp_enabled = cfg.get("take_profit_enabled", False)
         tp_pct = cfg.get("take_profit_pct", 0)
         sl_pct = cfg.get("stop_loss_pct", 0)
-        if tp_pct <= 0 and sl_pct <= 0:
+        trailing_enabled = cfg.get("trailing_stop_enabled", False)
+        trailing_pct = cfg.get("trailing_stop_pct", 15)
+        partial_enabled = cfg.get("partial_tp_enabled", False)
+        partial_pct = cfg.get("partial_tp_pct", 30)
+        partial_fraction = cfg.get("partial_tp_fraction", 50) / 100  # 0-1
+
+        # Necesitamos al menos una feature activa
+        if not tp_enabled and not trailing_enabled and not partial_enabled:
+            return
+        if tp_enabled and tp_pct <= 0 and sl_pct <= 0 and not trailing_enabled and not partial_enabled:
             return
 
         try:
@@ -537,35 +676,110 @@ class AlertAutoTrader:
                             continue
 
                         gain_pct = ((current_price - entry_price) / entry_price) * 100
-                        action = None
 
-                        if tp_pct > 0 and gain_pct >= tp_pct:
-                            action = "take_profit"
-                        elif sl_pct > 0 and gain_pct <= -sl_pct:
+                        # ── Actualizar trailing high ──
+                        if trailing_enabled:
+                            prev_high = self._trailing_highs.get(cid, entry_price)
+                            if current_price > prev_high:
+                                self._trailing_highs[cid] = current_price
+
+                        # ── Determinar acción ──
+                        action = None
+                        sell_fraction = 1.0  # 1.0 = vender todo
+
+                        # 1. Partial Profit Taking: vender fracción al primer target
+                        if partial_enabled and partial_pct > 0 and gain_pct >= partial_pct:
+                            if cid not in self._partial_sold:
+                                action = "partial_tp"
+                                sell_fraction = partial_fraction
+                                self._partial_sold.add(cid)
+
+                        # 2. Take Profit completo (solo si no es partial o ya se hizo partial)
+                        if not action and tp_enabled and tp_pct > 0 and gain_pct >= tp_pct:
+                            if cid in self._partial_sold:
+                                action = "take_profit"  # Vender el resto
+                            elif not partial_enabled:
+                                action = "take_profit"
+
+                        # 3. Trailing Stop Loss: vender si cayó X% desde el máximo
+                        if not action and trailing_enabled and trailing_pct > 0:
+                            high = self._trailing_highs.get(cid, entry_price)
+                            if high > entry_price:  # Solo si alguna vez estuvo en ganancia
+                                drop_from_high = ((high - current_price) / high) * 100
+                                if drop_from_high >= trailing_pct:
+                                    action = "trailing_stop"
+
+                        # 4. Stop Loss fijo
+                        if not action and tp_enabled and sl_pct > 0 and gain_pct <= -sl_pct:
                             action = "stop_loss"
 
                         if not action:
                             continue
 
-                        sell_result = await self._sell_position(trade, current_price)
+                        # ── Ejecutar venta ──
+                        shares_to_sell = trade.get("shares", 0)
+                        if sell_fraction < 1.0:
+                            shares_to_sell = round(shares_to_sell * sell_fraction, 2)
+
+                        sell_trade = dict(trade)
+                        sell_trade["shares"] = shares_to_sell
+
+                        sell_result = await self._sell_position(sell_trade, current_price)
                         if sell_result.get("success"):
-                            pnl = trade.get("size_usd", 0) * (current_price / entry_price - 1)
-                            await self.db.resolve_alert_autotrade(cid, action, round(pnl, 2))
-                            del self._open_positions[cid]
-                            emoji = "💰" if action == "take_profit" else "🛑"
-                            label = "TAKE PROFIT" if action == "take_profit" else "STOP LOSS"
-                            print(f"[AlertTrader] {emoji} {label}: "
-                                  f"{trade.get('market_slug', cid)[:40]} "
-                                  f"entrada={entry_price:.2f} → venta={current_price:.2f} "
-                                  f"({gain_pct:+.1f}%) PnL=${pnl:.2f}",
-                                  flush=True)
+                            pnl = shares_to_sell * current_price - shares_to_sell * entry_price
+
+                            if sell_fraction < 1.0:
+                                # Partial: actualizar shares restantes, no cerrar posición
+                                remaining = trade.get("shares", 0) - shares_to_sell
+                                self._open_positions[cid]["shares"] = round(remaining, 2)
+                                self._open_positions[cid]["size_usd"] = round(remaining * entry_price, 2)
+                                await self.db.update_alert_autotrade_shares(cid, round(remaining, 2))
+                                print(f"[AlertTrader] 💰 PARTIAL TP ({partial_fraction*100:.0f}%): "
+                                      f"{trade.get('market_slug', cid)[:40]} "
+                                      f"vendido {shares_to_sell:.2f} shares @ {current_price:.2f} "
+                                      f"({gain_pct:+.1f}%) PnL=${pnl:.2f} | queda {remaining:.2f}",
+                                      flush=True)
+                            else:
+                                await self.db.resolve_alert_autotrade(cid, action, round(pnl, 2))
+                                del self._open_positions[cid]
+                                self._trailing_highs.pop(cid, None)
+                                self._partial_sold.discard(cid)
+                                emojis = {"take_profit": "💰", "stop_loss": "🛑", "trailing_stop": "📉"}
+                                labels = {"take_profit": "TAKE PROFIT", "stop_loss": "STOP LOSS", "trailing_stop": "TRAILING STOP"}
+                                print(f"[AlertTrader] {emojis.get(action, '💰')} {labels.get(action, action)}: "
+                                      f"{trade.get('market_slug', cid)[:40]} "
+                                      f"entrada={entry_price:.2f} → venta={current_price:.2f} "
+                                      f"({gain_pct:+.1f}%) PnL=${pnl:.2f}",
+                                      flush=True)
+
                             await self._load_today_trades()
+                            self._check_drawdown()
 
                     except Exception as e:
                         print(f"[AlertTrader] Error check_take_profit {cid}: {e}", flush=True)
 
         except Exception as e:
             print(f"[AlertTrader] Error en check_take_profits: {e}", flush=True)
+
+    def _check_drawdown(self):
+        """Verificar max drawdown y pausar/reanudar trading."""
+        cfg = self._config
+        max_dd = cfg.get("max_drawdown", 0)
+        if max_dd <= 0:
+            return
+
+        daily_pnl = sum(t.get("pnl", 0) for t in self._trades_today if t.get("resolved"))
+        if self._peak_balance < daily_pnl:
+            self._peak_balance = daily_pnl
+
+        drawdown = self._peak_balance - daily_pnl
+        if drawdown >= max_dd and not self._drawdown_paused:
+            self._drawdown_paused = True
+            print(f"[AlertTrader] 🚨 MAX DRAWDOWN alcanzado (${drawdown:.2f} >= ${max_dd:.2f}) — PAUSADO",
+                  flush=True)
+        elif drawdown < max_dd * 0.8 and self._drawdown_paused:
+            self._drawdown_paused = False
+            print(f"[AlertTrader] ✅ Drawdown recuperado — REANUDADO", flush=True)
 
     async def _sell_position(self, trade: dict, sell_price: float) -> dict:
         """Vender una posición abierta (SELL en CLOB)."""
@@ -683,4 +897,7 @@ class AlertAutoTrader:
             "pending_confirmations": len(self._pending_confirmations),
             "trades_today": len(self._trades_today),
             "pnl_today": round(daily_pnl, 2),
+            "drawdown_paused": self._drawdown_paused,
+            "trailing_positions": len(self._trailing_highs),
+            "partial_sold": len(self._partial_sold),
         }

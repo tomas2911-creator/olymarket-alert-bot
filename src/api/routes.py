@@ -972,6 +972,12 @@ async def get_alert_trading_config(request: Request):
         "aat_excluded_categories", "aat_require_smart_money",
         "aat_take_profit_enabled", "aat_take_profit_pct", "aat_stop_loss_pct",
         "aat_confirm_enabled", "aat_confirm_hours", "aat_confirm_min_pct", "aat_confirm_max_hours",
+        "aat_kelly_enabled", "aat_kelly_base_fraction",
+        "aat_trailing_stop_enabled", "aat_trailing_stop_pct",
+        "aat_partial_tp_enabled", "aat_partial_tp_pct", "aat_partial_tp_fraction",
+        "aat_auto_exit_on_sell", "aat_min_market_liquidity",
+        "aat_auto_scale_enabled", "aat_auto_scale_win_boost", "aat_auto_scale_loss_reduce",
+        "aat_max_category_exposure", "aat_max_drawdown",
         "aat_api_key", "aat_private_key",
     ])
     stats = await db.get_alert_autotrade_stats()
@@ -999,6 +1005,29 @@ async def get_alert_trading_config(request: Request):
         "confirm_min_pct": float(raw.get("aat_confirm_min_pct", 3)),
         "confirm_max_hours": float(raw.get("aat_confirm_max_hours", 6)),
         "pending_confirmations": aat_status.get("pending_confirmations", 0),
+        # Kelly Criterion
+        "kelly_enabled": raw.get("aat_kelly_enabled") == "true",
+        "kelly_base_fraction": float(raw.get("aat_kelly_base_fraction", 0.25)),
+        # Trailing Stop Loss
+        "trailing_stop_enabled": raw.get("aat_trailing_stop_enabled") == "true",
+        "trailing_stop_pct": float(raw.get("aat_trailing_stop_pct", 15)),
+        # Partial Profit Taking
+        "partial_tp_enabled": raw.get("aat_partial_tp_enabled") == "true",
+        "partial_tp_pct": float(raw.get("aat_partial_tp_pct", 30)),
+        "partial_tp_fraction": float(raw.get("aat_partial_tp_fraction", 50)),
+        # Auto Exit on insider SELL
+        "auto_exit_on_sell": raw.get("aat_auto_exit_on_sell") == "true",
+        # Filtro liquidez
+        "min_market_liquidity": float(raw.get("aat_min_market_liquidity", 0)),
+        # Auto-scaling
+        "auto_scale_enabled": raw.get("aat_auto_scale_enabled") == "true",
+        "auto_scale_win_boost": float(raw.get("aat_auto_scale_win_boost", 10)),
+        "auto_scale_loss_reduce": float(raw.get("aat_auto_scale_loss_reduce", 20)),
+        # Diversificación
+        "max_category_exposure": int(raw.get("aat_max_category_exposure", 0)),
+        # Max drawdown
+        "max_drawdown": float(raw.get("aat_max_drawdown", 0)),
+        "drawdown_paused": aat_status.get("drawdown_paused", False),
         "has_own_wallet": has_own_wallet,
         "wallet_connected": has_own_wallet,
         "wallet_address": _derive_wallet_address(raw.get("aat_private_key", "")),
@@ -1060,6 +1089,42 @@ async def save_alert_trading_config(request: Request):
         data["aat_confirm_min_pct"] = str(body["confirm_min_pct"])
     if "confirm_max_hours" in body:
         data["aat_confirm_max_hours"] = str(body["confirm_max_hours"])
+    # Kelly Criterion
+    if "kelly_enabled" in body:
+        data["aat_kelly_enabled"] = "true" if body["kelly_enabled"] else "false"
+    if "kelly_base_fraction" in body:
+        data["aat_kelly_base_fraction"] = str(body["kelly_base_fraction"])
+    # Trailing Stop Loss
+    if "trailing_stop_enabled" in body:
+        data["aat_trailing_stop_enabled"] = "true" if body["trailing_stop_enabled"] else "false"
+    if "trailing_stop_pct" in body:
+        data["aat_trailing_stop_pct"] = str(body["trailing_stop_pct"])
+    # Partial Profit Taking
+    if "partial_tp_enabled" in body:
+        data["aat_partial_tp_enabled"] = "true" if body["partial_tp_enabled"] else "false"
+    if "partial_tp_pct" in body:
+        data["aat_partial_tp_pct"] = str(body["partial_tp_pct"])
+    if "partial_tp_fraction" in body:
+        data["aat_partial_tp_fraction"] = str(body["partial_tp_fraction"])
+    # Auto Exit
+    if "auto_exit_on_sell" in body:
+        data["aat_auto_exit_on_sell"] = "true" if body["auto_exit_on_sell"] else "false"
+    # Filtro liquidez
+    if "min_market_liquidity" in body:
+        data["aat_min_market_liquidity"] = str(body["min_market_liquidity"])
+    # Auto-scaling
+    if "auto_scale_enabled" in body:
+        data["aat_auto_scale_enabled"] = "true" if body["auto_scale_enabled"] else "false"
+    if "auto_scale_win_boost" in body:
+        data["aat_auto_scale_win_boost"] = str(body["auto_scale_win_boost"])
+    if "auto_scale_loss_reduce" in body:
+        data["aat_auto_scale_loss_reduce"] = str(body["auto_scale_loss_reduce"])
+    # Diversificación
+    if "max_category_exposure" in body:
+        data["aat_max_category_exposure"] = str(body["max_category_exposure"])
+    # Max drawdown
+    if "max_drawdown" in body:
+        data["aat_max_drawdown"] = str(body["max_drawdown"])
     if data:
         await db.set_config_bulk(data)
     # Recargar config en alert autotrader
@@ -1070,6 +1135,34 @@ async def save_alert_trading_config(request: Request):
         except Exception:
             pass
     return {"status": "ok"}
+
+
+@router.get("/api/alert-trading/pnl-history")
+async def get_alert_pnl_history(request: Request, days: int = 30):
+    """Historial de PnL diario para gráfico de evolución."""
+    db = request.app.state.db
+    try:
+        history = await db.get_alert_pnl_history(days)
+        return {"status": "ok", "history": history}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.get("/api/alert-trading/wallet-ranking")
+async def get_alert_wallet_ranking(request: Request, limit: int = 20):
+    """Ranking de wallets por profit generado en copy-trades."""
+    db = request.app.state.db
+    try:
+        ranking = await db.get_alert_wallet_ranking(limit)
+        for r in ranking:
+            for k in r:
+                if isinstance(r[k], (float,)) and r[k] != r[k]:  # NaN check
+                    r[k] = 0
+                elif hasattr(r[k], '__float__'):
+                    r[k] = round(float(r[k]), 2)
+        return {"status": "ok", "ranking": ranking}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 @router.post("/api/alert-trading/generate-keys")
