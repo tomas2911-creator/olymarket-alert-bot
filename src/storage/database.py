@@ -204,8 +204,11 @@ class Database:
                     paper_pnl DOUBLE PRECISION,
                     resolved BOOLEAN DEFAULT FALSE,
                     resolution TEXT,
+                    event_slug TEXT DEFAULT '',
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
+                -- Migración: agregar event_slug si no existe
+                ALTER TABLE crypto_signals ADD COLUMN IF NOT EXISTS event_slug TEXT DEFAULT '';
                 CREATE INDEX IF NOT EXISTS idx_crypto_signals_created
                     ON crypto_signals(created_at);
                 CREATE INDEX IF NOT EXISTS idx_crypto_signals_coin
@@ -1180,8 +1183,8 @@ class Database:
                 INSERT INTO crypto_signals
                 (coin, direction, spot_change_pct, poly_odds, fair_odds,
                  confidence, edge_pct, condition_id, market_question,
-                 spot_price, time_remaining_sec, paper_bet_size)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                 spot_price, time_remaining_sec, paper_bet_size, event_slug)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
                 RETURNING id
             """,
                 signal["coin"], signal["direction"],
@@ -1191,6 +1194,7 @@ class Database:
                 signal.get("market_question"), signal.get("spot_price"),
                 signal.get("time_remaining_sec"),
                 signal.get("paper_bet_size", 0),
+                signal.get("event_slug", ""),
             )
             return row["id"] if row else 0
 

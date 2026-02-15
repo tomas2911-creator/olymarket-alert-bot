@@ -34,6 +34,7 @@ class CryptoSignal:
     time_remaining_sec: int      # Segundos hasta cierre
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     end_date: Optional[datetime] = None  # Fecha de cierre del mercado
+    event_slug: str = ""         # Slug del evento en Polymarket
     resolved: bool = False       # Si ya se resolvió
     result: Optional[str] = None # "win" o "loss"
     paper_pnl: float = 0.0      # PnL simulado
@@ -191,6 +192,7 @@ class CryptoArbDetector:
                                     "question": m.get("question", "") or ev.get("title", ""),
                                     "coin": coin,
                                     "end_date": end_date,
+                                    "event_slug": slug,
                                     "tokens": [],
                                 }
                         except Exception:
@@ -321,6 +323,7 @@ class CryptoArbDetector:
                 spot_price=momentum["last_price"],
                 time_remaining_sec=int(time_remaining),
                 end_date=mdata.get("end_date"),
+                event_slug=mdata.get("event_slug", ""),
             )
             signals.append(signal)
 
@@ -464,6 +467,8 @@ class CryptoArbDetector:
                 "time_remaining_sec": remaining,
                 "expected_profit_pct": s.expected_profit_pct,
                 "timestamp": s.timestamp.isoformat(),
+                "event_slug": s.event_slug,
+                "polymarket_url": f"https://polymarket.com/event/{s.event_slug}" if s.event_slug else "",
                 "resolved": s.resolved,
                 "result": s.result,
                 "paper_pnl": s.paper_pnl,

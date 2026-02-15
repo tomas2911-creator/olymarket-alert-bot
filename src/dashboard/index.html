@@ -595,6 +595,7 @@
                             <th class="px-4 py-2 text-center">Confianza</th>
                             <th class="px-4 py-2 text-right">Cierre</th>
                             <th class="px-4 py-2 text-center">Estado</th>
+                            <th class="px-4 py-2 text-center">Ver</th>
                         </tr></thead>
                         <tbody id="crypto-live-body"></tbody>
                     </table>
@@ -634,6 +635,7 @@
                             <th class="px-4 py-2 text-center">Confianza</th>
                             <th class="px-4 py-2 text-center">Resultado</th>
                             <th class="px-4 py-2 text-right">PnL</th>
+                            <th class="px-4 py-2 text-center">Ver</th>
                         </tr></thead>
                         <tbody id="crypto-hist-body"></tbody>
                     </table>
@@ -1606,6 +1608,7 @@ async function loadCryptoLive(){
             <td class="px-4 py-2 text-center text-xs font-mono">${bar} ${s.confidence.toFixed(0)}%</td>
             <td class="px-4 py-2 text-right text-xs ${cierreClass}">${cierreText}</td>
             <td class="px-4 py-2 text-center text-xs ${estadoClass}">${estado}</td>
+            <td class="px-4 py-2 text-center">${s.polymarket_url?`<a href="${s.polymarket_url}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 text-xs font-medium transition">🔗 Poly</a>`:'-'}</td>
         </tr>`;
     }).join('');
 }
@@ -1657,6 +1660,7 @@ async function loadCryptoHistory(){
             <td class="px-4 py-2 text-center text-xs">${(s.confidence||0).toFixed(0)}%</td>
             <td class="px-4 py-2 text-center">${resultBadge}</td>
             <td class="px-4 py-2 text-right font-mono text-xs ${pnlColor}">${s.resolved?'$'+pnl.toFixed(2):'-'}</td>
+            <td class="px-4 py-2 text-center">${s.event_slug?`<a href="https://polymarket.com/event/${s.event_slug}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 text-xs font-medium transition">🔗 Poly</a>`:'-'}</td>
         </tr>`;
     }).join('');
 }
