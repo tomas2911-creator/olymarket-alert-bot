@@ -180,18 +180,20 @@ class PolymarketAlertBot:
                     except Exception as e:
                         print(f"Error en coordinacion: {e}", flush=True)
 
-                # Cada 3 ciclos (~3 min): procesar señales crypto arb
-                if cycle % 3 == 0 and config.FEATURE_CRYPTO_ARB:
-                    await self.process_crypto_signals()
-
-                # Cada ciclo: resolver señales crypto (mercados son de 5 min)
-                if config.FEATURE_CRYPTO_ARB:
-                    await self.resolve_crypto_signals()
-
             except Exception as e:
                 print(f"Error en ciclo polling: {e}", flush=True)
                 import traceback
                 traceback.print_exc()
+
+            # Crypto arb: procesar y resolver en bloque separado
+            # (no depende de poll_cycle — si el polling falla, crypto sigue)
+            if config.FEATURE_CRYPTO_ARB:
+                try:
+                    await self.process_crypto_signals()
+                    await self.resolve_crypto_signals()
+                except Exception as e:
+                    print(f"Error en crypto arb: {e}", flush=True)
+
             await asyncio.sleep(config.POLL_INTERVAL)
 
     async def poll_cycle(self):
@@ -532,27 +534,30 @@ class PolymarketAlertBot:
         if not self.crypto_detector:
             return
         try:
-            signals = self.crypto_detector.get_recent_signals(10)
+            signals = self.crypto_detector.get_recent_signals(20)
+            if not signals:
+                return
+            # Cargar condition_ids ya guardados (una sola query)
+            existing = await self.db.get_crypto_signals_history(limit=50)
+            existing_cids = {e["condition_id"] for e in existing}
+
+            saved = 0
             for sig in signals:
-                # Verificar si ya registramos esta señal (por condition_id reciente)
-                existing = await self.db.get_crypto_signals_history(limit=10)
-                is_dup = any(
-                    e["condition_id"] == sig["condition_id"]
-                    for e in existing
-                )
-                if is_dup:
+                if sig["condition_id"] in existing_cids:
                     continue
 
                 # Guardar en DB
                 sig["paper_bet_size"] = config.CRYPTO_ARB_PAPER_BET
                 await self.db.record_crypto_signal(sig)
+                existing_cids.add(sig["condition_id"])
+                saved += 1
 
                 # Enviar a Telegram
                 if config.CRYPTO_ARB_TELEGRAM:
                     await self.notifier.send_crypto_signal(sig)
-                    print(f"Crypto signal: {sig['coin']} {sig['direction']} "
-                          f"conf={sig['confidence']:.0f}% edge={sig['edge_pct']:.1f}%",
-                          flush=True)
+
+            if saved:
+                print(f"Crypto signals guardadas: {saved}", flush=True)
         except Exception as e:
             print(f"Error procesando crypto signals: {e}", flush=True)
 
