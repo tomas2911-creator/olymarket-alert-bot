@@ -526,7 +526,7 @@ async def reset_all_data(request: Request):
     try:
         async with db._pool.acquire() as conn:
             counts = {}
-            for table in ["trades", "wallets", "wallet_links", "market_baselines", "markets_tracked", "alerts", "crypto_signals", "autotrades"]:
+            for table in ["trades", "wallets", "wallet_links", "market_baselines", "markets_tracked", "alerts", "crypto_signals", "autotrades", "alert_autotrades"]:
                 result = await conn.execute(f"DELETE FROM {table}")
                 counts[table] = int(result.split(" ")[-1]) if result else 0
         return {"status": "ok", "deleted": counts}
@@ -953,4 +953,99 @@ async def get_autotrades(request: Request, hours: int = 48, limit: int = 50):
     db = request.app.state.db
     trades = await db.get_autotrades(hours=hours, limit=limit)
     stats = await db.get_autotrade_stats()
+    return {"trades": trades, "stats": stats}
+
+
+# ── Alert AutoTrader endpoints ──────────────────────────────────────
+
+@router.get("/api/alert-trading/config")
+async def get_alert_trading_config(request: Request):
+    """Obtener configuración del alert autotrader."""
+    db = request.app.state.db
+    raw = await db.get_config_bulk([
+        "aat_enabled", "aat_bet_size", "aat_min_score",
+        "aat_max_odds", "aat_min_odds", "aat_max_positions",
+        "aat_max_daily_trades", "aat_max_daily_loss",
+        "aat_min_wallet_hit_rate", "aat_cooldown_hours",
+        "aat_excluded_categories", "aat_require_smart_money",
+        "at_api_key", "at_private_key",
+    ])
+    stats = await db.get_alert_autotrade_stats()
+    aat = getattr(request.app.state, 'alert_autotrader', None)
+    aat_status = aat.get_status() if aat else {}
+    return {
+        "enabled": raw.get("aat_enabled") == "true",
+        "bet_size": float(raw.get("aat_bet_size", 10)),
+        "min_score": int(raw.get("aat_min_score", 7)),
+        "max_odds": float(raw.get("aat_max_odds", 0.80)),
+        "min_odds": float(raw.get("aat_min_odds", 0.15)),
+        "max_positions": int(raw.get("aat_max_positions", 5)),
+        "max_daily_trades": int(raw.get("aat_max_daily_trades", 5)),
+        "max_daily_loss": float(raw.get("aat_max_daily_loss", 50)),
+        "min_wallet_hit_rate": float(raw.get("aat_min_wallet_hit_rate", 0)),
+        "cooldown_hours": float(raw.get("aat_cooldown_hours", 6)),
+        "excluded_categories": raw.get("aat_excluded_categories", ""),
+        "require_smart_money": raw.get("aat_require_smart_money") == "true",
+        "wallet_connected": bool(raw.get("at_api_key") and raw.get("at_private_key")),
+        "connected": aat_status.get("connected", False),
+        "open_positions": stats.get("open_positions", 0),
+        "pnl_today": stats.get("pnl_24h", 0),
+        "trades_today": stats.get("trades_24h", 0),
+        "total_pnl": stats.get("total_pnl", 0),
+        "total_trades": stats.get("total_trades", 0),
+        "wins": stats.get("wins", 0),
+        "losses": stats.get("losses", 0),
+        "win_rate": stats.get("win_rate", 0),
+        "total_volume": stats.get("total_volume", 0),
+    }
+
+
+@router.post("/api/alert-trading/config")
+async def save_alert_trading_config(request: Request):
+    """Guardar configuración del alert autotrader."""
+    db = request.app.state.db
+    body = await request.json()
+    data = {}
+    if "enabled" in body:
+        data["aat_enabled"] = "true" if body["enabled"] else "false"
+    if "bet_size" in body:
+        data["aat_bet_size"] = str(body["bet_size"])
+    if "min_score" in body:
+        data["aat_min_score"] = str(body["min_score"])
+    if "max_odds" in body:
+        data["aat_max_odds"] = str(body["max_odds"])
+    if "min_odds" in body:
+        data["aat_min_odds"] = str(body["min_odds"])
+    if "max_positions" in body:
+        data["aat_max_positions"] = str(body["max_positions"])
+    if "max_daily_trades" in body:
+        data["aat_max_daily_trades"] = str(body["max_daily_trades"])
+    if "max_daily_loss" in body:
+        data["aat_max_daily_loss"] = str(body["max_daily_loss"])
+    if "min_wallet_hit_rate" in body:
+        data["aat_min_wallet_hit_rate"] = str(body["min_wallet_hit_rate"])
+    if "cooldown_hours" in body:
+        data["aat_cooldown_hours"] = str(body["cooldown_hours"])
+    if "excluded_categories" in body:
+        data["aat_excluded_categories"] = body["excluded_categories"]
+    if "require_smart_money" in body:
+        data["aat_require_smart_money"] = "true" if body["require_smart_money"] else "false"
+    if data:
+        await db.set_config_bulk(data)
+    # Recargar config en alert autotrader
+    aat = getattr(request.app.state, 'alert_autotrader', None)
+    if aat:
+        try:
+            await aat.reload_config()
+        except Exception:
+            pass
+    return {"status": "ok"}
+
+
+@router.get("/api/alert-trading/trades")
+async def get_alert_trades(request: Request, hours: int = 168, limit: int = 50):
+    """Obtener historial de alert autotrades (default última semana)."""
+    db = request.app.state.db
+    trades = await db.get_alert_autotrades(hours=hours, limit=limit)
+    stats = await db.get_alert_autotrade_stats()
     return {"trades": trades, "stats": stats}

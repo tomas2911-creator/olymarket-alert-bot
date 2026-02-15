@@ -1,0 +1,451 @@
+"""Motor de autotrading para alertas de insider — copy-trading de smart money.
+
+Flujo:
+1. Recibe AlertCandidate + Trade cuando se dispara una alerta
+2. Filtra por configuración (score, odds, hit_rate, límites diarios)
+3. Busca token_id del outcome apostado por el insider
+4. Coloca orden BUY via py-clob-client
+5. Registra trade en tabla alert_autotrades
+6. Se resuelve cuando el mercado cierra (desde main.py)
+
+IMPORTANTE: Comparte las mismas credenciales CLOB (wallet) que el crypto autotrader.
+La config de credenciales se lee de at_api_key, at_private_key, etc.
+La config de trading es independiente con prefijo "aat_".
+"""
+import asyncio
+import time
+from datetime import datetime, timezone, timedelta
+from typing import Optional
+import structlog
+
+logger = structlog.get_logger()
+
+CLOB_HOST = "https://clob.polymarket.com"
+CHAIN_ID = 137
+
+
+class AlertAutoTrader:
+    """Ejecuta trades automáticos copiando apuestas de insiders detectados."""
+
+    def __init__(self, db):
+        self.db = db
+        self._client = None
+        self._enabled = False
+        self._config = {}
+        self._last_trade_time = 0.0
+        self._trades_today: list[dict] = []
+        self._trades_today_date: str = ""
+        self._open_positions: dict[str, dict] = {}
+        self._initialized = False
+
+    async def initialize(self):
+        """Cargar config y crear cliente CLOB si hay credenciales."""
+        try:
+            # Config propia del alert autotrader (prefijo aat_)
+            raw = await self.db.get_config_bulk([
+                "aat_enabled", "aat_bet_size", "aat_min_score",
+                "aat_max_odds", "aat_min_odds", "aat_max_positions",
+                "aat_max_daily_trades", "aat_max_daily_loss",
+                "aat_min_wallet_hit_rate", "aat_cooldown_hours",
+                "aat_excluded_categories", "aat_require_smart_money",
+                # Credenciales compartidas con crypto autotrader
+                "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
+            ])
+            self._config = {
+                "enabled": raw.get("aat_enabled") == "true",
+                "bet_size": float(raw.get("aat_bet_size", 10)),
+                "min_score": int(raw.get("aat_min_score", 7)),
+                "max_odds": float(raw.get("aat_max_odds", 0.80)),
+                "min_odds": float(raw.get("aat_min_odds", 0.15)),
+                "max_positions": int(raw.get("aat_max_positions", 5)),
+                "max_daily_trades": int(raw.get("aat_max_daily_trades", 5)),
+                "max_daily_loss": float(raw.get("aat_max_daily_loss", 50)),
+                "min_wallet_hit_rate": float(raw.get("aat_min_wallet_hit_rate", 0)),
+                "cooldown_hours": float(raw.get("aat_cooldown_hours", 6)),
+                "excluded_categories": {
+                    c.strip().lower()
+                    for c in raw.get("aat_excluded_categories", "").split(",")
+                    if c.strip()
+                },
+                "require_smart_money": raw.get("aat_require_smart_money") == "true",
+                # Credenciales compartidas
+                "api_key": raw.get("at_api_key", ""),
+                "api_secret": raw.get("at_api_secret", ""),
+                "private_key": raw.get("at_private_key", ""),
+                "passphrase": raw.get("at_passphrase", ""),
+            }
+            self._enabled = self._config["enabled"]
+
+            if self._enabled and self._config["api_key"] and self._config["private_key"]:
+                self._init_clob_client()
+            else:
+                self._client = None
+
+            await self._load_today_trades()
+            await self._load_open_positions()
+
+            self._initialized = True
+            status = "ACTIVADO" if self._enabled and self._client else "DESACTIVADO"
+            reason = ""
+            if self._enabled and not self._client:
+                reason = " (sin credenciales — configura wallet en Crypto Arb)"
+            print(f"[AlertTrader] {status}{reason} | bet=${self._config['bet_size']} "
+                  f"min_score>={self._config['min_score']}",
+                  flush=True)
+        except Exception as e:
+            print(f"[AlertTrader] Error inicializando: {e}", flush=True)
+            self._enabled = False
+
+    def _init_clob_client(self):
+        """Crear cliente CLOB con credenciales compartidas."""
+        try:
+            from py_clob_client.client import ClobClient
+            from py_clob_client.clob_types import ApiCreds
+
+            creds = ApiCreds(
+                api_key=self._config["api_key"],
+                api_secret=self._config["api_secret"],
+                api_passphrase=self._config["passphrase"],
+            )
+            self._client = ClobClient(
+                CLOB_HOST,
+                key=self._config["private_key"],
+                chain_id=CHAIN_ID,
+                signature_type=2,
+                creds=creds,
+            )
+            print("[AlertTrader] Cliente CLOB inicializado OK", flush=True)
+        except ImportError:
+            print("[AlertTrader] ERROR: py-clob-client no instalado", flush=True)
+            self._client = None
+        except Exception as e:
+            print(f"[AlertTrader] Error creando cliente CLOB: {e}", flush=True)
+            self._client = None
+
+    async def reload_config(self):
+        """Recargar config desde DB."""
+        await self.initialize()
+
+    async def _load_today_trades(self):
+        """Cargar trades ejecutados hoy."""
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if self._trades_today_date != today:
+            self._trades_today = []
+            self._trades_today_date = today
+        try:
+            trades = await self.db.get_alert_autotrades(hours=24)
+            self._trades_today = trades or []
+        except Exception:
+            self._trades_today = []
+
+    async def _load_open_positions(self):
+        """Cargar posiciones abiertas."""
+        try:
+            open_trades = await self.db.get_open_alert_autotrades()
+            self._open_positions = {t["condition_id"]: t for t in (open_trades or [])}
+        except Exception:
+            self._open_positions = {}
+
+    # ── Evaluación de alertas ────────────────────────────────────────
+
+    async def evaluate_alert(self, candidate, trade) -> Optional[dict]:
+        """Evaluar si una alerta debe copiarse como trade.
+        candidate: AlertCandidate, trade: Trade
+        Retorna trade_info dict o None.
+        """
+        if not self._enabled or not self._client or not self._initialized:
+            return None
+
+        cfg = self._config
+
+        # Filtro: score mínimo
+        if candidate.score < cfg["min_score"]:
+            return None
+
+        # Filtro: require smart money (wallet en watchlist)
+        if cfg["require_smart_money"]:
+            is_smart = any("Smart Money" in t for t in candidate.triggers)
+            if not is_smart:
+                return None
+
+        # Filtro: hit rate mínimo de la wallet
+        if cfg["min_wallet_hit_rate"] > 0 and candidate.wallet_hit_rate:
+            if candidate.wallet_hit_rate < cfg["min_wallet_hit_rate"]:
+                return None
+
+        # Filtro: categoría excluida
+        if cfg["excluded_categories"]:
+            cat = (trade.market_category or "").lower()
+            if cat and cat in cfg["excluded_categories"]:
+                return None
+
+        # Filtro: odds del mercado
+        market_odds = trade.price
+        if market_odds > cfg["max_odds"] or market_odds < cfg["min_odds"]:
+            return None
+
+        # Filtro: cooldown entre trades del mismo mercado
+        cooldown_secs = cfg["cooldown_hours"] * 3600
+        for t in self._trades_today:
+            if t.get("condition_id") == trade.market_id:
+                trade_time = t.get("created_at", "")
+                if isinstance(trade_time, str) and trade_time:
+                    try:
+                        tt = datetime.fromisoformat(trade_time)
+                        if (datetime.now(timezone.utc) - tt.replace(tzinfo=timezone.utc)).total_seconds() < cooldown_secs:
+                            return None
+                    except Exception:
+                        pass
+
+        # Filtro: max posiciones abiertas
+        if len(self._open_positions) >= cfg["max_positions"]:
+            return None
+
+        # Filtro: max trades diarios
+        if len(self._trades_today) >= cfg["max_daily_trades"]:
+            return None
+
+        # Filtro: max pérdida diaria
+        daily_pnl = sum(t.get("pnl", 0) for t in self._trades_today if t.get("resolved"))
+        if daily_pnl <= -cfg["max_daily_loss"]:
+            return None
+
+        # Filtro: no duplicar posición en mismo mercado
+        if trade.market_id in self._open_positions:
+            return None
+
+        # Cooldown general entre trades
+        now = time.time()
+        if now - self._last_trade_time < 10:  # 10 seg mínimo entre trades
+            return None
+
+        return {
+            "condition_id": trade.market_id,
+            "market_slug": trade.market_slug,
+            "market_question": trade.market_question,
+            "wallet_address": trade.wallet_address,
+            "insider_side": trade.side,
+            "insider_outcome": trade.outcome,
+            "insider_size": trade.size,
+            "insider_price": trade.price,
+            "alert_score": candidate.score,
+            "triggers": ", ".join(candidate.triggers[:5]),
+            "wallet_hit_rate": candidate.wallet_hit_rate or 0,
+            "bet_size": cfg["bet_size"],
+            "category": trade.market_category or "",
+        }
+
+    # ── Ejecución de órdenes ─────────────────────────────────────────
+
+    async def execute_trade(self, trade_info: dict) -> dict:
+        """Ejecutar copy-trade en Polymarket CLOB."""
+        if not self._client:
+            return {"success": False, "error": "Cliente CLOB no inicializado"}
+
+        cid = trade_info["condition_id"]
+        outcome = trade_info["insider_outcome"]  # "Yes" o "No"
+        bet_size = trade_info["bet_size"]
+
+        try:
+            # Obtener token_id y precio actual del outcome
+            token_id, current_price = await self._get_token_and_price(cid, outcome)
+            if not token_id:
+                return {"success": False, "error": f"No se encontró token_id para {outcome}"}
+
+            price = current_price or trade_info["insider_price"]
+            shares = round(bet_size / price, 2)
+
+            from py_clob_client.clob_types import OrderArgs, OrderType
+
+            order_args = OrderArgs(
+                price=price,
+                size=shares,
+                side="BUY",
+                token_id=token_id,
+            )
+
+            # GTC (Good Till Cancel) para mercados largos
+            loop = asyncio.get_event_loop()
+            signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
+            resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
+
+            success = False
+            order_id = ""
+            error_msg = ""
+
+            if isinstance(resp, dict):
+                success = resp.get("success", False) or resp.get("orderID") is not None
+                order_id = resp.get("orderID", resp.get("order_id", ""))
+                if not success:
+                    error_msg = resp.get("errorMsg", resp.get("error", str(resp)))
+            elif hasattr(resp, "success"):
+                success = resp.success
+                order_id = getattr(resp, "orderID", "")
+                error_msg = getattr(resp, "errorMsg", "")
+            else:
+                success = bool(resp)
+                order_id = str(resp) if resp else ""
+
+            trade_record = {
+                "condition_id": cid,
+                "order_id": order_id,
+                "market_slug": trade_info["market_slug"],
+                "market_question": trade_info["market_question"],
+                "wallet_address": trade_info["wallet_address"],
+                "insider_side": trade_info["insider_side"],
+                "insider_outcome": outcome,
+                "insider_size": trade_info["insider_size"],
+                "alert_score": trade_info["alert_score"],
+                "triggers": trade_info["triggers"],
+                "side": "BUY",
+                "outcome": outcome,
+                "price": price,
+                "size_usd": bet_size,
+                "shares": shares,
+                "token_id": token_id,
+                "category": trade_info["category"],
+                "wallet_hit_rate": trade_info["wallet_hit_rate"],
+                "status": "filled" if success else "rejected",
+                "error": error_msg if not success else None,
+            }
+
+            await self.db.record_alert_autotrade(trade_record)
+
+            if success:
+                self._last_trade_time = time.time()
+                self._trades_today.append(trade_record)
+                self._open_positions[cid] = trade_record
+                print(f"[AlertTrader] ✅ COPY-TRADE: {outcome} en {trade_info['market_slug'][:40]} "
+                      f"${bet_size} @ {price:.2f} (score={trade_info['alert_score']} "
+                      f"insider=${trade_info['insider_size']:.0f}) order={order_id}",
+                      flush=True)
+                return {"success": True, "order_id": order_id, "trade": trade_record}
+            else:
+                print(f"[AlertTrader] ❌ Orden rechazada: {error_msg}", flush=True)
+                return {"success": False, "error": error_msg}
+
+        except Exception as e:
+            error = str(e)
+            print(f"[AlertTrader] ❌ Error ejecutando trade: {error}", flush=True)
+            return {"success": False, "error": error}
+
+    async def _get_token_and_price(self, condition_id: str, outcome: str) -> tuple:
+        """Obtener token_id y precio actual del outcome (Yes/No)."""
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(f"{CLOB_HOST}/markets/{condition_id}")
+                if resp.status_code != 200:
+                    return None, None
+                data = resp.json()
+                tokens = data.get("tokens", [])
+                for token in tokens:
+                    if token.get("outcome", "").lower() == outcome.lower():
+                        return token.get("token_id", ""), float(token.get("price", 0))
+                # Fallback: Yes = tokens[0], No = tokens[1]
+                if tokens and outcome.lower() == "yes":
+                    return tokens[0].get("token_id", ""), float(tokens[0].get("price", 0))
+                elif len(tokens) > 1 and outcome.lower() == "no":
+                    return tokens[1].get("token_id", ""), float(tokens[1].get("price", 0))
+        except Exception as e:
+            print(f"[AlertTrader] Error obteniendo token: {e}", flush=True)
+        return None, None
+
+    # ── Proceso completo: evaluar + ejecutar ─────────────────────────
+
+    async def process_alert(self, candidate, trade):
+        """Evaluar alerta y ejecutar trade si pasa filtros.
+        Llamado desde main.py después de enviar alerta a Telegram.
+        """
+        if not self._enabled or not self._client or not self._initialized:
+            return
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if self._trades_today_date != today:
+            await self._load_today_trades()
+
+        trade_info = await self.evaluate_alert(candidate, trade)
+        if trade_info:
+            result = await self.execute_trade(trade_info)
+            if result.get("success"):
+                logger.info("alert_copy_trade",
+                            market=trade.market_slug,
+                            score=candidate.score,
+                            size=trade_info["bet_size"])
+
+    # ── Resolución de trades ─────────────────────────────────────────
+
+    async def resolve_trades(self):
+        """Resolver trades abiertos y calcular PnL."""
+        if not self._open_positions:
+            return
+
+        try:
+            import httpx
+            resolved = 0
+
+            async with httpx.AsyncClient(timeout=10) as client:
+                for cid, trade in list(self._open_positions.items()):
+                    try:
+                        resp = await client.get(f"{CLOB_HOST}/markets/{cid}")
+                        if resp.status_code != 200:
+                            continue
+                        data = resp.json()
+                        if not data.get("closed"):
+                            continue
+
+                        tokens = data.get("tokens", [])
+                        winning_outcome = None
+                        for token in tokens:
+                            if token.get("winner") is True:
+                                winning_outcome = token.get("outcome", "")
+                                break
+                            if float(token.get("price", 0)) >= 0.95:
+                                winning_outcome = token.get("outcome", "")
+                                break
+
+                        if not winning_outcome:
+                            continue
+
+                        our_outcome = trade.get("outcome", "")
+                        won = our_outcome.lower() == winning_outcome.lower()
+
+                        price = trade.get("price", 0)
+                        size_usd = trade.get("size_usd", 0)
+                        if won:
+                            pnl = size_usd * ((1.0 / price) - 1)
+                            result = "win"
+                        else:
+                            pnl = -size_usd
+                            result = "loss"
+
+                        await self.db.resolve_alert_autotrade(cid, result, round(pnl, 2))
+                        del self._open_positions[cid]
+                        resolved += 1
+
+                        emoji = "✅" if result == "win" else "❌"
+                        print(f"[AlertTrader] {emoji} Trade resuelto: "
+                              f"{trade.get('market_slug', cid)[:40]} → {result.upper()} PnL=${pnl:.2f}",
+                              flush=True)
+
+                    except Exception as e:
+                        print(f"[AlertTrader] Error resolviendo {cid}: {e}", flush=True)
+
+            if resolved:
+                await self._load_today_trades()
+
+        except Exception as e:
+            print(f"[AlertTrader] Error en resolve_trades: {e}", flush=True)
+
+    # ── Estado ───────────────────────────────────────────────────────
+
+    def get_status(self) -> dict:
+        """Estado actual para el dashboard."""
+        daily_pnl = sum(t.get("pnl", 0) for t in self._trades_today if t.get("resolved"))
+        return {
+            "enabled": self._enabled,
+            "connected": self._client is not None,
+            "open_positions": len(self._open_positions),
+            "trades_today": len(self._trades_today),
+            "pnl_today": round(daily_pnl, 2),
+        }

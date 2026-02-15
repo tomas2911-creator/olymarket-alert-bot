@@ -250,6 +250,41 @@ class Database:
                     ON autotrades(resolved);
                 CREATE INDEX IF NOT EXISTS idx_autotrades_cid
                     ON autotrades(condition_id);
+
+                CREATE TABLE IF NOT EXISTS alert_autotrades (
+                    id              SERIAL PRIMARY KEY,
+                    condition_id    TEXT NOT NULL,
+                    order_id        TEXT DEFAULT '',
+                    market_slug     TEXT DEFAULT '',
+                    market_question TEXT DEFAULT '',
+                    wallet_address  TEXT DEFAULT '',
+                    insider_side    TEXT DEFAULT '',
+                    insider_outcome TEXT DEFAULT '',
+                    insider_size    DOUBLE PRECISION DEFAULT 0,
+                    alert_score     INTEGER DEFAULT 0,
+                    triggers        TEXT DEFAULT '',
+                    side            TEXT DEFAULT 'BUY',
+                    outcome         TEXT DEFAULT '',
+                    price           DOUBLE PRECISION,
+                    size_usd        DOUBLE PRECISION,
+                    shares          DOUBLE PRECISION,
+                    token_id        TEXT,
+                    category        TEXT DEFAULT '',
+                    wallet_hit_rate DOUBLE PRECISION DEFAULT 0,
+                    status          TEXT DEFAULT 'filled',
+                    error           TEXT,
+                    resolved        BOOLEAN DEFAULT FALSE,
+                    result          TEXT,
+                    pnl             DOUBLE PRECISION DEFAULT 0,
+                    resolved_at     TIMESTAMPTZ,
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_alert_autotrades_created
+                    ON alert_autotrades(created_at);
+                CREATE INDEX IF NOT EXISTS idx_alert_autotrades_resolved
+                    ON alert_autotrades(resolved);
+                CREATE INDEX IF NOT EXISTS idx_alert_autotrades_cid
+                    ON alert_autotrades(condition_id);
             """)
 
     # ── Wallet Stats ──────────────────────────────────────────────────
@@ -1400,6 +1435,99 @@ class Database:
                     COALESCE(SUM(pnl) FILTER (WHERE resolved AND created_at > NOW() - INTERVAL '24 hours'), 0) as pnl_24h,
                     COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours' AND status = 'filled') as trades_24h
                 FROM autotrades
+            """)
+            total = (row["wins"] or 0) + (row["losses"] or 0)
+            return {
+                "total_trades": row["total_trades"] or 0,
+                "wins": row["wins"] or 0,
+                "losses": row["losses"] or 0,
+                "open_positions": row["open_positions"] or 0,
+                "win_rate": round((row["wins"] / total * 100) if total else 0, 1),
+                "total_pnl": round(float(row["total_pnl"] or 0), 2),
+                "total_volume": round(float(row["total_volume"] or 0), 2),
+                "pnl_24h": round(float(row["pnl_24h"] or 0), 2),
+                "trades_24h": row["trades_24h"] or 0,
+            }
+
+
+    # ── Alert AutoTrades (copy-trading de insiders) ────────────────────
+
+    async def record_alert_autotrade(self, trade: dict):
+        """Guardar un trade ejecutado por el alert autotrader."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO alert_autotrades
+                    (condition_id, order_id, market_slug, market_question,
+                     wallet_address, insider_side, insider_outcome, insider_size,
+                     alert_score, triggers, side, outcome, price, size_usd,
+                     shares, token_id, category, wallet_hit_rate, status, error)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+            """,
+                trade.get("condition_id", ""),
+                trade.get("order_id", ""),
+                trade.get("market_slug", ""),
+                trade.get("market_question", ""),
+                trade.get("wallet_address", ""),
+                trade.get("insider_side", ""),
+                trade.get("insider_outcome", ""),
+                trade.get("insider_size", 0),
+                trade.get("alert_score", 0),
+                trade.get("triggers", ""),
+                trade.get("side", "BUY"),
+                trade.get("outcome", ""),
+                trade.get("price", 0),
+                trade.get("size_usd", 0),
+                trade.get("shares", 0),
+                trade.get("token_id", ""),
+                trade.get("category", ""),
+                trade.get("wallet_hit_rate", 0),
+                trade.get("status", "filled"),
+                trade.get("error"),
+            )
+
+    async def resolve_alert_autotrade(self, condition_id: str, result: str, pnl: float):
+        """Marcar un alert autotrade como resuelto."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE alert_autotrades
+                SET resolved = TRUE, result = $2, pnl = $3, resolved_at = NOW()
+                WHERE condition_id = $1 AND resolved = FALSE
+            """, condition_id, result, pnl)
+
+    async def get_alert_autotrades(self, hours: int = 24, limit: int = 100) -> list[dict]:
+        """Obtener alert autotrades recientes."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT * FROM alert_autotrades
+                WHERE created_at > NOW() - INTERVAL '1 hour' * $1
+                ORDER BY created_at DESC LIMIT $2
+            """, hours, limit)
+            return [_serialize_row(r) for r in rows]
+
+    async def get_open_alert_autotrades(self) -> list[dict]:
+        """Obtener alert autotrades no resueltos."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT * FROM alert_autotrades
+                WHERE resolved = FALSE AND status = 'filled'
+                ORDER BY created_at DESC
+            """)
+            return [_serialize_row(r) for r in rows]
+
+    async def get_alert_autotrade_stats(self) -> dict:
+        """Estadísticas de alert autotrading."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT
+                    COUNT(*) FILTER (WHERE status = 'filled') as total_trades,
+                    COUNT(*) FILTER (WHERE resolved AND result = 'win') as wins,
+                    COUNT(*) FILTER (WHERE resolved AND result = 'loss') as losses,
+                    COUNT(*) FILTER (WHERE NOT resolved AND status = 'filled') as open_positions,
+                    COALESCE(SUM(pnl) FILTER (WHERE resolved), 0) as total_pnl,
+                    COALESCE(SUM(size_usd) FILTER (WHERE status = 'filled'), 0) as total_volume,
+                    COALESCE(SUM(pnl) FILTER (WHERE resolved AND created_at > NOW() - INTERVAL '24 hours'), 0) as pnl_24h,
+                    COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours' AND status = 'filled') as trades_24h
+                FROM alert_autotrades
             """)
             total = (row["wins"] or 0) + (row["losses"] or 0)
             return {

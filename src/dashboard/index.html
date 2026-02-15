@@ -357,6 +357,7 @@
             <button onclick="showTab('coordination')" id="tab-coordination" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">🔗 Coordinacion</button>
             <button onclick="showTab('feed')" id="tab-feed" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">⚡ Feed</button>
             <button onclick="showTab('crypto')" id="tab-crypto" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">₿ Crypto Arb</button>
+            <button onclick="showTab('alerttrading')" id="tab-alerttrading" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">🤖 Alert Trading</button>
         </div>
 
         <!-- Alerts Panel -->
@@ -997,6 +998,150 @@
                 </div>
             </div>
         </div>
+
+        <!-- Alert Trading Panel -->
+        <div id="panel-alerttrading" class="hidden">
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 p-4">
+                <div class="bg-gray-800/40 rounded-lg p-3">
+                    <div class="text-gray-500 text-[10px] uppercase">Estado</div>
+                    <div class="text-sm font-bold mt-1" id="aat-status">Desactivado</div>
+                </div>
+                <div class="bg-gray-800/40 rounded-lg p-3">
+                    <div class="text-gray-500 text-[10px] uppercase">Trades Hoy</div>
+                    <div class="text-lg font-bold text-purple-400 mt-1" id="aat-trades-today">0</div>
+                </div>
+                <div class="bg-gray-800/40 rounded-lg p-3">
+                    <div class="text-gray-500 text-[10px] uppercase">Win Rate</div>
+                    <div class="text-lg font-bold text-green-400 mt-1" id="aat-winrate">-</div>
+                </div>
+                <div class="bg-gray-800/40 rounded-lg p-3">
+                    <div class="text-gray-500 text-[10px] uppercase">PnL Total</div>
+                    <div class="text-lg font-bold mt-1" id="aat-pnl-total">$0</div>
+                </div>
+                <div class="bg-gray-800/40 rounded-lg p-3">
+                    <div class="text-gray-500 text-[10px] uppercase">PnL 24h</div>
+                    <div class="text-lg font-bold mt-1" id="aat-pnl-24h">$0</div>
+                </div>
+                <div class="bg-gray-800/40 rounded-lg p-3">
+                    <div class="text-gray-500 text-[10px] uppercase">Posiciones</div>
+                    <div class="text-lg font-bold text-yellow-400 mt-1" id="aat-open-pos">0</div>
+                </div>
+            </div>
+
+            <!-- Sub-tabs: Config / Historial -->
+            <div class="border-b border-gray-700/30 px-4">
+                <button onclick="showAatSub('config')" id="aat-sub-config" class="px-3 py-2 text-xs font-medium border-b-2 border-purple-500 text-purple-400">Configuracion</button>
+                <button onclick="showAatSub('history')" id="aat-sub-history" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500">Historial Trades</button>
+            </div>
+
+            <!-- Config Sub-panel -->
+            <div id="aat-panel-config" class="p-4 space-y-4">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <!-- Activar + Estado wallet -->
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h4 class="text-sm font-medium">Alert Trading</h4>
+                                <p class="text-[10px] text-gray-500">Copia apuestas de insiders detectados</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="aat-enabled">
+                                <div class="toggle-slider"></div>
+                            </label>
+                        </div>
+                        <div id="aat-wallet-status" class="bg-gray-800/40 border border-gray-700/50 rounded p-3">
+                            <div class="text-xs text-gray-400">Wallet: <span id="aat-wallet-info" class="text-gray-500">Sin configurar</span></div>
+                            <p class="text-[10px] text-gray-600 mt-1">Usa la misma wallet configurada en Crypto Arb. Si no tienes una, ve a Crypto Arb y genera tus API keys.</p>
+                        </div>
+                    </div>
+
+                    <!-- Parámetros de trading -->
+                    <div class="space-y-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Parametros</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Bet Size ($)</label>
+                                <input type="number" id="aat-bet-size" value="10" min="1" max="1000" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Score</label>
+                                <input type="number" id="aat-min-score" value="7" min="1" max="10" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Odds</label>
+                                <input type="number" id="aat-max-odds" value="0.80" min="0.10" max="0.99" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Odds</label>
+                                <input type="number" id="aat-min-odds" value="0.15" min="0.01" max="0.50" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Posiciones</label>
+                                <input type="number" id="aat-max-positions" value="5" min="1" max="20" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Trades/Dia</label>
+                                <input type="number" id="aat-max-daily-trades" value="5" min="1" max="50" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Loss/Dia ($)</label>
+                                <input type="number" id="aat-max-daily-loss" value="50" min="5" max="500" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Cooldown (hrs)</label>
+                                <input type="number" id="aat-cooldown-hours" value="6" min="0" max="48" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Hit Rate (%)</label>
+                                <input type="number" id="aat-min-hitrate" value="0" min="0" max="100" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Filtros extra -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-gray-400 block mb-1">Categorias Excluidas (coma separadas)</label>
+                        <input type="text" id="aat-excluded-cats" placeholder="sports, esports..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm text-purple-300">
+                    </div>
+                    <div class="flex items-center gap-3 pt-4">
+                        <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                            <input type="checkbox" id="aat-require-smart" class="rounded border-gray-600">
+                            Solo Smart Money (wallets en watchlist)
+                        </label>
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="saveAatConfig()" class="px-4 py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">Guardar</button>
+                    <span id="aat-save-status" class="text-xs text-green-400 self-center hidden">Guardado!</span>
+                </div>
+            </div>
+
+            <!-- History Sub-panel -->
+            <div id="aat-panel-history" class="hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead>
+                            <tr class="text-gray-500 border-b border-gray-800/50">
+                                <th class="text-left p-3">Mercado</th>
+                                <th class="text-center p-3">Score</th>
+                                <th class="text-center p-3">Outcome</th>
+                                <th class="text-right p-3">$ Invertido</th>
+                                <th class="text-right p-3">Precio</th>
+                                <th class="text-center p-3">Resultado</th>
+                                <th class="text-right p-3">PnL</th>
+                                <th class="text-right p-3">Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody id="aat-trades-body">
+                            <tr><td colspan="8" class="text-center text-gray-600 p-8">Sin trades aun</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
     </div>
 </main>
 
@@ -1118,7 +1263,7 @@ function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
 // ── Tabs ──
 function showTab(t){
-    ['alerts','leaderboard','wallets','markets','coordination','feed','crypto'].forEach(id=>{
+    ['alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading'].forEach(id=>{
         document.getElementById('panel-'+id).classList.toggle('hidden',id!==t);
         document.getElementById('tab-'+id).classList.toggle('active',id===t);
     });
@@ -1127,6 +1272,7 @@ function showTab(t){
     if(t==='leaderboard')loadLeaderboard();
     if(t==='coordination')loadCoordination();
     if(t==='crypto')loadCryptoTab();
+    if(t==='alerttrading')loadAatConfig();
 }
 
 // ── Config ──
@@ -2318,6 +2464,109 @@ async function testAutotradeConnection(){
         st.className='text-xs text-red-400 self-center';
     }
     setTimeout(()=>st.classList.add('hidden'),5000);
+}
+
+// ── Alert Trading ──
+function showAatSub(sub){
+    document.getElementById('aat-panel-config').classList.toggle('hidden',sub!=='config');
+    document.getElementById('aat-panel-history').classList.toggle('hidden',sub!=='history');
+    document.getElementById('aat-sub-config').className='px-3 py-2 text-xs font-medium border-b-2 '+(sub==='config'?'border-purple-500 text-purple-400':'border-transparent text-gray-500');
+    document.getElementById('aat-sub-history').className='px-3 py-2 text-xs font-medium border-b-2 '+(sub==='history'?'border-purple-500 text-purple-400':'border-transparent text-gray-500');
+    if(sub==='history')loadAatHistory();
+}
+
+async function loadAatConfig(){
+    const c=await fetchJson('/api/alert-trading/config');
+    if(!c)return;
+    document.getElementById('aat-enabled').checked=c.enabled||false;
+    document.getElementById('aat-bet-size').value=c.bet_size||10;
+    document.getElementById('aat-min-score').value=c.min_score||7;
+    document.getElementById('aat-max-odds').value=c.max_odds||0.80;
+    document.getElementById('aat-min-odds').value=c.min_odds||0.15;
+    document.getElementById('aat-max-positions').value=c.max_positions||5;
+    document.getElementById('aat-max-daily-trades').value=c.max_daily_trades||5;
+    document.getElementById('aat-max-daily-loss').value=c.max_daily_loss||50;
+    document.getElementById('aat-cooldown-hours').value=c.cooldown_hours||6;
+    document.getElementById('aat-min-hitrate').value=c.min_wallet_hit_rate||0;
+    document.getElementById('aat-excluded-cats').value=c.excluded_categories||'';
+    document.getElementById('aat-require-smart').checked=c.require_smart_money||false;
+    // Status cards
+    const statusEl=document.getElementById('aat-status');
+    if(c.connected){statusEl.textContent='Conectado';statusEl.className='text-sm font-bold text-green-400';}
+    else if(c.enabled&&c.wallet_connected){statusEl.textContent='Listo';statusEl.className='text-sm font-bold text-yellow-400';}
+    else if(!c.enabled){statusEl.textContent='Desactivado';statusEl.className='text-sm font-bold text-gray-500';}
+    else{statusEl.textContent='Sin wallet';statusEl.className='text-sm font-bold text-red-400';}
+    document.getElementById('aat-trades-today').textContent=c.trades_today||'0';
+    document.getElementById('aat-winrate').textContent=c.win_rate?c.win_rate+'%':'-';
+    const pnlT=c.total_pnl||0;
+    document.getElementById('aat-pnl-total').textContent='$'+pnlT.toFixed(2);
+    document.getElementById('aat-pnl-total').className='text-lg font-bold mt-1 '+(pnlT>=0?'text-green-400':'text-red-400');
+    const pnl24=c.pnl_today||0;
+    document.getElementById('aat-pnl-24h').textContent='$'+pnl24.toFixed(2);
+    document.getElementById('aat-pnl-24h').className='text-lg font-bold mt-1 '+(pnl24>=0?'text-green-400':'text-red-400');
+    document.getElementById('aat-open-pos').textContent=c.open_positions||'0';
+    // Wallet status
+    const wi=document.getElementById('aat-wallet-info');
+    if(c.wallet_connected){wi.textContent='Conectada';wi.className='text-green-400 font-medium';}
+    else{wi.textContent='Sin configurar — ve a Crypto Arb';wi.className='text-red-400';}
+}
+
+async function saveAatConfig(){
+    const body={
+        enabled:document.getElementById('aat-enabled').checked,
+        bet_size:parseFloat(document.getElementById('aat-bet-size').value)||10,
+        min_score:parseInt(document.getElementById('aat-min-score').value)||7,
+        max_odds:parseFloat(document.getElementById('aat-max-odds').value)||0.80,
+        min_odds:parseFloat(document.getElementById('aat-min-odds').value)||0.15,
+        max_positions:parseInt(document.getElementById('aat-max-positions').value)||5,
+        max_daily_trades:parseInt(document.getElementById('aat-max-daily-trades').value)||5,
+        max_daily_loss:parseFloat(document.getElementById('aat-max-daily-loss').value)||50,
+        cooldown_hours:parseFloat(document.getElementById('aat-cooldown-hours').value)||6,
+        min_wallet_hit_rate:parseFloat(document.getElementById('aat-min-hitrate').value)||0,
+        excluded_categories:document.getElementById('aat-excluded-cats').value,
+        require_smart_money:document.getElementById('aat-require-smart').checked,
+    };
+    try{
+        const r=await fetch('/api/alert-trading/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const data=await r.json();
+        const st=document.getElementById('aat-save-status');
+        if(data.status==='ok'){st.textContent='Guardado!';st.className='text-xs text-green-400 self-center';}
+        else{st.textContent='Error: '+(data.error||'');st.className='text-xs text-red-400 self-center';}
+        st.classList.remove('hidden');
+        setTimeout(()=>st.classList.add('hidden'),3000);
+        loadAatConfig();
+    }catch(e){alert('Error de conexion');}
+}
+
+async function loadAatHistory(){
+    const data=await fetchJson('/api/alert-trading/trades?hours=168&limit=50');
+    if(!data)return;
+    const tbody=document.getElementById('aat-trades-body');
+    if(!data.trades||data.trades.length===0){
+        tbody.innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-8">Sin trades aun</td></tr>';
+        return;
+    }
+    tbody.innerHTML=data.trades.map(t=>{
+        const slug=t.market_slug||'';
+        const q=t.market_question||slug;
+        const short=q.length>50?q.slice(0,47)+'...':q;
+        const pnl=t.pnl||0;
+        const pnlColor=!t.resolved?'text-gray-500':pnl>=0?'text-green-400':'text-red-400';
+        const resultBadge=!t.resolved?'<span class="bg-yellow-900/40 text-yellow-400 px-1.5 py-0.5 rounded text-[10px]">Abierto</span>'
+            :t.result==='win'?'<span class="bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded text-[10px]">WIN</span>'
+            :'<span class="bg-red-900/40 text-red-400 px-1.5 py-0.5 rounded text-[10px]">LOSS</span>';
+        const date=t.created_at?new Date(t.created_at).toLocaleDateString('es',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="p-3 text-left"><a href="https://polymarket.com/event/${slug}" target="_blank" class="text-purple-300 hover:text-purple-200">${short}</a></td>
+            <td class="p-3 text-center"><span class="bg-purple-900/40 text-purple-300 px-1.5 py-0.5 rounded text-[10px]">${t.alert_score||0}</span></td>
+            <td class="p-3 text-center">${t.outcome||'-'}</td>
+            <td class="p-3 text-right font-mono">$${(t.size_usd||0).toFixed(2)}</td>
+            <td class="p-3 text-right font-mono">${(t.price||0).toFixed(2)}</td>
+            <td class="p-3 text-center">${resultBadge}</td>
+            <td class="p-3 text-right font-mono ${pnlColor}">${t.resolved?'$'+pnl.toFixed(2):'-'}</td>
+            <td class="p-3 text-right text-gray-500">${date}</td>
+        </tr>`;
+    }).join('');
 }
 
 // ── Init ──

@@ -27,6 +27,7 @@ from src.crypto_arb.binance_feed import BinanceFeed
 from src.crypto_arb.detector import CryptoArbDetector
 from src.crypto_arb.backtester import CryptoArbBacktester
 from src.crypto_arb.autotrader import AutoTrader
+from src.alerts.alert_autotrader import AlertAutoTrader
 
 structlog.configure(
     processors=[
@@ -63,6 +64,7 @@ class PolymarketAlertBot:
         self.crypto_detector = None
         self.backtester = CryptoArbBacktester()
         self.autotrader = None
+        self.alert_autotrader = None
 
     async def start(self):
         """Inicializar DB y marcar como running."""
@@ -90,6 +92,13 @@ class PolymarketAlertBot:
         # Iniciar crypto arb si está habilitado
         if config.FEATURE_CRYPTO_ARB:
             await self._start_crypto_arb()
+        # Iniciar alert autotrader (independiente de crypto arb)
+        try:
+            self.alert_autotrader = AlertAutoTrader(self.db)
+            await self.alert_autotrader.initialize()
+        except Exception as e:
+            print(f"Error iniciando Alert AutoTrader: {e}", flush=True)
+            self.alert_autotrader = None
 
     async def _send_startup_safe(self):
         try:
@@ -203,6 +212,13 @@ class PolymarketAlertBot:
                         await self.autotrader.resolve_trades()
                 except Exception as e:
                     print(f"Error en crypto arb: {e}", flush=True)
+
+            # Resolver alert autotrades abiertos (mercados largos)
+            if self.alert_autotrader:
+                try:
+                    await self.alert_autotrader.resolve_trades()
+                except Exception as e:
+                    print(f"Error resolviendo alert autotrades: {e}", flush=True)
 
             await asyncio.sleep(config.POLL_INTERVAL)
 
@@ -427,6 +443,12 @@ class PolymarketAlertBot:
                         market=trade.market_slug,
                         score=candidate.score,
                         copy_trade=is_copy)
+            # Alert AutoTrader: evaluar copy-trade automático
+            if self.alert_autotrader:
+                try:
+                    await self.alert_autotrader.process_alert(candidate, trade)
+                except Exception as e:
+                    print(f"[AlertTrader] Error en process_alert: {e}", flush=True)
 
     # ── Sniper DBSCAN ──────────────────────────────────────────────────
 
@@ -775,6 +797,7 @@ async def lifespan(app: FastAPI):
     app.state.db = bot.db
     app.state.bot = bot
     app.state.autotrader = bot.autotrader
+    app.state.alert_autotrader = bot.alert_autotrader
     # Lanzar polling en background
     polling_task = asyncio.create_task(bot.run_polling_loop())
     print(f"Dashboard activo en puerto {config.DASHBOARD_PORT}", flush=True)
