@@ -1,5 +1,5 @@
 """Detección de anomalías y scoring para trades — v4.0 con 14 señales."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import structlog
 
@@ -71,7 +71,7 @@ class AnomalyAnalyzer:
 
         # 6. Proximidad al cierre del mercado
         if trade.market_end_date:
-            delta = trade.market_end_date - datetime.now()
+            delta = trade.market_end_date - datetime.now(timezone.utc)
             days_to_close = max(delta.total_seconds() / 86400, 0)
             if days_to_close <= 7:
                 score += config.TIME_PROXIMITY_POINTS
