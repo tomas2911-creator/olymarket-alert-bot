@@ -36,6 +36,7 @@ class AlertAutoTrader:
         self._trades_today: list[dict] = []
         self._trades_today_date: str = ""
         self._open_positions: dict[str, dict] = {}
+        self._pending_confirmations: dict[str, dict] = {}
         self._initialized = False
 
     async def initialize(self):
@@ -49,6 +50,7 @@ class AlertAutoTrader:
                 "aat_min_wallet_hit_rate", "aat_cooldown_hours",
                 "aat_excluded_categories", "aat_require_smart_money",
                 "aat_take_profit_enabled", "aat_take_profit_pct", "aat_stop_loss_pct",
+                "aat_confirm_enabled", "aat_confirm_hours", "aat_confirm_min_pct", "aat_confirm_max_hours",
                 # Credenciales propias del alert autotrader (NO usa las de Crypto Arb)
                 "aat_api_key", "aat_api_secret", "aat_private_key", "aat_passphrase",
             ])
@@ -77,6 +79,10 @@ class AlertAutoTrader:
                 "take_profit_enabled": raw.get("aat_take_profit_enabled") == "true",
                 "take_profit_pct": float(raw.get("aat_take_profit_pct", 0)),
                 "stop_loss_pct": float(raw.get("aat_stop_loss_pct", 0)),
+                "confirm_enabled": raw.get("aat_confirm_enabled") == "true",
+                "confirm_hours": float(raw.get("aat_confirm_hours", 1)),
+                "confirm_min_pct": float(raw.get("aat_confirm_min_pct", 3)),
+                "confirm_max_hours": float(raw.get("aat_confirm_max_hours", 6)),
                 "api_key": api_key,
                 "api_secret": api_secret,
                 "private_key": private_key,
@@ -372,6 +378,7 @@ class AlertAutoTrader:
     async def process_alert(self, candidate, trade):
         """Evaluar alerta y ejecutar trade si pasa filtros.
         Llamado desde main.py después de enviar alerta a Telegram.
+        Si confirmación está activa, encola en vez de ejecutar.
         """
         if not self._enabled or not self._client or not self._initialized:
             return
@@ -381,13 +388,108 @@ class AlertAutoTrader:
             await self._load_today_trades()
 
         trade_info = await self.evaluate_alert(candidate, trade)
-        if trade_info:
+        if not trade_info:
+            return
+
+        cfg = self._config
+        if cfg.get("confirm_enabled") and cfg.get("confirm_hours", 0) > 0:
+            # Encolar para confirmar después
+            cid = trade_info["condition_id"]
+            if cid not in self._pending_confirmations:
+                trade_info["queued_at"] = time.time()
+                trade_info["entry_price_at_queue"] = trade_info.get("insider_price", 0)
+                self._pending_confirmations[cid] = trade_info
+                print(f"[AlertTrader] ⏳ ENCOLADO para confirmación: "
+                      f"{trade_info['market_slug'][:40]} (espera {cfg['confirm_hours']}h, min +{cfg['confirm_min_pct']}%)",
+                      flush=True)
+        else:
+            # Ejecutar inmediatamente
             result = await self.execute_trade(trade_info)
             if result.get("success"):
                 logger.info("alert_copy_trade",
                             market=trade.market_slug,
                             score=candidate.score,
                             size=trade_info["bet_size"])
+
+    async def check_pending_confirmations(self):
+        """Revisar alertas pendientes de confirmación por price impact.
+        Si el precio subió >= confirm_min_pct después de confirm_hours → ejecutar.
+        Si pasó confirm_max_hours sin confirmar → descartar.
+        """
+        cfg = self._config
+        if not cfg.get("confirm_enabled") or not self._pending_confirmations or not self._client:
+            return
+
+        confirm_secs = cfg.get("confirm_hours", 1) * 3600
+        max_secs = cfg.get("confirm_max_hours", 6) * 3600
+        min_pct = cfg.get("confirm_min_pct", 3)
+        now = time.time()
+
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                for cid, info in list(self._pending_confirmations.items()):
+                    queued_at = info.get("queued_at", 0)
+                    elapsed = now - queued_at
+                    entry_price = info.get("entry_price_at_queue", 0)
+
+                    # Descartar si pasó el tiempo máximo
+                    if elapsed > max_secs:
+                        del self._pending_confirmations[cid]
+                        print(f"[AlertTrader] ❌ DESCARTADO (timeout {cfg['confirm_max_hours']}h): "
+                              f"{info.get('market_slug', cid)[:40]}", flush=True)
+                        continue
+
+                    # Solo evaluar si pasó el tiempo mínimo de espera
+                    if elapsed < confirm_secs:
+                        continue
+
+                    if not entry_price or entry_price <= 0:
+                        del self._pending_confirmations[cid]
+                        continue
+
+                    # Consultar precio actual
+                    try:
+                        outcome = info.get("buy_outcome", "Yes")
+                        resp = await client.get(f"{CLOB_HOST}/markets/{cid}")
+                        if resp.status_code != 200:
+                            continue
+                        data = resp.json()
+                        if data.get("closed"):
+                            del self._pending_confirmations[cid]
+                            continue
+
+                        tokens = data.get("tokens", [])
+                        current_price = None
+                        for tk in tokens:
+                            if tk.get("outcome", "").lower() == outcome.lower():
+                                current_price = float(tk.get("price", 0))
+                                break
+                        if not current_price:
+                            continue
+
+                        gain_pct = ((current_price - entry_price) / entry_price) * 100
+
+                        if gain_pct >= min_pct:
+                            # Confirmado — ejecutar trade al precio actual
+                            del self._pending_confirmations[cid]
+                            result = await self.execute_trade(info)
+                            if result.get("success"):
+                                print(f"[AlertTrader] ✅ CONFIRMADO (+{gain_pct:.1f}%): "
+                                      f"{info.get('market_slug', cid)[:40]} "
+                                      f"entrada={entry_price:.2f} → ahora={current_price:.2f}",
+                                      flush=True)
+                        elif gain_pct <= -min_pct:
+                            # Price impact negativo fuerte — descartar
+                            del self._pending_confirmations[cid]
+                            print(f"[AlertTrader] ❌ DESCARTADO ({gain_pct:+.1f}%): "
+                                  f"{info.get('market_slug', cid)[:40]}", flush=True)
+
+                    except Exception as e:
+                        print(f"[AlertTrader] Error confirmando {cid}: {e}", flush=True)
+
+        except Exception as e:
+            print(f"[AlertTrader] Error en check_pending_confirmations: {e}", flush=True)
 
     # ── Take Profit / Stop Loss ────────────────────────────────────────
 
@@ -578,6 +680,7 @@ class AlertAutoTrader:
             "enabled": self._enabled,
             "connected": self._client is not None,
             "open_positions": len(self._open_positions),
+            "pending_confirmations": len(self._pending_confirmations),
             "trades_today": len(self._trades_today),
             "pnl_today": round(daily_pnl, 2),
         }

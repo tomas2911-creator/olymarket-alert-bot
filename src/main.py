@@ -160,9 +160,11 @@ class PolymarketAlertBot:
                 await self.poll_cycle()
                 cycle += 1
 
-                # Cada 5 ciclos (~5 min): price impact check
+                # Cada 5 ciclos (~5 min): price impact check + confirmaciones pendientes
                 if cycle % 5 == 0:
                     await self.check_price_impact()
+                    if self.alert_autotrader:
+                        await self.alert_autotrader.check_pending_confirmations()
 
                 # Cada 10 ciclos (~10 min): baselines + smart money scores
                 if cycle % 10 == 0:

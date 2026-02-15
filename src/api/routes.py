@@ -971,6 +971,7 @@ async def get_alert_trading_config(request: Request):
         "aat_min_wallet_hit_rate", "aat_cooldown_hours",
         "aat_excluded_categories", "aat_require_smart_money",
         "aat_take_profit_enabled", "aat_take_profit_pct", "aat_stop_loss_pct",
+        "aat_confirm_enabled", "aat_confirm_hours", "aat_confirm_min_pct", "aat_confirm_max_hours",
         "aat_api_key", "aat_private_key",
     ])
     stats = await db.get_alert_autotrade_stats()
@@ -993,6 +994,11 @@ async def get_alert_trading_config(request: Request):
         "take_profit_enabled": raw.get("aat_take_profit_enabled") == "true",
         "take_profit_pct": float(raw.get("aat_take_profit_pct", 0)),
         "stop_loss_pct": float(raw.get("aat_stop_loss_pct", 0)),
+        "confirm_enabled": raw.get("aat_confirm_enabled") == "true",
+        "confirm_hours": float(raw.get("aat_confirm_hours", 1)),
+        "confirm_min_pct": float(raw.get("aat_confirm_min_pct", 3)),
+        "confirm_max_hours": float(raw.get("aat_confirm_max_hours", 6)),
+        "pending_confirmations": aat_status.get("pending_confirmations", 0),
         "has_own_wallet": has_own_wallet,
         "wallet_connected": has_own_wallet,
         "wallet_address": _derive_wallet_address(raw.get("aat_private_key", "")),
@@ -1046,6 +1052,14 @@ async def save_alert_trading_config(request: Request):
         data["aat_take_profit_pct"] = str(body["take_profit_pct"])
     if "stop_loss_pct" in body:
         data["aat_stop_loss_pct"] = str(body["stop_loss_pct"])
+    if "confirm_enabled" in body:
+        data["aat_confirm_enabled"] = "true" if body["confirm_enabled"] else "false"
+    if "confirm_hours" in body:
+        data["aat_confirm_hours"] = str(body["confirm_hours"])
+    if "confirm_min_pct" in body:
+        data["aat_confirm_min_pct"] = str(body["confirm_min_pct"])
+    if "confirm_max_hours" in body:
+        data["aat_confirm_max_hours"] = str(body["confirm_max_hours"])
     if data:
         await db.set_config_bulk(data)
     # Recargar config en alert autotrader

@@ -1144,6 +1144,35 @@
                         </div>
                     </div>
                 </div>
+                <!-- Confirmación por Price Impact -->
+                <div class="space-y-2">
+                    <div class="flex items-center gap-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Confirmacion por Price Impact</h4>
+                        <label class="toggle-switch" style="transform:scale(0.8)">
+                            <input type="checkbox" id="aat-confirm-enabled">
+                            <div class="toggle-slider"></div>
+                        </label>
+                    </div>
+                    <p class="text-[10px] text-gray-600">En vez de comprar al instante, espera X horas y solo entra si el precio se movio a favor (tendencia confirmada).</p>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Esperar (hrs)</label>
+                            <input type="number" id="aat-confirm-hours" value="1" min="0.5" max="12" step="0.5" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-blue-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">Tiempo antes de evaluar</p>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Min Impact (%)</label>
+                            <input type="number" id="aat-confirm-min-pct" value="3" min="1" max="50" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-blue-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">Ej: 3 = entra si subio +3%</p>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Max Espera (hrs)</label>
+                            <input type="number" id="aat-confirm-max-hours" value="6" min="1" max="24" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-blue-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">Descarta si no confirma</p>
+                        </div>
+                    </div>
+                    <div id="aat-pending-count" class="text-[10px] text-yellow-400 hidden"></div>
+                </div>
                 <!-- Smart money filter -->
                 <div class="flex items-center gap-3">
                     <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
@@ -2535,6 +2564,13 @@ async function loadAatConfig(){
     document.getElementById('aat-tp-enabled').checked=c.take_profit_enabled||false;
     document.getElementById('aat-tp-pct').value=c.take_profit_pct!=null?c.take_profit_pct:30;
     document.getElementById('aat-sl-pct').value=c.stop_loss_pct||0;
+    // Confirmación por price impact
+    document.getElementById('aat-confirm-enabled').checked=c.confirm_enabled||false;
+    document.getElementById('aat-confirm-hours').value=c.confirm_hours!=null?c.confirm_hours:1;
+    document.getElementById('aat-confirm-min-pct').value=c.confirm_min_pct!=null?c.confirm_min_pct:3;
+    document.getElementById('aat-confirm-max-hours').value=c.confirm_max_hours!=null?c.confirm_max_hours:6;
+    const pendEl=document.getElementById('aat-pending-count');
+    if(c.pending_confirmations>0){pendEl.textContent='⏳ '+c.pending_confirmations+' alerta(s) esperando confirmación';pendEl.classList.remove('hidden');}else{pendEl.classList.add('hidden');}
     // Categorías: pills rojo/verde (mismo estilo que config alertas)
     const excludedCats=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
     const pillsCont=document.getElementById('aat-cat-pills');
@@ -2626,6 +2662,10 @@ async function saveAatConfig(){
         take_profit_enabled:document.getElementById('aat-tp-enabled').checked,
         take_profit_pct:parseFloat(document.getElementById('aat-tp-pct').value)||0,
         stop_loss_pct:parseFloat(document.getElementById('aat-sl-pct').value)||0,
+        confirm_enabled:document.getElementById('aat-confirm-enabled').checked,
+        confirm_hours:parseFloat(document.getElementById('aat-confirm-hours').value)||1,
+        confirm_min_pct:parseFloat(document.getElementById('aat-confirm-min-pct').value)||3,
+        confirm_max_hours:parseFloat(document.getElementById('aat-confirm-max-hours').value)||6,
     };
     try{
         const r=await fetch('/api/alert-trading/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
