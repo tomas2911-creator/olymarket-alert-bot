@@ -1199,11 +1199,12 @@ async function cleanAlerts(){
 }
 
 async function loadAlerts(){
+    const prevPage=alertsPage;
     allAlerts=await fetchJson('/api/alerts?limit=5000')||[];
-    alertsPage=0;
-    filterAlerts();
+    alertsPage=prevPage;
+    filterAlerts(true);
 }
-function filterAlerts(){
+function filterAlerts(keepPage){
     const q=(document.getElementById('alert-search').value||'').toLowerCase();
     const minScore=parseInt(document.getElementById('alert-score-filter').value)||0;
     const statusF=document.getElementById('alert-status-filter').value;
@@ -1216,7 +1217,7 @@ function filterAlerts(){
         return true;
     });
     applySortAlerts();
-    alertsPage=0;
+    if(!keepPage)alertsPage=0;
     renderAlertsPage();
 }
 function sortAlerts(col){

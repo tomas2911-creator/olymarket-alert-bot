@@ -141,7 +141,7 @@ CRYPTO_ARB_MIN_TIME_SEC = _crypto.get("min_time_remaining_sec", 120)
 CRYPTO_ARB_MAX_TIME_SEC = _crypto.get("max_time_remaining_sec", 720)
 CRYPTO_ARB_LOOKBACK_SEC = _crypto.get("lookback_seconds", 180)
 CRYPTO_ARB_PAPER_BET = _crypto.get("paper_bet_size", 100)
-CRYPTO_ARB_MAX_DAILY = _crypto.get("max_daily_signals", 50)
+CRYPTO_ARB_MAX_DAILY = _crypto.get("max_daily_signals", 500)
 CRYPTO_ARB_TELEGRAM = _crypto.get("telegram_alerts", True)
 
 # === Dashboard ===
