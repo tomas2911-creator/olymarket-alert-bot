@@ -1514,22 +1514,19 @@ async def get_infra_stats(request: Request):
 
 @router.get("/api/features/v8")
 async def get_features_v8():
-    """Obtener estado de todas las features v8.0."""
+    """Obtener estado de features v8.0 configurables (12 toggleables + 6 always-on)."""
     return {
-        "correlation_filter": config.FEATURE_CORRELATION_FILTER,
+        # Always-on (info only)
+        "always_on": ["correlation_filter", "rate_limiting", "bankroll_tracking", "heatmap", "trade_journal", "push_notifications"],
+        # Toggleables
         "multi_timeframe": config.FEATURE_MULTI_TIMEFRAME,
         "vwap": config.FEATURE_VWAP,
         "orderbook_crypto": config.FEATURE_ORDERBOOK_CRYPTO,
         "hedging": config.FEATURE_HEDGING,
         "news_catalyst": config.FEATURE_NEWS_CATALYST,
         "ml_scoring": config.FEATURE_ML_SCORING,
-        "heatmap": config.FEATURE_HEATMAP,
-        "trade_journal": config.FEATURE_TRADE_JOURNAL,
-        "push_notifications": config.FEATURE_PUSH_NOTIFICATIONS,
         "websocket": config.FEATURE_WEBSOCKET,
         "queue_system": config.FEATURE_QUEUE,
-        "rate_limiting": config.FEATURE_RATE_LIMITING,
-        "bankroll_tracking": config.FEATURE_BANKROLL,
         "market_making": config.FEATURE_MARKET_MAKING,
         "event_driven": config.FEATURE_EVENT_DRIVEN,
         "spike_detection": config.FEATURE_SPIKE_DETECTION,
@@ -1542,20 +1539,14 @@ async def save_features_v8(request: Request):
     db = request.app.state.db
     body = await request.json()
     mapping = {
-        "correlation_filter": "feature_correlation_filter",
         "multi_timeframe": "feature_multi_timeframe",
         "vwap": "feature_vwap",
         "orderbook_crypto": "feature_orderbook_crypto",
         "hedging": "feature_hedging",
         "news_catalyst": "feature_news_catalyst",
         "ml_scoring": "feature_ml_scoring",
-        "heatmap": "feature_heatmap",
-        "trade_journal": "feature_trade_journal",
-        "push_notifications": "feature_push_notifications",
         "websocket": "feature_websocket",
         "queue_system": "feature_queue",
-        "rate_limiting": "feature_rate_limiting",
-        "bankroll_tracking": "feature_bankroll",
         "market_making": "feature_market_making",
         "event_driven": "feature_event_driven",
         "spike_detection": "feature_spike_detection",

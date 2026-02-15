@@ -189,9 +189,21 @@
         <!-- v8.0 Features -->
         <div class="mt-6 pt-4 border-t border-orange-500/30">
             <h4 class="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-3">Features v8.0</h4>
+            <!-- Siempre activas -->
+            <div class="mb-3">
+                <div class="text-[10px] text-gray-500 uppercase mb-1">Siempre activos</div>
+                <div class="flex flex-wrap gap-1.5">
+                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Correlation Filter</span>
+                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Rate Limiting</span>
+                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Bankroll Track</span>
+                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Heatmap</span>
+                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Trade Journal</span>
+                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Push Notifs</span>
+                </div>
+            </div>
+            <!-- Configurables -->
+            <div class="text-[10px] text-gray-500 uppercase mb-1">Configurables</div>
             <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-correlation-label">
-                    <input type="checkbox" id="v8-correlation" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Correlation Filter</span></label>
                 <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-mtf-label">
                     <input type="checkbox" id="v8-mtf" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Multi-Timeframe</span></label>
                 <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-vwap-label">
@@ -204,20 +216,10 @@
                     <input type="checkbox" id="v8-news" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">News Catalyst</span></label>
                 <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-ml-label">
                     <input type="checkbox" id="v8-ml" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">ML Scoring</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-heatmap-label">
-                    <input type="checkbox" id="v8-heatmap" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Heatmap</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-journal-label">
-                    <input type="checkbox" id="v8-journal" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Trade Journal</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-push-label">
-                    <input type="checkbox" id="v8-push" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Push Notifs</span></label>
                 <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-ws-label">
                     <input type="checkbox" id="v8-ws" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">WebSocket</span></label>
                 <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-queue-label">
                     <input type="checkbox" id="v8-queue" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Queue System</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-ratelimit-label">
-                    <input type="checkbox" id="v8-ratelimit" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Rate Limiting</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-bankroll-label">
-                    <input type="checkbox" id="v8-bankroll" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Bankroll Track</span></label>
                 <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-mm-label">
                     <input type="checkbox" id="v8-mm" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Market Making</span></label>
                 <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-event-label">
@@ -2107,7 +2109,7 @@ async function saveFeatures(){
 }
 
 // ── v8.0 Features Save/Load ──
-const V8_MAP={correlation_filter:'v8-correlation',multi_timeframe:'v8-mtf',vwap:'v8-vwap',orderbook_crypto:'v8-ob-crypto',hedging:'v8-hedging',news_catalyst:'v8-news',ml_scoring:'v8-ml',heatmap:'v8-heatmap',trade_journal:'v8-journal',push_notifications:'v8-push',websocket:'v8-ws',queue_system:'v8-queue',rate_limiting:'v8-ratelimit',bankroll_tracking:'v8-bankroll',market_making:'v8-mm',event_driven:'v8-event',spike_detection:'v8-spike',cross_platform_arb:'v8-crossplat'};
+const V8_MAP={multi_timeframe:'v8-mtf',vwap:'v8-vwap',orderbook_crypto:'v8-ob-crypto',hedging:'v8-hedging',news_catalyst:'v8-news',ml_scoring:'v8-ml',websocket:'v8-ws',queue_system:'v8-queue',market_making:'v8-mm',event_driven:'v8-event',spike_detection:'v8-spike',cross_platform_arb:'v8-crossplat'};
 async function loadFeaturesV8(){
     const ft=await fetchJson('/api/features/v8');
     if(!ft)return;
@@ -3700,7 +3702,11 @@ async function loadInfra(){
         if(!el)return;
         const lines=[];
         for(const[k,v]of Object.entries(info)){
-            lines.push(`<div>${k}: <span class="text-gray-300">${typeof v==='number'?v.toLocaleString():v}</span></div>`);
+            let display=v;
+            if(typeof v==='number')display=v.toLocaleString();
+            else if(typeof v==='object'&&v!==null)display=JSON.stringify(v);
+            else if(typeof v==='boolean')display=v?'true':'false';
+            lines.push(`<div>${k}: <span class="text-gray-300">${display}</span></div>`);
         }
         el.innerHTML=lines.join('')||'No activo';
     };

@@ -171,7 +171,7 @@ CRYPTO_ARB_MIN_TREND_CONSISTENCY = _crypto.get("min_trend_consistency", 0.55)
 
 # -- Correlation Filter (Alert Trading) --
 _corr = _yaml.get("correlation_filter", {})
-FEATURE_CORRELATION_FILTER = _features.get("correlation_filter", False)
+FEATURE_CORRELATION_FILTER = True  # Siempre activo — gestión de riesgo básica
 CORRELATION_MIN_OVERLAP = _corr.get("min_overlap_pct", 70)  # % mínimo de correlación
 CORRELATION_MAX_EXPOSURE = _corr.get("max_exposure_pct", 25)  # máx % del bankroll en mercados correlacionados
 
@@ -216,13 +216,13 @@ ML_RETRAIN_HOURS = _ml.get("retrain_hours", 24)
 ML_WEIGHT = _ml.get("weight", 0.5)  # peso del ML vs scoring tradicional (0=solo trad, 1=solo ML)
 
 # -- Heatmap de Mercados (Dashboard) --
-FEATURE_HEATMAP = _features.get("heatmap", False)
+FEATURE_HEATMAP = True  # Siempre activo — solo vista de datos
 
 # -- Trade Journal (Dashboard) --
-FEATURE_TRADE_JOURNAL = _features.get("trade_journal", False)
+FEATURE_TRADE_JOURNAL = True  # Siempre activo — solo UI para notas
 
 # -- Push Notifications (Dashboard) --
-FEATURE_PUSH_NOTIFICATIONS = _features.get("push_notifications", False)
+FEATURE_PUSH_NOTIFICATIONS = True  # Siempre activo — solo muestra notifs
 PUSH_MIN_SCORE = int(os.getenv("PUSH_MIN_SCORE", "7"))
 
 # -- WebSocket Polymarket (Infrastructure) --
@@ -236,12 +236,12 @@ QUEUE_MAX_SIZE = 1000
 QUEUE_WORKERS = 2
 
 # -- Rate Limiting (Infrastructure) --
-FEATURE_RATE_LIMITING = _features.get("rate_limiting", False)
+FEATURE_RATE_LIMITING = True  # Siempre activo — protección contra bans de API
 RATE_LIMIT_MAX_PER_MIN = 30  # requests máx por minuto a Polymarket
 RATE_LIMIT_BACKOFF_BASE = 1.5  # base exponencial para backoff
 
 # -- Bankroll Tracking (Risk) --
-FEATURE_BANKROLL = _features.get("bankroll_tracking", False)
+FEATURE_BANKROLL = True  # Siempre activo — solo trackea balance, sin riesgo
 BANKROLL_WALLET_ADDRESS = os.getenv("BANKROLL_WALLET_ADDRESS", "")
 BANKROLL_INITIAL = float(os.getenv("BANKROLL_INITIAL", "1000"))
 BANKROLL_MAX_SINGLE_BET_PCT = 5.0  # máx % del bankroll en un solo trade
@@ -365,7 +365,7 @@ def restore_from_db(saved: dict):
     cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY = _float("crypto_min_trend_consistency", cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY)
 
     # === Features v8.0 ===
-    cfg.FEATURE_CORRELATION_FILTER = _bool("feature_correlation_filter", cfg.FEATURE_CORRELATION_FILTER)
+    # FEATURE_CORRELATION_FILTER = siempre True (no toggle)
     cfg.CORRELATION_MIN_OVERLAP = _int("correlation_min_overlap", cfg.CORRELATION_MIN_OVERLAP)
     cfg.CORRELATION_MAX_EXPOSURE = _int("correlation_max_exposure", cfg.CORRELATION_MAX_EXPOSURE)
     cfg.FEATURE_MULTI_TIMEFRAME = _bool("feature_multi_timeframe", cfg.FEATURE_MULTI_TIMEFRAME)
@@ -385,15 +385,12 @@ def restore_from_db(saved: dict):
     cfg.FEATURE_ML_SCORING = _bool("feature_ml_scoring", cfg.FEATURE_ML_SCORING)
     cfg.ML_WEIGHT = _float("ml_weight", cfg.ML_WEIGHT)
     cfg.ML_RETRAIN_HOURS = _int("ml_retrain_hours", cfg.ML_RETRAIN_HOURS)
-    cfg.FEATURE_HEATMAP = _bool("feature_heatmap", cfg.FEATURE_HEATMAP)
-    cfg.FEATURE_TRADE_JOURNAL = _bool("feature_trade_journal", cfg.FEATURE_TRADE_JOURNAL)
-    cfg.FEATURE_PUSH_NOTIFICATIONS = _bool("feature_push_notifications", cfg.FEATURE_PUSH_NOTIFICATIONS)
+    # FEATURE_HEATMAP, TRADE_JOURNAL, PUSH_NOTIFICATIONS = siempre True (no toggle)
     cfg.PUSH_MIN_SCORE = _int("push_min_score", cfg.PUSH_MIN_SCORE)
     cfg.FEATURE_WEBSOCKET = _bool("feature_websocket", cfg.FEATURE_WEBSOCKET)
     cfg.FEATURE_QUEUE = _bool("feature_queue", cfg.FEATURE_QUEUE)
-    cfg.FEATURE_RATE_LIMITING = _bool("feature_rate_limiting", cfg.FEATURE_RATE_LIMITING)
+    # FEATURE_RATE_LIMITING, FEATURE_BANKROLL = siempre True (no toggle)
     cfg.RATE_LIMIT_MAX_PER_MIN = _int("rate_limit_max_per_min", cfg.RATE_LIMIT_MAX_PER_MIN)
-    cfg.FEATURE_BANKROLL = _bool("feature_bankroll", cfg.FEATURE_BANKROLL)
     cfg.BANKROLL_INITIAL = _float("bankroll_initial", cfg.BANKROLL_INITIAL)
     cfg.BANKROLL_MAX_SINGLE_BET_PCT = _float("bankroll_max_bet_pct", cfg.BANKROLL_MAX_SINGLE_BET_PCT)
     cfg.FEATURE_MARKET_MAKING = _bool("feature_market_making", cfg.FEATURE_MARKET_MAKING)
