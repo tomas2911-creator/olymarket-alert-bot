@@ -854,7 +854,9 @@ class Database:
             total_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE user_id = $1", user_id)
             resolved_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE resolved = TRUE AND user_id = $1", user_id)
             correct_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE was_correct = TRUE AND user_id = $1", user_id)
-            total_trades = await conn.fetchval("SELECT COUNT(*) FROM trades")
+            total_trades = await conn.fetchval(
+                "SELECT COUNT(*) FROM trades WHERE wallet_address IN (SELECT DISTINCT wallet_address FROM alerts WHERE user_id = $1)", user_id
+            ) if user_id != 1 else await conn.fetchval("SELECT COUNT(*) FROM trades")
             unique_wallets = await conn.fetchval("SELECT COUNT(DISTINCT wallet_address) FROM alerts WHERE user_id = $1", user_id)
             alerts_24h = await conn.fetchval(
                 "SELECT COUNT(*) FROM alerts WHERE created_at > NOW() - INTERVAL '24 hours' AND user_id = $1", user_id
@@ -1341,7 +1343,7 @@ class Database:
 
     # ── Leaderboard ──────────────────────────────────────────────────
 
-    async def get_leaderboard(self, limit: int = 30, sort_by: str = "pnl") -> list[dict]:
+    async def get_leaderboard(self, limit: int = 30, sort_by: str = "pnl", user_id: int = 1) -> list[dict]:
         order = {
             "pnl": "total_pnl DESC",
             "roi": "roi_pct DESC",
@@ -1350,22 +1352,42 @@ class Database:
         }.get(sort_by, "total_pnl DESC")
 
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(f"""
-                SELECT address, name, pseudonym, profile_image,
-                       total_trades, total_volume, avg_trade_size,
-                       win_count, loss_count, markets_traded,
-                       total_pnl, total_cost, roi_pct,
-                       smart_money_score, correct_markets,
-                       is_watchlisted,
-                       on_chain_first_tx, on_chain_funded_by,
-                       on_chain_age_days, on_chain_tx_count,
-                       on_chain_usdc_in, on_chain_usdc_out,
-                       on_chain_erc1155_transfers
-                FROM wallets
-                WHERE (win_count + loss_count) > 0
-                ORDER BY {order}
-                LIMIT $1
-            """, limit)
+            # User 1 (admin) ve todo; otros usuarios solo wallets con alertas propias
+            if user_id == 1:
+                rows = await conn.fetch(f"""
+                    SELECT address, name, pseudonym, profile_image,
+                           total_trades, total_volume, avg_trade_size,
+                           win_count, loss_count, markets_traded,
+                           total_pnl, total_cost, roi_pct,
+                           smart_money_score, correct_markets,
+                           is_watchlisted,
+                           on_chain_first_tx, on_chain_funded_by,
+                           on_chain_age_days, on_chain_tx_count,
+                           on_chain_usdc_in, on_chain_usdc_out,
+                           on_chain_erc1155_transfers
+                    FROM wallets
+                    WHERE (win_count + loss_count) > 0
+                    ORDER BY {order}
+                    LIMIT $1
+                """, limit)
+            else:
+                rows = await conn.fetch(f"""
+                    SELECT w.address, w.name, w.pseudonym, w.profile_image,
+                           w.total_trades, w.total_volume, w.avg_trade_size,
+                           w.win_count, w.loss_count, w.markets_traded,
+                           w.total_pnl, w.total_cost, w.roi_pct,
+                           w.smart_money_score, w.correct_markets,
+                           w.is_watchlisted,
+                           w.on_chain_first_tx, w.on_chain_funded_by,
+                           w.on_chain_age_days, w.on_chain_tx_count,
+                           w.on_chain_usdc_in, w.on_chain_usdc_out,
+                           w.on_chain_erc1155_transfers
+                    FROM wallets w
+                    WHERE (w.win_count + w.loss_count) > 0
+                      AND w.address IN (SELECT DISTINCT wallet_address FROM alerts WHERE user_id = $2)
+                    ORDER BY {order}
+                    LIMIT $1
+                """, limit, user_id)
             return [_serialize_row(r) for r in rows]
 
     # ── Polygonscan Data ─────────────────────────────────────────────

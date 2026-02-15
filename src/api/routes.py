@@ -116,9 +116,15 @@ async def get_stats(request: Request):
         hours = int(uptime.total_seconds() // 3600)
         minutes = int((uptime.total_seconds() % 3600) // 60)
         stats["uptime"] = f"{hours}h {minutes}m"
-        stats["trades_this_session"] = bot.trades_processed
-        stats["alerts_this_session"] = bot.alerts_sent
-        stats["watchlist_count"] = len(bot._watchlist)
+        # Solo mostrar stats globales del bot al admin (user 1)
+        if uid == 1:
+            stats["trades_this_session"] = bot.trades_processed
+            stats["alerts_this_session"] = bot.alerts_sent
+            stats["watchlist_count"] = len(bot._watchlist)
+        else:
+            stats["trades_this_session"] = 0
+            stats["alerts_this_session"] = 0
+            stats["watchlist_count"] = 0
     return stats
 
 
@@ -475,7 +481,8 @@ async def update_config(request: Request, body: ConfigUpdate):
 @router.get("/api/leaderboard")
 async def get_leaderboard(request: Request, limit: int = 30, sort: str = "pnl"):
     db = request.app.state.db
-    return await db.get_leaderboard(limit=limit, sort_by=sort)
+    uid = await get_user_id(request)
+    return await db.get_leaderboard(limit=limit, sort_by=sort, user_id=uid)
 
 
 # ── Coordination ────────────────────────────────────────────────────
