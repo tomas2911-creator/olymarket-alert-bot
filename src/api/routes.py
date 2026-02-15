@@ -64,47 +64,37 @@ async def get_debug(request: Request):
 
 @router.get("/api/debug/resolve-crypto")
 async def debug_resolve_crypto(request: Request):
-    """Intentar resolver señales crypto manualmente y devolver diagnóstico."""
-    from src.api.polymarket import PolymarketClient
+    """Diagnóstico de resolución crypto - muestra estado de señales pendientes."""
     db = request.app.state.db
     bot = request.app.state.bot
-    results = []
     try:
         unresolved = await db.get_unresolved_crypto_signals()
-        if not unresolved:
-            return {"status": "no_unresolved", "count": 0}
-
-        async with PolymarketClient() as client:
-            for sig in unresolved[:5]:
-                cid = sig["condition_id"]
-                diag = {"cid": cid[:40], "coin": sig.get("coin"), "direction": sig.get("direction")}
-                try:
-                    resolution = await client.check_market_resolution(cid)
-                    diag["resolution"] = resolution
-                    if resolution:
-                        won = resolution.lower() == sig["direction"].lower()
-                        diag["won"] = won
-                        paper_result = "win" if won else "loss"
-                        bet = float(sig.get("paper_bet_size", config.CRYPTO_ARB_PAPER_BET))
-                        odds = float(sig.get("poly_odds", 0.5))
-                        pnl = bet * (1 - odds) if won else -(bet * odds)
-                        diag["paper_result"] = paper_result
-                        diag["paper_pnl"] = round(pnl, 2)
-                        await db.resolve_crypto_signal(
-                            sig["id"], resolution, paper_result, round(pnl, 2)
-                        )
-                        if bot and bot.crypto_detector:
-                            bot.crypto_detector.resolve_signal(cid, paper_result, round(pnl, 2))
-                        diag["resolved_ok"] = True
-                    else:
-                        diag["resolved_ok"] = False
-                        diag["note"] = "check_market_resolution returned None"
-                except Exception as e:
-                    diag["error"] = str(e)
-                results.append(diag)
+        results = []
+        for sig in unresolved[:10]:
+            cid = sig["condition_id"]
+            created = sig.get("created_at", "")
+            time_rem = sig.get("time_remaining_sec", 0)
+            results.append({
+                "cid": cid[:40],
+                "coin": sig.get("coin"),
+                "direction": sig.get("direction"),
+                "created": str(created)[:19],
+                "time_remaining_at_creation": time_rem,
+            })
+        # Contar resueltas
+        all_sigs = await db.get_crypto_signals_history(limit=50)
+        resolved = [s for s in all_sigs if s.get("resolved")]
+        return {
+            "unresolved_count": len(unresolved),
+            "total_in_db": len(all_sigs),
+            "resolved_count": len(resolved),
+            "wins": sum(1 for s in resolved if s.get("paper_result") == "win"),
+            "losses": sum(1 for s in resolved if s.get("paper_result") == "loss"),
+            "resolution_method": "gamma_slug → clob → binance_auto",
+            "unresolved_signals": results,
+        }
     except Exception as e:
         return {"status": "error", "error": str(e)}
-    return {"status": "ok", "unresolved_count": len(unresolved), "results": results}
 
 
 # ── Alerts ───────────────────────────────────────────────────────────
