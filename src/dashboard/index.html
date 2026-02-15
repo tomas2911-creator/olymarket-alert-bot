@@ -1050,26 +1050,25 @@
                                 <div class="toggle-slider"></div>
                             </label>
                         </div>
-                        <!-- Estado wallet -->
+                        <!-- Estado wallet propia (solo si tiene aat_private_key) -->
                         <div id="aat-wallet-connected" class="hidden bg-green-900/30 border border-green-700/50 rounded p-3">
                             <div class="flex items-center justify-between mb-1">
-                                <span class="text-green-400 text-sm font-medium">Wallet conectada</span>
+                                <span class="text-green-400 text-sm font-medium">Wallet propia conectada</span>
                                 <button onclick="disconnectAatWallet()" class="text-[10px] text-red-400 hover:text-red-300 border border-red-800 hover:border-red-600 rounded px-2 py-0.5 transition-colors">Desconectar</button>
                             </div>
                             <div class="text-xs text-gray-400 space-y-0.5">
                                 <div>Wallet: <span id="aat-wallet-addr" class="text-purple-300 font-mono">—</span></div>
                                 <div>API Key: <span id="aat-key-preview" class="text-green-400 font-mono">—</span></div>
-                                <div>Tipo: <span id="aat-wallet-type" class="text-yellow-400">—</span></div>
                             </div>
                         </div>
-                        <!-- Input wallet propia -->
+                        <!-- Input wallet propia (siempre visible si no tiene propia) -->
                         <div id="aat-wallet-form">
-                            <label class="text-xs text-gray-400 block mb-1">Private Key (wallet separada para Alert Trading)</label>
+                            <label class="text-xs text-gray-400 block mb-1">Private Key (wallet exclusiva para Alert Trading)</label>
                             <div class="flex gap-2">
                                 <input type="password" id="aat-pk-input" placeholder="0x..." class="flex-1 bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
                                 <button onclick="generateAatKeys()" class="px-3 py-2 rounded bg-green-600 hover:bg-green-500 text-white text-xs font-medium transition whitespace-nowrap">Generar Keys</button>
                             </div>
-                            <div id="aat-gen-msg" class="text-[10px] text-gray-500 mt-1">Pega la private key de otra wallet para separar fondos del crypto arb.</div>
+                            <div id="aat-gen-msg" class="text-[10px] text-gray-500 mt-1">Necesitas una wallet propia para usar Alert Trading. Pega la private key aqui.</div>
                         </div>
                     </div>
 
@@ -1116,49 +1115,11 @@
                         </div>
                     </div>
                 </div>
-                <!-- Categorias excluidas con checkboxes -->
+                <!-- Categorias excluidas (pills rojo/verde) -->
                 <div class="space-y-2">
-                    <h4 class="text-xs text-gray-500 uppercase tracking-wider">Categorias Excluidas del Trading</h4>
-                    <p class="text-[10px] text-gray-600">Estas categorias NO se tradearán aunque generen alerta. Las alertas de Telegram no se ven afectadas.</p>
-                    <div class="flex flex-wrap gap-2" id="aat-cat-checks">
-                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
-                            <input type="checkbox" value="sports" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Sports
-                        </label>
-                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
-                            <input type="checkbox" value="esports" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Esports
-                        </label>
-                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
-                            <input type="checkbox" value="politics" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Politics
-                        </label>
-                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
-                            <input type="checkbox" value="crypto" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Crypto
-                        </label>
-                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
-                            <input type="checkbox" value="pop culture" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Pop Culture
-                        </label>
-                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
-                            <input type="checkbox" value="business" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Business
-                        </label>
-                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
-                            <input type="checkbox" value="science" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Science
-                        </label>
-                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
-                            <input type="checkbox" value="nba" class="aat-cat-cb rounded border-gray-600 text-purple-500"> NBA
-                        </label>
-                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
-                            <input type="checkbox" value="nfl" class="aat-cat-cb rounded border-gray-600 text-purple-500"> NFL
-                        </label>
-                        <label class="flex items-center gap-1.5 bg-gray-800/50 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-700/50 transition text-xs">
-                            <input type="checkbox" value="soccer" class="aat-cat-cb rounded border-gray-600 text-purple-500"> Soccer
-                        </label>
-                    </div>
-                    <!-- Custom tag input -->
-                    <div class="flex gap-2 items-center">
-                        <input type="text" id="aat-custom-cat" placeholder="Agregar categoria..." class="bg-gray-800/70 border border-gray-600 rounded px-3 py-1.5 text-xs text-purple-300 w-48" onkeydown="if(event.key==='Enter')addAatCustomCat()">
-                        <button onclick="addAatCustomCat()" class="px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-xs text-gray-300 transition">+ Agregar</button>
-                    </div>
-                    <div id="aat-custom-tags" class="flex flex-wrap gap-1.5"></div>
-                    <input type="hidden" id="aat-excluded-cats">
+                    <h4 class="text-xs text-gray-500 uppercase tracking-wider">Categorias Excluidas</h4>
+                    <p class="text-[10px] text-gray-600">Rojo = excluida (no se tradea). Verde = permitida. Las alertas de Telegram no se ven afectadas.</p>
+                    <div class="flex flex-wrap gap-2" id="aat-cat-pills"></div>
                 </div>
                 <!-- Take Profit / Stop Loss -->
                 <div class="space-y-2">
@@ -2553,8 +2514,6 @@ function showAatSub(sub){
     if(sub==='history')loadAatHistory();
 }
 
-let _aatCustomCats=[];
-
 async function loadAatConfig(){
     const c=await fetchJson('/api/alert-trading/config');
     if(!c)return;
@@ -2573,16 +2532,19 @@ async function loadAatConfig(){
     document.getElementById('aat-tp-enabled').checked=c.take_profit_enabled||false;
     document.getElementById('aat-tp-pct').value=c.take_profit_pct||30;
     document.getElementById('aat-sl-pct').value=c.stop_loss_pct||0;
-    // Categorías: marcar checkboxes y cargar custom tags
-    const savedCats=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
-    const knownVals=['sports','esports','politics','crypto','pop culture','business','science','nba','nfl','soccer'];
-    document.querySelectorAll('.aat-cat-cb').forEach(cb=>{cb.checked=savedCats.includes(cb.value);});
-    _aatCustomCats=savedCats.filter(c=>!knownVals.includes(c));
-    renderAatCustomTags();
+    // Categorías: pills rojo/verde (mismo estilo que config alertas)
+    const excludedCats=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+    const pillsCont=document.getElementById('aat-cat-pills');
+    pillsCont.innerHTML=ALL_CATEGORIES.map(cat=>{
+        const isExcluded=excludedCats.includes(cat);
+        return`<label class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer transition ${isExcluded?'bg-red-900/40 text-red-300':'bg-green-900/40 text-green-300'}">
+            <input type="checkbox" class="aat-cat-pill" data-cat="${cat}" ${isExcluded?'checked':''} onchange="toggleAatCatStyle(this)"> ${cat}
+        </label>`;
+    }).join('');
     // Status cards
     const statusEl=document.getElementById('aat-status');
     if(c.connected){statusEl.textContent='Conectado';statusEl.className='text-sm font-bold text-green-400';}
-    else if(c.enabled&&c.wallet_connected){statusEl.textContent='Listo';statusEl.className='text-sm font-bold text-yellow-400';}
+    else if(c.enabled&&c.has_own_wallet){statusEl.textContent='Listo';statusEl.className='text-sm font-bold text-yellow-400';}
     else if(!c.enabled){statusEl.textContent='Desactivado';statusEl.className='text-sm font-bold text-gray-500';}
     else{statusEl.textContent='Sin wallet';statusEl.className='text-sm font-bold text-red-400';}
     document.getElementById('aat-trades-today').textContent=c.trades_today||'0';
@@ -2594,46 +2556,26 @@ async function loadAatConfig(){
     document.getElementById('aat-pnl-24h').textContent='$'+pnl24.toFixed(2);
     document.getElementById('aat-pnl-24h').className='text-lg font-bold mt-1 '+(pnl24>=0?'text-green-400':'text-red-400');
     document.getElementById('aat-open-pos').textContent=c.open_positions||'0';
-    // Wallet status
-    if(c.wallet_connected){
+    // Wallet: solo mostrar "conectada" si tiene wallet PROPIA
+    if(c.has_own_wallet){
         document.getElementById('aat-wallet-connected').classList.remove('hidden');
+        document.getElementById('aat-wallet-form').classList.add('hidden');
         document.getElementById('aat-wallet-addr').textContent=c.wallet_address?c.wallet_address.slice(0,6)+'...'+c.wallet_address.slice(-4):'—';
         document.getElementById('aat-key-preview').textContent=c.api_key_preview||'—';
-        document.getElementById('aat-wallet-type').textContent=c.wallet_source||'—';
-        // Botón desconectar solo si wallet es propia
-        const dcBtn=document.querySelector('#aat-wallet-connected button');
-        if(dcBtn){if(c.has_own_wallet){dcBtn.classList.remove('hidden');}else{dcBtn.classList.add('hidden');}}
-        // Mostrar formulario para agregar wallet propia si usa compartida
-        document.getElementById('aat-wallet-form').classList.toggle('hidden',c.has_own_wallet);
     }else{
         document.getElementById('aat-wallet-connected').classList.add('hidden');
         document.getElementById('aat-wallet-form').classList.remove('hidden');
     }
 }
 
+function toggleAatCatStyle(el){
+    const l=el.parentElement;
+    if(el.checked){l.className='flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer transition bg-red-900/40 text-red-300';}
+    else{l.className='flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer transition bg-green-900/40 text-green-300';}
+}
+
 function collectAatCategories(){
-    const checked=[];
-    document.querySelectorAll('.aat-cat-cb:checked').forEach(cb=>checked.push(cb.value));
-    return[...checked,..._aatCustomCats].join(',');
-}
-
-function renderAatCustomTags(){
-    const el=document.getElementById('aat-custom-tags');
-    el.innerHTML=_aatCustomCats.map(c=>{const safe=c.replace(/'/g,"\\'").replace(/"/g,'&quot;');return`<span class="inline-flex items-center gap-1 bg-red-900/30 text-red-300 rounded px-2 py-0.5 text-[10px]">${safe}<button onclick="removeAatCustomCat('${safe}')" class="text-red-400 hover:text-red-200 font-bold ml-0.5">&times;</button></span>`;}).join('');
-}
-
-function addAatCustomCat(){
-    const input=document.getElementById('aat-custom-cat');
-    const val=input.value.trim().toLowerCase();
-    if(!val)return;
-    if(!_aatCustomCats.includes(val)){_aatCustomCats.push(val);}
-    input.value='';
-    renderAatCustomTags();
-}
-
-function removeAatCustomCat(cat){
-    _aatCustomCats=_aatCustomCats.filter(c=>c!==cat);
-    renderAatCustomTags();
+    return[...document.querySelectorAll('.aat-cat-pill:checked')].map(c=>c.dataset.cat).join(',');
 }
 
 async function generateAatKeys(){
