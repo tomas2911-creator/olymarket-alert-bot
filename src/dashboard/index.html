@@ -189,45 +189,163 @@
         <!-- v8.0 Features -->
         <div class="mt-6 pt-4 border-t border-orange-500/30">
             <h4 class="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-3">Features v8.0</h4>
+
             <!-- Siempre activas -->
-            <div class="mb-3">
-                <div class="text-[10px] text-gray-500 uppercase mb-1">Siempre activos</div>
-                <div class="flex flex-wrap gap-1.5">
-                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Correlation Filter</span>
-                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Rate Limiting</span>
-                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Bankroll Track</span>
-                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Heatmap</span>
-                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Trade Journal</span>
-                    <span class="px-2 py-1 rounded bg-green-900/30 text-green-400 text-[10px]">Push Notifs</span>
+            <div class="mb-4">
+                <div class="text-[10px] text-gray-500 uppercase mb-2">Siempre activos (no se pueden desactivar)</div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div class="bg-green-900/20 border border-green-800/40 rounded-lg p-2.5">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="px-2 py-0.5 rounded bg-green-900/50 text-green-400 text-[10px] font-bold">ON</span>
+                            <span class="text-xs text-white font-medium">Correlation Filter</span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 leading-relaxed">Antes de ejecutar un trade, compara la pregunta del mercado con tus posiciones abiertas. Si hay >60% de palabras similares, bloquea la compra para no duplicar riesgo.</p>
+                        <p class="text-[10px] text-gray-600 mt-1">Activo en: Alert AutoTrader (antes de comprar)</p>
+                    </div>
+                    <div class="bg-green-900/20 border border-green-800/40 rounded-lg p-2.5">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="px-2 py-0.5 rounded bg-green-900/50 text-green-400 text-[10px] font-bold">ON</span>
+                            <span class="text-xs text-white font-medium">Rate Limiting</span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 leading-relaxed">Controla la velocidad de llamadas a la API de Polymarket. Si recibe error 429 o 500, aplica backoff exponencial automático para no ser bloqueado.</p>
+                        <p class="text-[10px] text-gray-600 mt-1">Activo en: Todas las llamadas HTTP a Polymarket</p>
+                    </div>
+                    <div class="bg-green-900/20 border border-green-800/40 rounded-lg p-2.5">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="px-2 py-0.5 rounded bg-green-900/50 text-green-400 text-[10px] font-bold">ON</span>
+                            <span class="text-xs text-white font-medium">Bankroll Tracking</span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 leading-relaxed">Rastrea tu balance USDC real en Polygon cada 5 min. Calcula ROI, drawdown, win rate y limita el tamaño máximo de apuesta según % del bankroll.</p>
+                        <p class="text-[10px] text-gray-600 mt-1">Activo en: Panel Bankroll + verificación antes de cada trade</p>
+                    </div>
+                    <div class="bg-green-900/20 border border-green-800/40 rounded-lg p-2.5">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="px-2 py-0.5 rounded bg-green-900/50 text-green-400 text-[10px] font-bold">ON</span>
+                            <span class="text-xs text-white font-medium">Heatmap</span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 leading-relaxed">Muestra un mapa de calor con el volumen y cantidad de alertas por categoría de mercado (politics, crypto, sports, etc.). Útil para ver dónde está la actividad.</p>
+                        <p class="text-[10px] text-gray-600 mt-1">Activo en: Panel Heatmap (sidebar)</p>
+                    </div>
+                    <div class="bg-green-900/20 border border-green-800/40 rounded-lg p-2.5">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="px-2 py-0.5 rounded bg-green-900/50 text-green-400 text-[10px] font-bold">ON</span>
+                            <span class="text-xs text-white font-medium">Trade Journal</span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 leading-relaxed">Diario de trading personal. Puedes anotar observaciones, errores y aprendizajes de cada sesión. Se guarda en DB con fecha y hora.</p>
+                        <p class="text-[10px] text-gray-600 mt-1">Activo en: Panel Trade Journal (sidebar)</p>
+                    </div>
+                    <div class="bg-green-900/20 border border-green-800/40 rounded-lg p-2.5">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="px-2 py-0.5 rounded bg-green-900/50 text-green-400 text-[10px] font-bold">ON</span>
+                            <span class="text-xs text-white font-medium">Push Notifications</span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 leading-relaxed">Cuando una alerta tiene score alto (>= umbral configurable), se guarda una notificación en el dashboard con nivel critical/high/medium para revisión rápida.</p>
+                        <p class="text-[10px] text-gray-600 mt-1">Activo en: Panel Infraestructura + cada alerta enviada</p>
+                    </div>
                 </div>
             </div>
+
             <!-- Configurables -->
-            <div class="text-[10px] text-gray-500 uppercase mb-1">Configurables</div>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-mtf-label">
-                    <input type="checkbox" id="v8-mtf" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Multi-Timeframe</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-vwap-label">
-                    <input type="checkbox" id="v8-vwap" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">VWAP</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-ob-crypto-label">
-                    <input type="checkbox" id="v8-ob-crypto" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">OrderBook Crypto</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-hedging-label">
-                    <input type="checkbox" id="v8-hedging" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Hedging Auto</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-news-label">
-                    <input type="checkbox" id="v8-news" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">News Catalyst</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-ml-label">
-                    <input type="checkbox" id="v8-ml" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">ML Scoring</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-ws-label">
-                    <input type="checkbox" id="v8-ws" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">WebSocket</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-queue-label">
-                    <input type="checkbox" id="v8-queue" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Queue System</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-mm-label">
-                    <input type="checkbox" id="v8-mm" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Market Making</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-event-label">
-                    <input type="checkbox" id="v8-event" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Event-Driven</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-spike-label">
-                    <input type="checkbox" id="v8-spike" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Spike Detection</span></label>
-                <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition text-xs" id="v8-crossplat-label">
-                    <input type="checkbox" id="v8-crossplat" class="accent-orange-500 w-3.5 h-3.5"><span class="text-white">Cross-Platform</span></label>
+            <div class="mb-2">
+                <div class="text-[10px] text-gray-500 uppercase mb-2">Configurables (activar/desactivar con checkbox)</div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-mtf-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-mtf" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">Multi-Timeframe</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Verifica la dirección del precio en múltiples ventanas temporales (30s, 60s, 120s, 300s). Si la mayoría coinciden, da un boost al score de la señal crypto.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Crypto Arb Detector (señales de BTC/ETH/SOL)</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-vwap-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-vwap" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">VWAP</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Calcula el precio promedio ponderado por volumen (VWAP). Si el precio actual está por encima del VWAP y la dirección es "up", da 10% boost al score.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Crypto Arb Detector (confirmación de tendencia)</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-ob-crypto-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-ob-crypto" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">OrderBook Crypto</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Filtra mercados con poca liquidez antes de generar señal. Analiza el spread implícito entre tokens YES/NO — si es muy amplio, descarta el mercado.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Crypto Arb Detector (filtro de liquidez)</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-hedging-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-hedging" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">Hedging Auto</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Cuando un trade crypto pierde más del % configurado (ej: 80%), compra automáticamente la posición inversa para compensar. Protección contra pérdidas grandes.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Crypto AutoTrader (al resolver trades con pérdida)</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-news-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-news" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">News Catalyst</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Busca noticias recientes relacionadas al mercado via NewsAPI. Si hay muchas menciones (pico de noticias), suma puntos extra al score de la alerta.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Análisis de alertas (señal #23 en Analyzer). Requiere: NEWS_API_KEY</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-ml-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-ml" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">ML Scoring</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Modelo de Machine Learning que predice probabilidad de éxito de cada alerta. Ajusta el score final mezclando ML + scoring tradicional según peso configurable.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Análisis de alertas (ajuste de score en Analyzer). Se re-entrena cada ~2h</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-ws-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-ws" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">WebSocket</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Conexión WebSocket a Polymarket para recibir precios en tiempo real sin hacer polling. Reduce latencia y uso de API. Se reconecta automáticamente si cae.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Sistema de precios en tiempo real (nivel sistema)</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-queue-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-queue" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">Queue System</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Cola de procesamiento para trades entrantes. Evita que el bot se sature con muchos trades simultáneos. Los procesa en orden con prioridad por score.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Loop principal de polling (procesamiento ordenado)</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-mm-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-mm" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">Market Making</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Bot que coloca órdenes BID y ASK a ambos lados del spread en mercados líquidos. Gana la diferencia del spread. Refresca órdenes cada 30 segundos.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Panel Estrategias (cada 2 ciclos del loop principal)</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-event-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-event" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">Event-Driven</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Consulta APIs externas (Binance, UMA Oracle) para detectar si un evento ya se resolvió antes de que Polymarket lo refleje. Tradea el edge de información.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Panel Estrategias (cada 3 ciclos del loop principal)</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-spike-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-spike" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">Spike Detection</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Detecta movimientos bruscos de precio (>10% en 5 min). Puede operar mean reversion (contra el spike) o momentum (a favor). Configurable.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Panel Estrategias (cada 2 ciclos con mercados activos)</p>
+                </label>
+                <label class="flex flex-col bg-gray-800/50 rounded-lg p-2.5 cursor-pointer hover:bg-gray-800/70 transition" id="v8-crossplat-label">
+                    <div class="flex items-center gap-2 mb-1">
+                        <input type="checkbox" id="v8-crossplat" class="accent-orange-500 w-3.5 h-3.5">
+                        <span class="text-xs text-white font-medium">Cross-Platform</span>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-relaxed">Compara precios de Polymarket vs Manifold/Kalshi. Si el mismo evento tiene >3% de diferencia, genera señal de arbitraje entre plataformas.</p>
+                    <p class="text-[10px] text-gray-600 mt-1">Se activa en: Panel Estrategias (cada 3 ciclos del loop principal)</p>
+                </label>
             </div>
             <div class="mt-3 flex gap-3">
                 <button onclick="saveFeaturesV8()" class="px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium transition">Guardar Features v8</button>
