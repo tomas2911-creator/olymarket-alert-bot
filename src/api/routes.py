@@ -635,3 +635,101 @@ async def update_crypto_config(request: Request, body: CryptoConfigUpdate):
     if data:
         await db.set_config_bulk(data)
     return {"status": "ok", "updated": updated}
+
+
+# ── Autotrading Config ─────────────────────────────────────────────
+
+@router.get("/api/crypto-arb/autotrade-config")
+async def get_autotrade_config(request: Request):
+    """Obtener configuración de autotrading (sin exponer credenciales)."""
+    db = request.app.state.db
+    raw = await db.get_config_bulk([
+        "at_enabled", "at_bet_size", "at_min_edge", "at_min_confidence",
+        "at_max_odds", "at_max_positions", "at_order_type",
+        "at_max_daily_loss", "at_max_daily_trades", "at_cooldown_sec",
+        "at_coins", "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
+    ])
+    return {
+        "enabled": raw.get("at_enabled") == "true",
+        "bet_size": float(raw.get("at_bet_size", 5)),
+        "min_edge": float(raw.get("at_min_edge", 15)),
+        "min_confidence": float(raw.get("at_min_confidence", 75)),
+        "max_odds": float(raw.get("at_max_odds", 0.55)),
+        "max_positions": int(raw.get("at_max_positions", 3)),
+        "order_type": raw.get("at_order_type", "limit"),
+        "max_daily_loss": float(raw.get("at_max_daily_loss", 50)),
+        "max_daily_trades": int(raw.get("at_max_daily_trades", 20)),
+        "cooldown_sec": int(raw.get("at_cooldown_sec", 30)),
+        "coins": raw.get("at_coins", "BTC,ETH,SOL").split(","),
+        "api_key_set": bool(raw.get("at_api_key")),
+        "api_secret_set": bool(raw.get("at_api_secret")),
+        "private_key_set": bool(raw.get("at_private_key")),
+        "passphrase_set": bool(raw.get("at_passphrase")),
+        "balance": None,
+        "open_positions": 0,
+        "pnl_today": 0,
+    }
+
+
+@router.post("/api/crypto-arb/autotrade-config")
+async def save_autotrade_config(request: Request):
+    """Guardar configuración de autotrading."""
+    db = request.app.state.db
+    body = await request.json()
+    data = {}
+    if "enabled" in body:
+        data["at_enabled"] = "true" if body["enabled"] else "false"
+    if "bet_size" in body:
+        data["at_bet_size"] = str(body["bet_size"])
+    if "min_edge" in body:
+        data["at_min_edge"] = str(body["min_edge"])
+    if "min_confidence" in body:
+        data["at_min_confidence"] = str(body["min_confidence"])
+    if "max_odds" in body:
+        data["at_max_odds"] = str(body["max_odds"])
+    if "max_positions" in body:
+        data["at_max_positions"] = str(body["max_positions"])
+    if "order_type" in body:
+        data["at_order_type"] = body["order_type"]
+    if "max_daily_loss" in body:
+        data["at_max_daily_loss"] = str(body["max_daily_loss"])
+    if "max_daily_trades" in body:
+        data["at_max_daily_trades"] = str(body["max_daily_trades"])
+    if "cooldown_sec" in body:
+        data["at_cooldown_sec"] = str(body["cooldown_sec"])
+    if "coins" in body:
+        data["at_coins"] = ",".join(body["coins"])
+    if "api_key" in body:
+        data["at_api_key"] = body["api_key"]
+    if "api_secret" in body:
+        data["at_api_secret"] = body["api_secret"]
+    if "private_key" in body:
+        data["at_private_key"] = body["private_key"]
+    if "passphrase" in body:
+        data["at_passphrase"] = body["passphrase"]
+    if data:
+        await db.set_config_bulk(data)
+    return {"status": "ok"}
+
+
+@router.get("/api/crypto-arb/autotrade-test")
+async def test_autotrade_connection(request: Request):
+    """Probar conexión a Polymarket CLOB con las credenciales guardadas."""
+    db = request.app.state.db
+    raw = await db.get_config_bulk(["at_api_key", "at_api_secret", "at_private_key"])
+    if not raw.get("at_api_key") or not raw.get("at_api_secret"):
+        return {"connected": False, "error": "No hay credenciales configuradas. Guarda tu API Key y Secret primero."}
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get("https://clob.polymarket.com/time")
+            if resp.status_code == 200:
+                return {
+                    "connected": True,
+                    "clob_time": resp.json(),
+                    "balance": None,
+                    "note": "Conexión al CLOB exitosa. Para balance se necesita autenticación con py-clob-client."
+                }
+            return {"connected": False, "error": f"CLOB respondió con status {resp.status_code}"}
+    except Exception as e:
+        return {"connected": False, "error": str(e)}

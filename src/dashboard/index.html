@@ -33,27 +33,41 @@
         input[type=range] { accent-color: #6c5ce7; }
         .explorer-link { transition: color 0.15s; }
         .explorer-link:hover { color: #a29bfe; }
+        /* Mobile responsive */
+        @media (max-width: 640px) {
+            .glass-header { padding: 0.5rem 0.75rem; }
+            .crypto-subtabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+            .crypto-subtabs::-webkit-scrollbar { display: none; }
+            .crypto-subtabs button { white-space: nowrap; flex-shrink: 0; }
+            table th, table td { padding-left: 0.5rem; padding-right: 0.5rem; }
+        }
+        .toggle-switch { position:relative; display:inline-flex; align-items:center; cursor:pointer; }
+        .toggle-switch input { position:absolute; opacity:0; width:0; height:0; }
+        .toggle-slider { width:44px; height:24px; background:#374151; border-radius:12px; transition:0.3s; position:relative; }
+        .toggle-slider::after { content:''; position:absolute; top:2px; left:2px; width:20px; height:20px; background:white; border-radius:50%; transition:0.3s; }
+        .toggle-switch input:checked + .toggle-slider { background:#6c5ce7; }
+        .toggle-switch input:checked + .toggle-slider::after { transform:translateX(20px); }
     </style>
 </head>
 <body class="text-gray-200 min-h-screen">
 
 <!-- Header -->
-<header class="glass sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-        <span class="text-2xl">🔍</span>
-        <h1 class="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+<header class="glass glass-header sticky top-0 z-50 px-3 sm:px-6 py-2 sm:py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+        <span class="text-xl sm:text-2xl">🔍</span>
+        <h1 class="text-sm sm:text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent truncate">
             Polymarket Insider Alert
         </h1>
     </div>
-    <div class="flex items-center gap-4 text-sm">
-        <button onclick="toggleConfig()" class="px-3 py-1.5 rounded-lg bg-purple-900/40 text-purple-300 hover:bg-purple-900/60 transition text-xs font-medium">
-            ⚙️ Config
+    <div class="flex items-center gap-2 sm:gap-4 text-sm flex-shrink-0">
+        <button onclick="toggleConfig()" class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-purple-900/40 text-purple-300 hover:bg-purple-900/60 transition text-xs font-medium">
+            ⚙️ <span class="hidden sm:inline">Config</span>
         </button>
-        <span class="flex items-center gap-2">
+        <span class="flex items-center gap-1 sm:gap-2">
             <span class="w-2 h-2 rounded-full bg-green-400 live-dot"></span>
-            <span id="uptime" class="text-gray-400">Conectando...</span>
+            <span id="uptime" class="text-gray-400 text-xs sm:text-sm">Conectando...</span>
         </span>
-        <span id="last-update" class="text-gray-500 text-xs"></span>
+        <span id="last-update" class="text-gray-500 text-xs hidden sm:inline"></span>
     </div>
 </header>
 
@@ -335,14 +349,14 @@
 
     <!-- Main Tabs -->
     <div class="glass glow rounded-xl overflow-hidden">
-        <div class="flex border-b border-gray-700/50 overflow-x-auto">
-            <button onclick="showTab('alerts')" id="tab-alerts" class="tab-btn active px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">🚨 Alertas</button>
-            <button onclick="showTab('leaderboard')" id="tab-leaderboard" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">🏆 Leaderboard</button>
-            <button onclick="showTab('wallets')" id="tab-wallets" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">👛 Wallets</button>
-            <button onclick="showTab('markets')" id="tab-markets" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">📊 Mercados</button>
-            <button onclick="showTab('coordination')" id="tab-coordination" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">🔗 Coordinacion</button>
-            <button onclick="showTab('feed')" id="tab-feed" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">⚡ Feed</button>
-            <button onclick="showTab('crypto')" id="tab-crypto" class="tab-btn px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap">₿ Crypto Arb</button>
+        <div class="flex border-b border-gray-700/50 overflow-x-auto crypto-subtabs">
+            <button onclick="showTab('alerts')" id="tab-alerts" class="tab-btn active px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">🚨 Alertas</button>
+            <button onclick="showTab('leaderboard')" id="tab-leaderboard" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">🏆 Leaderboard</button>
+            <button onclick="showTab('wallets')" id="tab-wallets" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">👛 Wallets</button>
+            <button onclick="showTab('markets')" id="tab-markets" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">📊 Mercados</button>
+            <button onclick="showTab('coordination')" id="tab-coordination" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">🔗 Coordinacion</button>
+            <button onclick="showTab('feed')" id="tab-feed" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">⚡ Feed</button>
+            <button onclick="showTab('crypto')" id="tab-crypto" class="tab-btn px-3 sm:px-5 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap">₿ Crypto Arb</button>
         </div>
 
         <!-- Alerts Panel -->
@@ -573,10 +587,11 @@
             </div>
 
             <!-- Sub-tabs: Señales / Backtest / Config -->
-            <div class="flex border-b border-gray-700/30 px-4 gap-1">
+            <div class="flex border-b border-gray-700/30 px-4 gap-1 crypto-subtabs">
                 <button onclick="showCryptoSub('signals')" id="csub-signals" class="px-3 py-2 text-xs font-medium border-b-2 border-purple-500 text-purple-300">Señales en Vivo</button>
                 <button onclick="showCryptoSub('history')" id="csub-history" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Historial</button>
                 <button onclick="showCryptoSub('backtest')" id="csub-backtest" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Backtest</button>
+                <button onclick="showCryptoSub('autotrade')" id="csub-autotrade" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Autotrading</button>
                 <button onclick="showCryptoSub('cconfig')" id="csub-cconfig" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Config</button>
             </div>
 
@@ -716,6 +731,184 @@
                     <div id="bt-loading" class="hidden text-center py-8">
                         <div class="text-purple-400 text-sm">Ejecutando backtest...</div>
                         <div class="text-gray-500 text-xs mt-1">Esto puede tardar unos segundos</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Crypto Sub: Autotrading -->
+            <div id="cpanel-autotrade" class="hidden">
+                <div class="p-4 space-y-4">
+                    <!-- Warning banner -->
+                    <div class="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3">
+                        <div class="flex items-center gap-2 text-yellow-400 text-sm font-medium">
+                            ⚠️ Trading Automático — Dinero Real
+                        </div>
+                        <p class="text-yellow-200/70 text-xs mt-1">
+                            Este módulo ejecuta trades reales en Polymarket usando tu wallet. Configura con cuidado y empieza con montos pequeños.
+                        </p>
+                    </div>
+
+                    <!-- Master toggle -->
+                    <div class="flex items-center justify-between bg-gray-800/40 rounded-lg p-4">
+                        <div>
+                            <div class="text-sm font-medium">Autotrading Activado</div>
+                            <div class="text-xs text-gray-400">Ejecutar trades automáticamente en base a señales</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="at-enabled">
+                            <div class="toggle-slider"></div>
+                        </label>
+                    </div>
+
+                    <!-- Wallet & API -->
+                    <div class="space-y-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Wallet & API</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">API Key</label>
+                                <input type="password" id="at-api-key" placeholder="pk_..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">API Secret</label>
+                                <input type="password" id="at-api-secret" placeholder="Secret..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Private Key (Wallet)</label>
+                                <input type="password" id="at-private-key" placeholder="0x..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Passphrase</label>
+                                <input type="password" id="at-passphrase" placeholder="Passphrase..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                        </div>
+                        <p class="text-[10px] text-gray-600">Las credenciales se guardan encriptadas en el servidor. Nunca se exponen en el frontend.</p>
+                    </div>
+
+                    <!-- Trading Parameters -->
+                    <div class="space-y-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Parámetros de Trading</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Bet Size ($)</label>
+                                <input type="number" id="at-bet-size" value="5" min="1" max="1000" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Edge (%)</label>
+                                <input type="number" id="at-min-edge" value="15" min="5" max="50" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Confianza (%)</label>
+                                <input type="number" id="at-min-conf" value="75" min="50" max="95" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Odds</label>
+                                <input type="number" id="at-max-odds" value="0.55" min="0.3" max="0.85" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Posiciones</label>
+                                <input type="number" id="at-max-positions" value="3" min="1" max="20" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Tipo Orden</label>
+                                <select id="at-order-type" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm text-purple-300">
+                                    <option value="limit">Limit</option>
+                                    <option value="market">Market (FOK)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Risk Management -->
+                    <div class="space-y-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Gestión de Riesgo</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Pérdida Diaria ($)</label>
+                                <input type="number" id="at-max-daily-loss" value="50" min="10" max="5000" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Trades/Día</label>
+                                <input type="number" id="at-max-daily-trades" value="20" min="1" max="200" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Cooldown (seg)</label>
+                                <input type="number" id="at-cooldown" value="30" min="0" max="300" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Monedas habilitadas -->
+                    <div class="space-y-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Monedas</h4>
+                        <div class="flex flex-wrap gap-3">
+                            <label class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-4 py-2 cursor-pointer">
+                                <input type="checkbox" id="at-coin-btc" checked class="accent-purple-500">
+                                <span class="text-sm font-medium">BTC</span>
+                            </label>
+                            <label class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-4 py-2 cursor-pointer">
+                                <input type="checkbox" id="at-coin-eth" checked class="accent-purple-500">
+                                <span class="text-sm font-medium">ETH</span>
+                            </label>
+                            <label class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-4 py-2 cursor-pointer">
+                                <input type="checkbox" id="at-coin-sol" checked class="accent-purple-500">
+                                <span class="text-sm font-medium">SOL</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Status Panel -->
+                    <div class="bg-gray-800/40 rounded-lg p-4 space-y-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Estado del Bot</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div>
+                                <div class="text-[10px] text-gray-500 uppercase">Conexión</div>
+                                <div class="text-sm font-bold text-red-400" id="at-conn-status">Desconectado</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] text-gray-500 uppercase">Balance USDC</div>
+                                <div class="text-sm font-bold" id="at-balance">-</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] text-gray-500 uppercase">Posiciones Abiertas</div>
+                                <div class="text-sm font-bold" id="at-open-positions">0</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] text-gray-500 uppercase">PnL Hoy (real)</div>
+                                <div class="text-sm font-bold" id="at-pnl-today">$0.00</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Trades Log -->
+                    <div class="space-y-2">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Últimos Trades Ejecutados</h4>
+                        <div class="overflow-x-auto" style="max-height:200px;overflow-y:auto">
+                            <table class="w-full text-xs">
+                                <thead class="sticky top-0 bg-dark-800"><tr class="text-gray-500 uppercase border-b border-gray-700/50">
+                                    <th class="px-3 py-1.5 text-left">Hora</th>
+                                    <th class="px-3 py-1.5 text-center">Moneda</th>
+                                    <th class="px-3 py-1.5 text-center">Dir</th>
+                                    <th class="px-3 py-1.5 text-right">Size</th>
+                                    <th class="px-3 py-1.5 text-right">Precio</th>
+                                    <th class="px-3 py-1.5 text-center">Estado</th>
+                                    <th class="px-3 py-1.5 text-right">PnL</th>
+                                </tr></thead>
+                                <tbody id="at-trades-body">
+                                    <tr><td colspan="7" class="text-center py-4 text-gray-600 text-xs">Sin trades ejecutados aún</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex flex-wrap gap-3">
+                        <button onclick="saveAutotradeConfig()" class="px-4 py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">
+                            Guardar Config
+                        </button>
+                        <button onclick="testAutotradeConnection()" class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm font-medium transition">
+                            Probar Conexión
+                        </button>
+                        <span id="at-save-status" class="text-xs self-center hidden"></span>
                     </div>
                 </div>
             </div>
@@ -1480,7 +1673,7 @@ async function loadCharts(){
 let cryptoRefreshInterval=null;
 
 function showCryptoSub(sub){
-    ['signals','history','backtest','cconfig'].forEach(s=>{
+    ['signals','history','backtest','autotrade','cconfig'].forEach(s=>{
         const el=document.getElementById('cpanel-'+s);
         if(el)el.classList.toggle('hidden',s!==sub);
         const btn=document.getElementById('csub-'+s);
@@ -1492,6 +1685,7 @@ function showCryptoSub(sub){
         }
     });
     if(sub==='history')loadCryptoHistory();
+    if(sub==='autotrade')loadAutotradeConfig();
     if(sub==='cconfig')loadCryptoConfig();
 }
 
@@ -1776,6 +1970,106 @@ async function saveCryptoConfig(){
     const st=document.getElementById('cc-status');
     st.classList.remove('hidden');
     setTimeout(()=>st.classList.add('hidden'),2000);
+}
+
+// ── Autotrading ──
+async function loadAutotradeConfig(){
+    const c=await fetchJson('/api/crypto-arb/autotrade-config');
+    if(!c)return;
+    document.getElementById('at-enabled').checked=c.enabled||false;
+    document.getElementById('at-api-key').value=c.api_key_set?'••••••••':'';
+    document.getElementById('at-api-secret').value=c.api_secret_set?'••••••••':'';
+    document.getElementById('at-private-key').value=c.private_key_set?'••••••••':'';
+    document.getElementById('at-passphrase').value=c.passphrase_set?'••••••••':'';
+    document.getElementById('at-bet-size').value=c.bet_size||5;
+    document.getElementById('at-min-edge').value=c.min_edge||15;
+    document.getElementById('at-min-conf').value=c.min_confidence||75;
+    document.getElementById('at-max-odds').value=c.max_odds||0.55;
+    document.getElementById('at-max-positions').value=c.max_positions||3;
+    document.getElementById('at-order-type').value=c.order_type||'limit';
+    document.getElementById('at-max-daily-loss').value=c.max_daily_loss||50;
+    document.getElementById('at-max-daily-trades').value=c.max_daily_trades||20;
+    document.getElementById('at-cooldown').value=c.cooldown_sec||30;
+    document.getElementById('at-coin-btc').checked=c.coins?.includes('BTC')!==false;
+    document.getElementById('at-coin-eth').checked=c.coins?.includes('ETH')!==false;
+    document.getElementById('at-coin-sol').checked=c.coins?.includes('SOL')!==false;
+    // Status
+    const connEl=document.getElementById('at-conn-status');
+    if(c.enabled&&c.api_key_set){
+        connEl.textContent='Listo';connEl.className='text-sm font-bold text-yellow-400';
+    }else if(!c.enabled){
+        connEl.textContent='Desactivado';connEl.className='text-sm font-bold text-gray-500';
+    }else{
+        connEl.textContent='Sin credenciales';connEl.className='text-sm font-bold text-red-400';
+    }
+    document.getElementById('at-balance').textContent=c.balance?`$${c.balance.toFixed(2)}`:'-';
+    document.getElementById('at-open-positions').textContent=c.open_positions||'0';
+    document.getElementById('at-pnl-today').textContent=`$${(c.pnl_today||0).toFixed(2)}`;
+}
+
+async function saveAutotradeConfig(){
+    const coins=[];
+    if(document.getElementById('at-coin-btc').checked)coins.push('BTC');
+    if(document.getElementById('at-coin-eth').checked)coins.push('ETH');
+    if(document.getElementById('at-coin-sol').checked)coins.push('SOL');
+    const apiKey=document.getElementById('at-api-key').value;
+    const apiSecret=document.getElementById('at-api-secret').value;
+    const privateKey=document.getElementById('at-private-key').value;
+    const passphrase=document.getElementById('at-passphrase').value;
+    const body={
+        enabled:document.getElementById('at-enabled').checked,
+        bet_size:parseFloat(document.getElementById('at-bet-size').value)||5,
+        min_edge:parseFloat(document.getElementById('at-min-edge').value)||15,
+        min_confidence:parseFloat(document.getElementById('at-min-conf').value)||75,
+        max_odds:parseFloat(document.getElementById('at-max-odds').value)||0.55,
+        max_positions:parseInt(document.getElementById('at-max-positions').value)||3,
+        order_type:document.getElementById('at-order-type').value,
+        max_daily_loss:parseFloat(document.getElementById('at-max-daily-loss').value)||50,
+        max_daily_trades:parseInt(document.getElementById('at-max-daily-trades').value)||20,
+        cooldown_sec:parseInt(document.getElementById('at-cooldown').value)||30,
+        coins:coins,
+    };
+    if(apiKey&&apiKey!=='••••••••')body.api_key=apiKey;
+    if(apiSecret&&apiSecret!=='••••••••')body.api_secret=apiSecret;
+    if(privateKey&&privateKey!=='••••••••')body.private_key=privateKey;
+    if(passphrase&&passphrase!=='••••••••')body.passphrase=passphrase;
+    try{
+        const r=await fetch('/api/crypto-arb/autotrade-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const data=await r.json();
+        const st=document.getElementById('at-save-status');
+        if(data.status==='ok'){
+            st.textContent='Guardado!';st.className='text-xs text-green-400 self-center';
+        }else{
+            st.textContent='Error: '+(data.error||'desconocido');st.className='text-xs text-red-400 self-center';
+        }
+        st.classList.remove('hidden');
+        setTimeout(()=>st.classList.add('hidden'),3000);
+        loadAutotradeConfig();
+    }catch(e){alert('Error de conexión');}
+}
+
+async function testAutotradeConnection(){
+    const st=document.getElementById('at-save-status');
+    st.textContent='Probando conexión...';st.className='text-xs text-yellow-400 self-center';
+    st.classList.remove('hidden');
+    try{
+        const r=await fetch('/api/crypto-arb/autotrade-test');
+        const data=await r.json();
+        if(data.connected){
+            st.textContent=`Conectado! Balance: $${(data.balance||0).toFixed(2)} USDC`;
+            st.className='text-xs text-green-400 self-center';
+            document.getElementById('at-conn-status').textContent='Conectado';
+            document.getElementById('at-conn-status').className='text-sm font-bold text-green-400';
+            if(data.balance)document.getElementById('at-balance').textContent=`$${data.balance.toFixed(2)}`;
+        }else{
+            st.textContent='Error: '+(data.error||'No se pudo conectar');
+            st.className='text-xs text-red-400 self-center';
+        }
+    }catch(e){
+        st.textContent='Error de conexión al servidor';
+        st.className='text-xs text-red-400 self-center';
+    }
+    setTimeout(()=>st.classList.add('hidden'),5000);
 }
 
 // ── Init ──

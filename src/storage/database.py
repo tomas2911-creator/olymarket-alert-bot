@@ -678,6 +678,11 @@ class Database:
             rows = await conn.fetch("SELECT key, value FROM bot_config")
             return {r["key"]: r["value"] for r in rows}
 
+    async def get_config_bulk(self, keys: list[str]) -> dict:
+        """Obtener múltiples valores de config por lista de keys."""
+        all_config = await self.get_config()
+        return {k: all_config[k] for k in keys if k in all_config}
+
     async def set_config(self, key: str, value: str):
         async with self._pool.acquire() as conn:
             await conn.execute("""
