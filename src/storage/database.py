@@ -146,6 +146,8 @@ class Database:
                 "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS price_1h DOUBLE PRECISION",
                 "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS price_6h DOUBLE PRECISION",
                 "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS price_24h DOUBLE PRECISION",
+                "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS price_latest DOUBLE PRECISION",
+                "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS price_latest_at TIMESTAMPTZ",
                 "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS is_copy_trade BOOLEAN DEFAULT FALSE",
                 # Wallets: on-chain expandido
                 "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS on_chain_age_days INTEGER",
@@ -1000,6 +1002,28 @@ class Database:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 f"UPDATE alerts SET {field} = $1 WHERE id = $2",
+                price, alert_id,
+            )
+
+    async def get_alerts_for_latest_price(self, limit: int = 30) -> list[dict]:
+        """Obtener alertas no resueltas que necesitan update de price_latest (cada ~1h)."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT id, market_id, outcome, side, price_at_alert
+                FROM alerts
+                WHERE resolved = FALSE
+                  AND price_at_alert IS NOT NULL
+                  AND (price_latest_at IS NULL OR price_latest_at < NOW() - INTERVAL '55 minutes')
+                ORDER BY created_at DESC
+                LIMIT $1
+            """, limit)
+            return [dict(r) for r in rows]
+
+    async def update_alert_price_latest(self, alert_id: int, price: float):
+        """Actualizar price_latest con precio actual del mercado."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE alerts SET price_latest = $1, price_latest_at = NOW() WHERE id = $2",
                 price, alert_id,
             )
 

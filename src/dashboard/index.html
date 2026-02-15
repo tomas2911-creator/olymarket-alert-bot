@@ -1597,13 +1597,15 @@ function renderAlertsPage(){
         const triggerHtml=triggers.length>0?`<div class="flex flex-col gap-0.5">${triggers.slice(0,4).map(t=>`<span class="text-[10px] text-gray-300">${t}</span>`).join('')}</div>`:'<span class="text-gray-600 text-[10px]">-</span>';
         const copyBadge=a.is_copy_trade?'<span class="text-yellow-400 text-xs" title="Copy-Trade Alert">⭐</span> ':'';
         let piHtml='-';
-        if(a.price_at_alert!=null){
-            const parts=[];
-            if(a.price_1h!=null){const d=((a.price_1h-a.price_at_alert)/a.price_at_alert*100);parts.push(`<span class="${d>0?'text-green-400':'text-red-400'}">${d>0?'+':''}${d.toFixed(1)}%</span>`);}
-            if(a.price_6h!=null){const d=((a.price_6h-a.price_at_alert)/a.price_at_alert*100);parts.push(`<span class="${d>0?'text-green-400':'text-red-400'}">${d>0?'+':''}${d.toFixed(1)}%</span>`);}
-            if(a.price_24h!=null){const d=((a.price_24h-a.price_at_alert)/a.price_at_alert*100);parts.push(`<span class="${d>0?'text-green-400':'text-red-400'}">${d>0?'+':''}${d.toFixed(1)}%</span>`);}
-            if(parts.length>0)piHtml=`<div class="text-[10px]">${parts.join(' / ')}</div><div class="text-[9px] text-gray-600">1h/6h/24h</div>`;
-            else piHtml=`<span class="text-[10px] text-gray-600">${a.price_at_alert.toFixed(2)} (esperando)</span>`;
+        if(a.price_at_alert!=null&&a.price_at_alert>0.005){
+            const fmt=(p)=>{if(p==null)return null;const d=((p-a.price_at_alert)/a.price_at_alert*100);if(Math.abs(d)>5000)return null;return{pct:d,html:`<span class="${d>0?'text-green-400':'text-red-400'}">${d>0?'+':''}${d.toFixed(1)}%</span>`};};
+            const items=[];
+            const lat=fmt(a.price_latest);if(lat)items.push(`<span class="text-gray-500">Ahora:</span>${lat.html}`);
+            const h1=fmt(a.price_1h);if(h1)items.push(`<span class="text-gray-500">1h:</span>${h1.html}`);
+            const h6=fmt(a.price_6h);if(h6)items.push(`<span class="text-gray-500">6h:</span>${h6.html}`);
+            const h24=fmt(a.price_24h);if(h24)items.push(`<span class="text-gray-500">24h:</span>${h24.html}`);
+            if(items.length>0)piHtml=`<div class="text-[10px] space-y-0.5">${items.join('<br>')}</div>`;
+            else piHtml=`<span class="text-[10px] text-gray-600">@ ${a.price_at_alert.toFixed(2)} (esperando)</span>`;
         }
         return`<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
             <td class="px-4 py-2 text-gray-400 whitespace-nowrap text-xs">${fmtDate(a.created_at)}</td>

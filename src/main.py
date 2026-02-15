@@ -186,8 +186,9 @@ class PolymarketAlertBot:
                 if cycle % 15 == 0:
                     await self.check_onchain_wallets()
 
-                # Cada 60 ciclos (~1h): health check + coordination
+                # Cada 60 ciclos (~1h): health check + coordination + price latest
                 if cycle % 60 == 0:
+                    await self.update_latest_prices()
                     await self.send_health_check()
                     try:
                         coord_count = await self.db.detect_coordination()
@@ -559,6 +560,26 @@ class PolymarketAlertBot:
                 print(f"Price impact: {updated} alertas actualizadas", flush=True)
         except Exception as e:
             print(f"Error en price impact check: {e}", flush=True)
+
+    async def update_latest_prices(self):
+        """Actualizar price_latest de alertas abiertas (cada ~1h)."""
+        try:
+            alerts = await self.db.get_alerts_for_latest_price(limit=30)
+            if not alerts:
+                return
+            updated = 0
+            async with PolymarketClient() as client:
+                for alert in alerts:
+                    price = await client.get_market_price(
+                        alert["market_id"], alert.get("outcome", "Yes")
+                    )
+                    if price is not None:
+                        await self.db.update_alert_price_latest(alert["id"], price)
+                        updated += 1
+            if updated:
+                print(f"Price latest: {updated} alertas actualizadas", flush=True)
+        except Exception as e:
+            print(f"Error en update_latest_prices: {e}", flush=True)
 
     # ── On-chain Checker (Polygonscan) ─────────────────────────────
 
