@@ -968,6 +968,7 @@ async def get_alert_trading_config(request: Request):
         "aat_max_daily_trades", "aat_max_daily_loss",
         "aat_min_wallet_hit_rate", "aat_cooldown_hours",
         "aat_excluded_categories", "aat_require_smart_money",
+        "aat_take_profit_enabled", "aat_take_profit_pct", "aat_stop_loss_pct",
         "aat_api_key", "aat_private_key",
         "at_api_key", "at_private_key",
     ])
@@ -990,6 +991,9 @@ async def get_alert_trading_config(request: Request):
         "cooldown_hours": float(raw.get("aat_cooldown_hours", 6)),
         "excluded_categories": raw.get("aat_excluded_categories", ""),
         "require_smart_money": raw.get("aat_require_smart_money") == "true",
+        "take_profit_enabled": raw.get("aat_take_profit_enabled") == "true",
+        "take_profit_pct": float(raw.get("aat_take_profit_pct", 0)),
+        "stop_loss_pct": float(raw.get("aat_stop_loss_pct", 0)),
         "has_own_wallet": has_own_wallet,
         "wallet_connected": has_own_wallet or has_shared_wallet,
         "wallet_source": "propia" if has_own_wallet else ("compartida (Crypto Arb)" if has_shared_wallet else "ninguna"),
@@ -1038,6 +1042,12 @@ async def save_alert_trading_config(request: Request):
         data["aat_excluded_categories"] = body["excluded_categories"]
     if "require_smart_money" in body:
         data["aat_require_smart_money"] = "true" if body["require_smart_money"] else "false"
+    if "take_profit_enabled" in body:
+        data["aat_take_profit_enabled"] = "true" if body["take_profit_enabled"] else "false"
+    if "take_profit_pct" in body:
+        data["aat_take_profit_pct"] = str(body["take_profit_pct"])
+    if "stop_loss_pct" in body:
+        data["aat_stop_loss_pct"] = str(body["stop_loss_pct"])
     if data:
         await db.set_config_bulk(data)
     # Recargar config en alert autotrader

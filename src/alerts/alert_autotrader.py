@@ -6,10 +6,10 @@ Flujo:
 3. Busca token_id del outcome apostado por el insider
 4. Coloca orden BUY via py-clob-client
 5. Registra trade en tabla alert_autotrades
-6. Se resuelve cuando el mercado cierra (desde main.py)
+6. Take Profit: vende automáticamente si el precio sube >= X% (configurable)
+7. Se resuelve cuando el mercado cierra o se ejecuta take profit
 
-IMPORTANTE: Comparte las mismas credenciales CLOB (wallet) que el crypto autotrader.
-La config de credenciales se lee de at_api_key, at_private_key, etc.
+Credenciales: usa wallet propia (aat_) o fallback a la de Crypto Arb (at_).
 La config de trading es independiente con prefijo "aat_".
 """
 import asyncio
@@ -48,6 +48,7 @@ class AlertAutoTrader:
                 "aat_max_daily_trades", "aat_max_daily_loss",
                 "aat_min_wallet_hit_rate", "aat_cooldown_hours",
                 "aat_excluded_categories", "aat_require_smart_money",
+                "aat_take_profit_enabled", "aat_take_profit_pct", "aat_stop_loss_pct",
                 # Credenciales propias del alert autotrader
                 "aat_api_key", "aat_api_secret", "aat_private_key", "aat_passphrase",
                 # Fallback: credenciales compartidas de crypto autotrader
@@ -76,6 +77,9 @@ class AlertAutoTrader:
                     if c.strip()
                 },
                 "require_smart_money": raw.get("aat_require_smart_money") == "true",
+                "take_profit_enabled": raw.get("aat_take_profit_enabled") == "true",
+                "take_profit_pct": float(raw.get("aat_take_profit_pct", 0)),
+                "stop_loss_pct": float(raw.get("aat_stop_loss_pct", 0)),
                 "api_key": api_key,
                 "api_secret": api_secret,
                 "private_key": private_key,
@@ -96,7 +100,7 @@ class AlertAutoTrader:
             status = "ACTIVADO" if self._enabled and self._client else "DESACTIVADO"
             reason = ""
             if self._enabled and not self._client:
-                reason = " (sin credenciales — configura wallet en Crypto Arb)"
+                reason = " (sin credenciales — configura wallet en Alert Trading o Crypto Arb)"
             print(f"[AlertTrader] {status}{reason} | bet=${self._config['bet_size']} "
                   f"min_score>={self._config['min_score']}",
                   flush=True)
@@ -388,12 +392,128 @@ class AlertAutoTrader:
                             score=candidate.score,
                             size=trade_info["bet_size"])
 
+    # ── Take Profit / Stop Loss ────────────────────────────────────────
+
+    async def check_take_profits(self):
+        """Revisar posiciones abiertas y vender si alcanzan take profit o stop loss."""
+        cfg = self._config
+        if not cfg.get("take_profit_enabled") or not self._open_positions or not self._client:
+            return
+
+        tp_pct = cfg.get("take_profit_pct", 0)
+        sl_pct = cfg.get("stop_loss_pct", 0)
+        if tp_pct <= 0 and sl_pct <= 0:
+            return
+
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                for cid, trade in list(self._open_positions.items()):
+                    try:
+                        entry_price = trade.get("price", 0)
+                        if not entry_price or entry_price <= 0:
+                            continue
+                        token_id = trade.get("token_id", "")
+                        if not token_id:
+                            continue
+
+                        resp = await client.get(f"{CLOB_HOST}/markets/{cid}")
+                        if resp.status_code != 200:
+                            continue
+                        data = resp.json()
+                        if data.get("closed"):
+                            continue  # resolve_trades se encarga de estos
+
+                        tokens = data.get("tokens", [])
+                        current_price = None
+                        for tk in tokens:
+                            if tk.get("token_id") == token_id:
+                                current_price = float(tk.get("price", 0))
+                                break
+                            if tk.get("outcome", "").lower() == trade.get("outcome", "").lower():
+                                current_price = float(tk.get("price", 0))
+                                break
+
+                        if not current_price or current_price <= 0:
+                            continue
+
+                        gain_pct = ((current_price - entry_price) / entry_price) * 100
+                        action = None
+
+                        if tp_pct > 0 and gain_pct >= tp_pct:
+                            action = "take_profit"
+                        elif sl_pct > 0 and gain_pct <= -sl_pct:
+                            action = "stop_loss"
+
+                        if not action:
+                            continue
+
+                        sell_result = await self._sell_position(trade, current_price)
+                        if sell_result.get("success"):
+                            pnl = trade.get("size_usd", 0) * (current_price / entry_price - 1)
+                            await self.db.resolve_alert_autotrade(cid, action, round(pnl, 2))
+                            del self._open_positions[cid]
+                            emoji = "💰" if action == "take_profit" else "🛑"
+                            label = "TAKE PROFIT" if action == "take_profit" else "STOP LOSS"
+                            print(f"[AlertTrader] {emoji} {label}: "
+                                  f"{trade.get('market_slug', cid)[:40]} "
+                                  f"entrada={entry_price:.2f} → venta={current_price:.2f} "
+                                  f"({gain_pct:+.1f}%) PnL=${pnl:.2f}",
+                                  flush=True)
+                            await self._load_today_trades()
+
+                    except Exception as e:
+                        print(f"[AlertTrader] Error check_take_profit {cid}: {e}", flush=True)
+
+        except Exception as e:
+            print(f"[AlertTrader] Error en check_take_profits: {e}", flush=True)
+
+    async def _sell_position(self, trade: dict, sell_price: float) -> dict:
+        """Vender una posición abierta (SELL en CLOB)."""
+        try:
+            token_id = trade.get("token_id", "")
+            shares = trade.get("shares", 0)
+            if not token_id or not shares:
+                return {"success": False, "error": "Sin token_id o shares"}
+
+            from py_clob_client.clob_types import OrderArgs, OrderType
+
+            order_args = OrderArgs(
+                price=sell_price,
+                size=shares,
+                side="SELL",
+                token_id=token_id,
+            )
+
+            loop = asyncio.get_event_loop()
+            signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
+            resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
+
+            if isinstance(resp, dict):
+                success = resp.get("success", False) or resp.get("orderID") is not None
+                order_id = resp.get("orderID", resp.get("order_id", ""))
+            elif hasattr(resp, "success"):
+                success = resp.success
+                order_id = getattr(resp, "orderID", "")
+            else:
+                success = bool(resp)
+                order_id = str(resp) if resp else ""
+
+            return {"success": success, "order_id": order_id}
+
+        except Exception as e:
+            print(f"[AlertTrader] Error vendiendo posición: {e}", flush=True)
+            return {"success": False, "error": str(e)}
+
     # ── Resolución de trades ─────────────────────────────────────────
 
     async def resolve_trades(self):
-        """Resolver trades abiertos y calcular PnL."""
+        """Resolver trades abiertos: take profit + resolución de mercados cerrados."""
         if not self._open_positions:
             return
+
+        # Primero: check take profit / stop loss
+        await self.check_take_profits()
 
         try:
             import httpx

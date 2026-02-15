@@ -1160,6 +1160,29 @@
                     <div id="aat-custom-tags" class="flex flex-wrap gap-1.5"></div>
                     <input type="hidden" id="aat-excluded-cats">
                 </div>
+                <!-- Take Profit / Stop Loss -->
+                <div class="space-y-2">
+                    <div class="flex items-center gap-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Take Profit / Stop Loss</h4>
+                        <label class="toggle-switch" style="transform:scale(0.8)">
+                            <input type="checkbox" id="aat-tp-enabled">
+                            <div class="toggle-slider"></div>
+                        </label>
+                    </div>
+                    <p class="text-[10px] text-gray-600">Vende automaticamente la posicion cuando la ganancia o perdida alcanza el porcentaje configurado.</p>
+                    <div class="grid grid-cols-2 gap-3" id="aat-tp-fields">
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Take Profit (%)</label>
+                            <input type="number" id="aat-tp-pct" value="30" min="1" max="500" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">Ej: 30 = vende si sube +30%</p>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Stop Loss (%)</label>
+                            <input type="number" id="aat-sl-pct" value="0" min="0" max="100" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-red-300">
+                            <p class="text-[10px] text-gray-600 mt-0.5">0 = desactivado. Ej: 50 = vende si baja -50%</p>
+                        </div>
+                    </div>
+                </div>
                 <!-- Smart money filter -->
                 <div class="flex items-center gap-3">
                     <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
@@ -2546,6 +2569,10 @@ async function loadAatConfig(){
     document.getElementById('aat-cooldown-hours').value=c.cooldown_hours||6;
     document.getElementById('aat-min-hitrate').value=c.min_wallet_hit_rate||0;
     document.getElementById('aat-require-smart').checked=c.require_smart_money||false;
+    // Take profit / stop loss
+    document.getElementById('aat-tp-enabled').checked=c.take_profit_enabled||false;
+    document.getElementById('aat-tp-pct').value=c.take_profit_pct||30;
+    document.getElementById('aat-sl-pct').value=c.stop_loss_pct||0;
     // Categorías: marcar checkboxes y cargar custom tags
     const savedCats=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
     const knownVals=['sports','esports','politics','crypto','pop culture','business','science','nba','nfl','soccer'];
@@ -2570,10 +2597,14 @@ async function loadAatConfig(){
     // Wallet status
     if(c.wallet_connected){
         document.getElementById('aat-wallet-connected').classList.remove('hidden');
-        document.getElementById('aat-wallet-form').classList.add('hidden');
         document.getElementById('aat-wallet-addr').textContent=c.wallet_address?c.wallet_address.slice(0,6)+'...'+c.wallet_address.slice(-4):'—';
         document.getElementById('aat-key-preview').textContent=c.api_key_preview||'—';
         document.getElementById('aat-wallet-type').textContent=c.wallet_source||'—';
+        // Botón desconectar solo si wallet es propia
+        const dcBtn=document.querySelector('#aat-wallet-connected button');
+        if(dcBtn){if(c.has_own_wallet){dcBtn.classList.remove('hidden');}else{dcBtn.classList.add('hidden');}}
+        // Mostrar formulario para agregar wallet propia si usa compartida
+        document.getElementById('aat-wallet-form').classList.toggle('hidden',c.has_own_wallet);
     }else{
         document.getElementById('aat-wallet-connected').classList.add('hidden');
         document.getElementById('aat-wallet-form').classList.remove('hidden');
@@ -2588,7 +2619,7 @@ function collectAatCategories(){
 
 function renderAatCustomTags(){
     const el=document.getElementById('aat-custom-tags');
-    el.innerHTML=_aatCustomCats.map(c=>`<span class="inline-flex items-center gap-1 bg-red-900/30 text-red-300 rounded px-2 py-0.5 text-[10px]">${c}<button onclick="removeAatCustomCat('${c}')" class="text-red-400 hover:text-red-200 font-bold ml-0.5">&times;</button></span>`).join('');
+    el.innerHTML=_aatCustomCats.map(c=>{const safe=c.replace(/'/g,"\\'").replace(/"/g,'&quot;');return`<span class="inline-flex items-center gap-1 bg-red-900/30 text-red-300 rounded px-2 py-0.5 text-[10px]">${safe}<button onclick="removeAatCustomCat('${safe}')" class="text-red-400 hover:text-red-200 font-bold ml-0.5">&times;</button></span>`;}).join('');
 }
 
 function addAatCustomCat(){
@@ -2647,6 +2678,9 @@ async function saveAatConfig(){
         min_wallet_hit_rate:parseFloat(document.getElementById('aat-min-hitrate').value)||0,
         excluded_categories:collectAatCategories(),
         require_smart_money:document.getElementById('aat-require-smart').checked,
+        take_profit_enabled:document.getElementById('aat-tp-enabled').checked,
+        take_profit_pct:parseFloat(document.getElementById('aat-tp-pct').value)||0,
+        stop_loss_pct:parseFloat(document.getElementById('aat-sl-pct').value)||0,
     };
     try{
         const r=await fetch('/api/alert-trading/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
