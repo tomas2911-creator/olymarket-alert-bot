@@ -248,21 +248,33 @@ class PolymarketAlertBot:
             self._debug["too_small"] += 1
             return
 
-        # Obtener contexto
-        wallet_stats = await self.db.get_wallet_stats(trade.wallet_address)
-        market_baseline = await self.db.get_market_baseline(trade.market_id)
+        # Obtener contexto — envuelto en try/except para no abortar el ciclo
+        try:
+            wallet_stats = await self.db.get_wallet_stats(trade.wallet_address)
+            market_baseline = await self.db.get_market_baseline(trade.market_id)
+        except Exception as e:
+            print(f"ERROR contexto DB: {e} | wallet={trade.wallet_address[:12]} market={trade.market_slug}", flush=True)
+            self._debug["errors"] = self._debug.get("errors", 0) + 1
+            return
 
         # Clustering: buscar wallets que apostaron igual recientemente
-        cluster = await self.db.find_cluster_wallets(
-            trade.market_id, trade.side, trade.outcome,
-            window_minutes=30, min_size=1000,
-        )
+        cluster = []
+        try:
+            cluster = await self.db.find_cluster_wallets(
+                trade.market_id, trade.side, trade.outcome,
+                window_minutes=30, min_size=1000,
+            )
+        except Exception:
+            pass
 
         # Enriquecer trade con datos del mercado si faltan
         if not trade.market_end_date and trade.market_id:
-            market_data = await client.get_market_by_id(trade.market_id)
-            if market_data and market_data.get("end_date"):
-                trade.market_end_date = market_data["end_date"]
+            try:
+                market_data = await client.get_market_by_id(trade.market_id)
+                if market_data and market_data.get("end_date"):
+                    trade.market_end_date = market_data["end_date"]
+            except Exception:
+                pass
 
         # v4.0: Contexto adicional para nuevas señales
         accumulation_info = None
@@ -312,15 +324,20 @@ class PolymarketAlertBot:
                 pass
 
         # Analizar con todas las señales (v6.0)
-        candidate = self.analyzer.analyze(
-            trade, wallet_stats, market_baseline, cluster,
-            accumulation_info=accumulation_info,
-            market_price=market_price,
-            smart_cluster_count=smart_cluster_count,
-            wallet_category_shift=wallet_category_shift,
-            cross_basket_count=cross_basket_count,
-            sniper_cluster_size=sniper_cluster_size,
-        )
+        try:
+            candidate = self.analyzer.analyze(
+                trade, wallet_stats, market_baseline, cluster,
+                accumulation_info=accumulation_info,
+                market_price=market_price,
+                smart_cluster_count=smart_cluster_count,
+                wallet_category_shift=wallet_category_shift,
+                cross_basket_count=cross_basket_count,
+                sniper_cluster_size=sniper_cluster_size,
+            )
+        except Exception as e:
+            print(f"ERROR analyzer: {e} | size=${trade.size} wallet={trade.wallet_address[:12]} market={trade.market_slug}", flush=True)
+            self._debug["errors"] = self._debug.get("errors", 0) + 1
+            return
 
         # Copy-trade: si wallet está en watchlist, alertar aunque score sea bajo
         is_copy = trade.wallet_address.lower() in self._watchlist
