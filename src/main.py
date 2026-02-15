@@ -166,12 +166,14 @@ class PolymarketAlertBot:
                     if self.alert_autotrader:
                         await self.alert_autotrader.check_pending_confirmations()
 
-                # Cada 10 ciclos (~10 min): baselines + smart money scores
+                # Cada 10 ciclos (~10 min): baselines + smart money scores + kill switch
                 if cycle % 10 == 0:
                     await self.update_all_baselines()
                     sm_count = await self.db.update_all_smart_money_scores()
                     if sm_count:
                         print(f"Smart money scores actualizados: {sm_count} wallets", flush=True)
+                    # Kill switch remoto via Telegram
+                    await self._check_telegram_commands()
 
                 # Cada 30 ciclos (~30 min): resoluciones + watchlist
                 if cycle % 30 == 0:
@@ -536,6 +538,46 @@ class PolymarketAlertBot:
                 print(f"Mercados resueltos: {resolved_count}", flush=True)
         except Exception as e:
             print(f"Error verificando resoluciones: {e}", flush=True)
+
+    # ── Kill Switch Telegram ─────────────────────────────────────────
+
+    async def _check_telegram_commands(self):
+        """Chequear comandos de Telegram para kill switch remoto."""
+        try:
+            cmd = await self.telegram.check_commands()
+            if not cmd:
+                return
+            if cmd == "stop":
+                # Desactivar ambos autotraders
+                if self.alert_autotrader and self.alert_autotrader._enabled:
+                    self.alert_autotrader._enabled = False
+                    await self.db.set_config_bulk({"aat_enabled": "false"})
+                if self.autotrader and self.autotrader._enabled:
+                    self.autotrader._enabled = False
+                    await self.db.set_config_bulk({"at_enabled": "false"})
+                await self.telegram.send_kill_switch_alert("stop", "Comando /stop recibido")
+                print("[KillSwitch] Trading DETENIDO via Telegram", flush=True)
+            elif cmd == "start":
+                await self.db.set_config_bulk({"aat_enabled": "true"})
+                if self.alert_autotrader:
+                    await self.alert_autotrader.reload_config()
+                await self.db.set_config_bulk({"at_enabled": "true"})
+                if self.autotrader:
+                    await self.autotrader.reload_config()
+                await self.telegram.send_kill_switch_alert("start", "Comando /start recibido")
+                print("[KillSwitch] Trading REANUDADO via Telegram", flush=True)
+            elif cmd == "status":
+                aat_status = self.alert_autotrader.get_status() if self.alert_autotrader else {}
+                msg = (
+                    f"📊 <b>Status</b>\n\n"
+                    f"Alert Trading: {'✅ ON' if aat_status.get('enabled') else '❌ OFF'}\n"
+                    f"Posiciones: {aat_status.get('open_positions', 0)}\n"
+                    f"PnL hoy: ${aat_status.get('pnl_today', 0):.2f}\n"
+                    f"Drawdown pausado: {'Sí' if aat_status.get('drawdown_paused') else 'No'}"
+                )
+                await self.telegram._send_to_all(msg)
+        except Exception as e:
+            print(f"[KillSwitch] Error: {e}", flush=True)
 
     # ── Price Impact Checker ──────────────────────────────────────────
 
