@@ -7,7 +7,7 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 import structlog
 import httpx
@@ -33,6 +33,10 @@ class CryptoSignal:
     spot_price: float            # Precio spot actual
     time_remaining_sec: int      # Segundos hasta cierre
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    end_date: Optional[datetime] = None  # Fecha de cierre del mercado
+    resolved: bool = False       # Si ya se resolvió
+    result: Optional[str] = None # "win" o "loss"
+    paper_pnl: float = 0.0      # PnL simulado
 
     @property
     def expected_profit_pct(self) -> float:
@@ -316,6 +320,7 @@ class CryptoArbDetector:
                 market_question=mdata["question"],
                 spot_price=momentum["last_price"],
                 time_remaining_sec=int(time_remaining),
+                end_date=mdata.get("end_date"),
             )
             signals.append(signal)
 
@@ -432,9 +437,20 @@ class CryptoArbDetector:
         self._signals_today.append(signal)
 
     def get_recent_signals(self, limit: int = 50) -> list[dict]:
-        """Señales recientes para el dashboard."""
-        return [
-            {
+        """Señales recientes para el dashboard. Recalcula tiempo restante en vivo."""
+        now = datetime.now(timezone.utc)
+        # Solo mostrar señales de los últimos 30 min (resueltas se muestran 5 min extra)
+        cutoff = now - timedelta(minutes=30)
+        result = []
+        for s in reversed(self._signals_today[-limit * 2:]):
+            if s.timestamp < cutoff and s.resolved:
+                continue  # Señal vieja y resuelta, no mostrar
+            # Recalcular tiempo restante en vivo
+            if s.end_date:
+                remaining = max(0, int((s.end_date - now).total_seconds()))
+            else:
+                remaining = max(0, s.time_remaining_sec - int((now - s.timestamp).total_seconds()))
+            result.append({
                 "coin": s.coin,
                 "direction": s.direction,
                 "spot_change_pct": s.spot_change_pct,
@@ -445,12 +461,24 @@ class CryptoArbDetector:
                 "condition_id": s.condition_id,
                 "market_question": s.market_question,
                 "spot_price": s.spot_price,
-                "time_remaining_sec": s.time_remaining_sec,
+                "time_remaining_sec": remaining,
                 "expected_profit_pct": s.expected_profit_pct,
                 "timestamp": s.timestamp.isoformat(),
-            }
-            for s in reversed(self._signals_today[-limit:])
-        ]
+                "resolved": s.resolved,
+                "result": s.result,
+                "paper_pnl": s.paper_pnl,
+            })
+            if len(result) >= limit:
+                break
+        return result
+
+    def resolve_signal(self, condition_id: str, result: str, pnl: float):
+        """Marcar una señal en memoria como resuelta."""
+        for s in self._signals_today:
+            if s.condition_id == condition_id and not s.resolved:
+                s.resolved = True
+                s.result = result
+                s.paper_pnl = pnl
 
     def get_active_markets(self) -> list[dict]:
         """Mercados activos para el dashboard."""

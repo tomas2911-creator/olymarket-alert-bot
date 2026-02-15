@@ -184,8 +184,8 @@ class PolymarketAlertBot:
                 if cycle % 3 == 0 and config.FEATURE_CRYPTO_ARB:
                     await self.process_crypto_signals()
 
-                # Cada 10 ciclos (~10 min): resolver señales crypto antiguas
-                if cycle % 10 == 0 and config.FEATURE_CRYPTO_ARB:
+                # Cada ciclo: resolver señales crypto (mercados son de 5 min)
+                if config.FEATURE_CRYPTO_ARB:
                     await self.resolve_crypto_signals()
 
             except Exception as e:
@@ -586,6 +586,10 @@ class PolymarketAlertBot:
                         sig["id"], resolution, paper_result, round(paper_pnl, 2)
                     )
                     resolved_count += 1
+
+                    # Actualizar estado en memoria del detector
+                    if self.crypto_detector:
+                        self.crypto_detector.resolve_signal(cid, paper_result, round(paper_pnl, 2))
 
             if resolved_count:
                 print(f"Crypto signals resueltas: {resolved_count}", flush=True)

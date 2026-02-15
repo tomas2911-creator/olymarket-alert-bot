@@ -594,6 +594,7 @@
                             <th class="px-4 py-2 text-right">Edge</th>
                             <th class="px-4 py-2 text-center">Confianza</th>
                             <th class="px-4 py-2 text-right">Cierre</th>
+                            <th class="px-4 py-2 text-center">Estado</th>
                         </tr></thead>
                         <tbody id="crypto-live-body"></tbody>
                     </table>
@@ -1572,7 +1573,29 @@ async function loadCryptoLive(){
         const mins=Math.floor(s.time_remaining_sec/60);
         const secs=s.time_remaining_sec%60;
         const ts=new Date(s.timestamp);
-        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+        // Estado: resolved win/loss o pending/expired
+        let estado='', estadoClass='', rowClass='border-b border-gray-800/30 hover:bg-gray-800/20';
+        if(s.resolved){
+            if(s.result==='win'){
+                estado=`✓ WIN $${(s.paper_pnl||0).toFixed(0)}`;
+                estadoClass='text-green-400 font-bold';
+                rowClass='border-b border-green-900/30 bg-green-900/10';
+            }else{
+                estado=`✗ LOSS $${(s.paper_pnl||0).toFixed(0)}`;
+                estadoClass='text-red-400 font-bold';
+                rowClass='border-b border-red-900/30 bg-red-900/10';
+            }
+        }else if(s.time_remaining_sec<=0){
+            estado='⏳ Resolviendo...';
+            estadoClass='text-yellow-400';
+            rowClass='border-b border-yellow-900/20 bg-yellow-900/5';
+        }else{
+            estado='● Activa';
+            estadoClass='text-blue-400';
+        }
+        const cierreText=s.time_remaining_sec>0?`${mins}m${secs}s`:'Cerrado';
+        const cierreClass=s.time_remaining_sec>0?'text-gray-400':'text-yellow-500';
+        return`<tr class="${rowClass}">
             <td class="px-4 py-2 text-xs text-gray-400">${ts.toLocaleTimeString()}</td>
             <td class="px-4 py-2 text-center font-bold">${s.coin}</td>
             <td class="px-4 py-2 text-center ${dirColor} font-bold">${dirIcon} ${s.direction.toUpperCase()}</td>
@@ -1581,7 +1604,8 @@ async function loadCryptoLive(){
             <td class="px-4 py-2 text-right font-mono text-xs text-green-400">${s.fair_odds.toFixed(2)}</td>
             <td class="px-4 py-2 text-right font-mono text-xs text-yellow-400">${s.edge_pct.toFixed(1)}%</td>
             <td class="px-4 py-2 text-center text-xs font-mono">${bar} ${s.confidence.toFixed(0)}%</td>
-            <td class="px-4 py-2 text-right text-xs text-gray-400">${mins}m${secs}s</td>
+            <td class="px-4 py-2 text-right text-xs ${cierreClass}">${cierreText}</td>
+            <td class="px-4 py-2 text-center text-xs ${estadoClass}">${estado}</td>
         </tr>`;
     }).join('');
 }
