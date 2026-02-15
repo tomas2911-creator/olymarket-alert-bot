@@ -133,6 +133,7 @@ CRYPTO_ARB_COINS = _crypto.get("coins", [
     {"symbol": "BTC", "binance_pair": "btcusdt"},
     {"symbol": "ETH", "binance_pair": "ethusdt"},
     {"symbol": "SOL", "binance_pair": "solusdt"},
+    {"symbol": "XRP", "binance_pair": "xrpusdt"},
 ])
 CRYPTO_ARB_MIN_MOVE_PCT = _crypto.get("min_price_move_pct", 0.15)
 CRYPTO_ARB_MAX_POLY_ODDS = _crypto.get("max_poly_odds", 0.65)
