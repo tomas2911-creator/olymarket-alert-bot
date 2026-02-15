@@ -1,7 +1,7 @@
 """Entry point principal — FastAPI + background polling loop."""
 import asyncio
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
 sys.stdout.reconfigure(line_buffering=True)
@@ -13,6 +13,8 @@ import structlog
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+import httpx
 
 from src import config
 from src.api.polymarket import PolymarketClient
@@ -562,39 +564,146 @@ class PolymarketAlertBot:
             print(f"Error procesando crypto signals: {e}", flush=True)
 
     async def resolve_crypto_signals(self):
-        """Resolver señales crypto pendientes verificando resultado del mercado."""
+        """Resolver señales crypto pendientes.
+
+        CLOB API tarda horas en marcar mercados 5-min como cerrados.
+        Usamos Gamma API por slug (rápido) o auto-resolución por precio Binance.
+        """
         try:
             unresolved = await self.db.get_unresolved_crypto_signals()
             if not unresolved:
                 return
 
+            now = datetime.now()
             resolved_count = 0
-            async with PolymarketClient() as client:
+
+            async with httpx.AsyncClient(timeout=15) as client:
                 for sig in unresolved:
                     cid = sig["condition_id"]
-                    resolution = await client.check_market_resolution(cid)
+                    direction = sig.get("direction", "").lower()
+                    coin = sig.get("coin", "BTC")
+                    created = sig.get("created_at")
+                    time_rem = sig.get("time_remaining_sec", 300)
+
+                    # Calcular cuándo cerró el mercado
+                    if created and time_rem:
+                        if isinstance(created, str):
+                            from datetime import timezone as tz
+                            try:
+                                created = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                            except Exception:
+                                continue
+                        end_time = created + timedelta(seconds=int(time_rem))
+                        # Si el mercado aún no cerró, saltar
+                        if datetime.now(end_time.tzinfo) < end_time:
+                            continue
+                        secs_since_close = (datetime.now(end_time.tzinfo) - end_time).total_seconds()
+                    else:
+                        continue
+
+                    # Si cerró hace menos de 60s, esperar un poco para que se actualice
+                    if secs_since_close < 60:
+                        continue
+
+                    resolution = None
+
+                    # Método 1: Gamma API por slug del evento
+                    try:
+                        end_ts = int(end_time.timestamp())
+                        coin_prefix = coin.lower()
+                        # Probar 5m y 15m
+                        for dur, interval in [("5m", 300), ("15m", 900)]:
+                            start_ts = end_ts - interval
+                            # Redondear al intervalo
+                            start_ts = (start_ts // interval) * interval
+                            slug = f"{coin_prefix}-updown-{dur}-{start_ts}"
+                            resp = await client.get(
+                                f"{config.GAMMA_API_URL}/events",
+                                params={"slug": slug},
+                            )
+                            if resp.status_code != 200:
+                                continue
+                            events = resp.json()
+                            if not events:
+                                continue
+                            ev = events[0]
+                            for m in ev.get("markets", []):
+                                m_cid = m.get("conditionId", "")
+                                if m_cid == cid and m.get("closed"):
+                                    # Buscar ganador en outcomePrices
+                                    prices = m.get("outcomePrices", "")
+                                    if isinstance(prices, str):
+                                        try:
+                                            prices = __import__("json").loads(prices)
+                                        except Exception:
+                                            prices = []
+                                    outcomes = m.get("outcomes", "")
+                                    if isinstance(outcomes, str):
+                                        try:
+                                            outcomes = __import__("json").loads(outcomes)
+                                        except Exception:
+                                            outcomes = []
+                                    if prices and outcomes:
+                                        for i, p in enumerate(prices):
+                                            if float(p) >= 0.95 and i < len(outcomes):
+                                                resolution = outcomes[i]
+                                                break
+                            if resolution:
+                                break
+                    except Exception:
+                        pass
+
+                    # Método 2: CLOB API (puede funcionar para mercados más viejos)
+                    if not resolution:
+                        try:
+                            resp2 = await client.get(
+                                f"{config.CLOB_API_URL}/markets/{cid}"
+                            )
+                            if resp2.status_code == 200:
+                                data = resp2.json()
+                                if data.get("closed"):
+                                    for tok in data.get("tokens", []):
+                                        if tok.get("winner") is True:
+                                            resolution = tok.get("outcome", "")
+                                            break
+                        except Exception:
+                            pass
+
+                    # Método 3: Auto-resolver por precio Binance (fallback rápido)
+                    # Si pasaron >3 min desde el cierre y no hay resolución oficial
+                    if not resolution and secs_since_close > 180 and self.binance_feed:
+                        pair_map = {"BTC": "btcusdt", "ETH": "ethusdt", "SOL": "solusdt"}
+                        pair = pair_map.get(coin)
+                        if pair:
+                            current_price = self.binance_feed.get_price(pair)
+                            signal_price = float(sig.get("spot_price", 0))
+                            if current_price and signal_price:
+                                # Precio actual vs precio al detectar señal
+                                resolution = "Up" if current_price >= signal_price else "Down"
+                                print(f"[CryptoResolve] Auto-resolve {coin}: "
+                                      f"signal_price={signal_price:.2f} current={current_price:.2f} → {resolution}",
+                                      flush=True)
+
                     if not resolution:
                         continue
 
-                    # Determinar si ganamos
-                    won = resolution.lower() == sig["direction"].lower()
+                    # Calcular resultado
+                    won = resolution.lower() == direction
                     paper_result = "win" if won else "loss"
                     bet = float(sig.get("paper_bet_size", config.CRYPTO_ARB_PAPER_BET))
                     odds = float(sig.get("poly_odds", 0.5))
-
-                    if won:
-                        paper_pnl = bet * (1 - odds)  # Ganamos: recibimos $1, pagamos odds
-                    else:
-                        paper_pnl = -(bet * odds)  # Perdemos lo apostado
+                    paper_pnl = bet * (1 - odds) if won else -(bet * odds)
 
                     await self.db.resolve_crypto_signal(
                         sig["id"], resolution, paper_result, round(paper_pnl, 2)
                     )
                     resolved_count += 1
 
-                    # Actualizar estado en memoria del detector
                     if self.crypto_detector:
                         self.crypto_detector.resolve_signal(cid, paper_result, round(paper_pnl, 2))
+
+                    print(f"[CryptoResolve] {coin} {direction} → {resolution} = {paper_result} "
+                          f"(${paper_pnl:.2f})", flush=True)
 
             if resolved_count:
                 print(f"Crypto signals resueltas: {resolved_count}", flush=True)
