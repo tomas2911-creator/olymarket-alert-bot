@@ -970,14 +970,11 @@ async def get_alert_trading_config(request: Request):
         "aat_excluded_categories", "aat_require_smart_money",
         "aat_take_profit_enabled", "aat_take_profit_pct", "aat_stop_loss_pct",
         "aat_api_key", "aat_private_key",
-        "at_api_key", "at_private_key",
     ])
     stats = await db.get_alert_autotrade_stats()
     aat = getattr(request.app.state, 'alert_autotrader', None)
     aat_status = aat.get_status() if aat else {}
     has_own_wallet = bool(raw.get("aat_private_key"))
-    has_shared_wallet = bool(raw.get("at_api_key") and raw.get("at_private_key"))
-    active_pk = raw.get("aat_private_key") or raw.get("at_private_key", "")
     return {
         "enabled": raw.get("aat_enabled") == "true",
         "bet_size": float(raw.get("aat_bet_size", 10)),
@@ -995,10 +992,9 @@ async def get_alert_trading_config(request: Request):
         "take_profit_pct": float(raw.get("aat_take_profit_pct", 0)),
         "stop_loss_pct": float(raw.get("aat_stop_loss_pct", 0)),
         "has_own_wallet": has_own_wallet,
-        "wallet_connected": has_own_wallet or has_shared_wallet,
-        "wallet_source": "propia" if has_own_wallet else ("compartida (Crypto Arb)" if has_shared_wallet else "ninguna"),
-        "wallet_address": _derive_wallet_address(active_pk),
-        "api_key_preview": (raw.get("aat_api_key", "")[:12] + "...") if raw.get("aat_api_key") else ((raw.get("at_api_key", "")[:12] + "...") if raw.get("at_api_key") else ""),
+        "wallet_connected": has_own_wallet,
+        "wallet_address": _derive_wallet_address(raw.get("aat_private_key", "")),
+        "api_key_preview": (raw.get("aat_api_key", "")[:12] + "...") if raw.get("aat_api_key") else "",
         "connected": aat_status.get("connected", False),
         "open_positions": stats.get("open_positions", 0),
         "pnl_today": stats.get("pnl_24h", 0),

@@ -2530,7 +2530,7 @@ async function loadAatConfig(){
     document.getElementById('aat-require-smart').checked=c.require_smart_money||false;
     // Take profit / stop loss
     document.getElementById('aat-tp-enabled').checked=c.take_profit_enabled||false;
-    document.getElementById('aat-tp-pct').value=c.take_profit_pct||30;
+    document.getElementById('aat-tp-pct').value=c.take_profit_pct!=null?c.take_profit_pct:30;
     document.getElementById('aat-sl-pct').value=c.stop_loss_pct||0;
     // Categorías: pills rojo/verde (mismo estilo que config alertas)
     const excludedCats=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
@@ -2599,7 +2599,7 @@ async function generateAatKeys(){
 }
 
 async function disconnectAatWallet(){
-    if(!confirm('Desconectar wallet propia del Alert Trading? Volverá a usar la wallet de Crypto Arb si existe.'))return;
+    if(!confirm('Desconectar wallet del Alert Trading? El bot quedará sin wallet y no podrá tradear.'))return;
     try{
         await fetch('/api/alert-trading/disconnect-wallet',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
         loadAatConfig();

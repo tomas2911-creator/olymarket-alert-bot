@@ -9,7 +9,7 @@ Flujo:
 6. Take Profit: vende automáticamente si el precio sube >= X% (configurable)
 7. Se resuelve cuando el mercado cierra o se ejecuta take profit
 
-Credenciales: usa wallet propia (aat_) o fallback a la de Crypto Arb (at_).
+Credenciales: usa SOLO wallet propia (aat_). No comparte wallet con Crypto Arb.
 La config de trading es independiente con prefijo "aat_".
 """
 import asyncio
@@ -49,16 +49,13 @@ class AlertAutoTrader:
                 "aat_min_wallet_hit_rate", "aat_cooldown_hours",
                 "aat_excluded_categories", "aat_require_smart_money",
                 "aat_take_profit_enabled", "aat_take_profit_pct", "aat_stop_loss_pct",
-                # Credenciales propias del alert autotrader
+                # Credenciales propias del alert autotrader (NO usa las de Crypto Arb)
                 "aat_api_key", "aat_api_secret", "aat_private_key", "aat_passphrase",
-                # Fallback: credenciales compartidas de crypto autotrader
-                "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
             ])
-            # Credenciales: usar propias si existen, sino fallback a compartidas
-            api_key = raw.get("aat_api_key") or raw.get("at_api_key", "")
-            api_secret = raw.get("aat_api_secret") or raw.get("at_api_secret", "")
-            private_key = raw.get("aat_private_key") or raw.get("at_private_key", "")
-            passphrase = raw.get("aat_passphrase") or raw.get("at_passphrase", "")
+            api_key = raw.get("aat_api_key", "")
+            api_secret = raw.get("aat_api_secret", "")
+            private_key = raw.get("aat_private_key", "")
+            passphrase = raw.get("aat_passphrase", "")
 
             self._config = {
                 "enabled": raw.get("aat_enabled") == "true",
