@@ -3798,18 +3798,25 @@ async function loadHeatmap(){
     const data=await fetchJson('/api/heatmap');
     const el=document.getElementById('heatmap-grid');
     if(!data||!data.length){el.innerHTML='<div class="text-center text-gray-500 text-xs py-10 col-span-full">Sin datos de heatmap</div>';return;}
-    const maxPnl=Math.max(...data.map(d=>Math.abs(d.total_pnl||0)),1);
+    const maxVol=Math.max(...data.map(d=>parseFloat(d.total_volume||0)),1);
     el.innerHTML=data.map(d=>{
+        const vol=parseFloat(d.total_volume||0);
+        const trades=d.total_trades||0;
+        const alerts=d.total_alerts||0;
+        const correct=d.correct||0;const incorrect=d.incorrect||0;
+        const resolved=correct+incorrect;
+        const wr=resolved>0?Math.round((correct/resolved)*100):0;
         const pnl=parseFloat(d.total_pnl||0);
-        const correct=d.correct||0;const incorrect=d.incorrect||0;const total=d.total_alerts||0;
-        const wr=total>0?Math.round((correct/(correct+incorrect||1))*100):0;
-        const intensity=Math.min(Math.abs(pnl)/maxPnl,1);
-        const bg=pnl>=0?`rgba(34,197,94,${0.1+intensity*0.4})`:`rgba(239,68,68,${0.1+intensity*0.4})`;
-        const border=pnl>=0?'border-green-800/30':'border-red-800/30';
+        const intensity=Math.min(vol/maxVol,1);
+        const bg=`rgba(168,85,247,${0.08+intensity*0.35})`;
+        const border=intensity>0.5?'border-purple-600/40':'border-purple-900/30';
+        const pnlColor=pnl>=0?'text-green-400':'text-red-400';
+        const pnlStr=pnl>=0?'+$'+pnl.toFixed(0):'-$'+Math.abs(pnl).toFixed(0);
         return`<div class="rounded-lg p-3 border ${border}" style="background:${bg}">
-            <div class="text-xs font-semibold truncate">${d.category}</div>
-            <div class="text-lg font-bold mt-1 ${pnl>=0?'text-green-400':'text-red-400'}">$${pnl.toFixed(0)}</div>
-            <div class="text-[10px] text-gray-400 mt-1">${total} alertas · ${wr}% win</div>
+            <div class="text-xs font-semibold truncate capitalize">${d.category}</div>
+            <div class="text-lg font-bold mt-1 text-purple-300">$${vol>=1000?(vol/1000).toFixed(1)+'K':vol.toFixed(0)}</div>
+            <div class="text-[10px] text-gray-400 mt-1">${trades.toLocaleString()} trades · ${alerts} alertas</div>
+            ${resolved>0?`<div class="text-[10px] mt-0.5"><span class="${pnlColor}">${pnlStr}</span> · ${wr}% win (${resolved})</div>`:''}
         </div>`;
     }).join('');
 }

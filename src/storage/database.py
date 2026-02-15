@@ -1943,20 +1943,50 @@ class Database:
 
     # ── v8.0: Heatmap ────────────────────────────────────────────
     async def get_heatmap_data(self):
-        """PnL por categoría para heatmap."""
+        """Volumen y alertas por categoría para heatmap."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
+                WITH trade_stats AS (
+                    SELECT
+                        COALESCE(market_category, 'unknown') as category,
+                        COUNT(*) as total_trades,
+                        COALESCE(SUM(size), 0) as total_volume
+                    FROM trades
+                    WHERE market_category IS NOT NULL
+                      AND market_category != ''
+                      AND timestamp > NOW() - INTERVAL '30 days'
+                    GROUP BY COALESCE(market_category, 'unknown')
+                ),
+                alert_stats AS (
+                    SELECT
+                        COALESCE(NULLIF(a.market_category,''), t2.market_category, 'unknown') as category,
+                        COUNT(*) as total_alerts,
+                        COUNT(*) FILTER (WHERE a.resolved AND a.was_correct) as correct,
+                        COUNT(*) FILTER (WHERE a.resolved AND NOT a.was_correct) as incorrect,
+                        COUNT(*) FILTER (WHERE a.resolved IS NOT TRUE) as pending,
+                        COALESCE(SUM(CASE WHEN a.was_correct THEN a.size ELSE 0 END), 0)
+                          - COALESCE(SUM(CASE WHEN a.was_correct = FALSE THEN a.size ELSE 0 END), 0) as total_pnl
+                    FROM alerts a
+                    LEFT JOIN LATERAL (
+                        SELECT market_category FROM trades
+                        WHERE market_id = a.market_id AND market_category IS NOT NULL
+                        LIMIT 1
+                    ) t2 ON TRUE
+                    WHERE a.created_at > NOW() - INTERVAL '30 days'
+                    GROUP BY COALESCE(NULLIF(a.market_category,''), t2.market_category, 'unknown')
+                )
                 SELECT
-                    COALESCE(a.category, 'unknown') as category,
-                    COUNT(*) as total_alerts,
-                    COUNT(*) FILTER (WHERE a.resolved AND a.was_correct) as correct,
-                    COUNT(*) FILTER (WHERE a.resolved AND NOT a.was_correct) as incorrect,
-                    COUNT(*) FILTER (WHERE NOT a.resolved) as pending,
-                    COALESCE(SUM(at2.pnl) FILTER (WHERE at2.resolved), 0) as total_pnl
-                FROM alerts a
-                LEFT JOIN alert_autotrades at2 ON a.market_id = at2.condition_id
-                GROUP BY COALESCE(a.category, 'unknown')
-                ORDER BY total_pnl DESC
+                    t.category,
+                    t.total_trades,
+                    COALESCE(a.total_alerts, 0) as total_alerts,
+                    COALESCE(a.correct, 0) as correct,
+                    COALESCE(a.incorrect, 0) as incorrect,
+                    COALESCE(a.pending, 0) as pending,
+                    t.total_volume,
+                    COALESCE(a.total_pnl, 0) as total_pnl
+                FROM trade_stats t
+                LEFT JOIN alert_stats a ON t.category = a.category
+                ORDER BY t.total_volume DESC
             """)
             return [dict(r) for r in rows]
 
