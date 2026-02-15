@@ -536,11 +536,11 @@ class PolymarketAlertBot:
         if not self.crypto_detector:
             return
         try:
-            signals = self.crypto_detector.get_recent_signals(20)
+            signals = self.crypto_detector.get_recent_signals(200)
             if not signals:
                 return
             # Cargar condition_ids ya guardados (una sola query)
-            existing = await self.db.get_crypto_signals_history(limit=50)
+            existing = await self.db.get_crypto_signals_history(limit=500)
             existing_cids = {e["condition_id"] for e in existing}
 
             saved = 0
@@ -601,22 +601,35 @@ class PolymarketAlertBot:
                         continue
                     secs_since_close = (now - end_time).total_seconds()
 
-                    # Si cerró hace menos de 60s, esperar un poco para que se actualice
-                    if secs_since_close < 60:
+                    # Si cerró hace menos de 20s, esperar un poco para que se actualice
+                    if secs_since_close < 20:
                         continue
 
                     resolution = None
 
                     # Método 1: Gamma API por slug del evento
+                    # Primero usar el event_slug guardado, luego recalcular
+                    event_slug = sig.get("event_slug", "")
+                    slugs_to_try = []
+                    if event_slug:
+                        slugs_to_try.append(event_slug)
+                    # Fallback: recalcular slugs posibles
+                    end_ts = int(end_time.timestamp())
+                    coin_prefix = coin.lower()
+                    for dur, interval in [("5m", 300), ("15m", 900)]:
+                        start_ts = end_ts - interval
+                        start_ts = (start_ts // interval) * interval
+                        calc_slug = f"{coin_prefix}-updown-{dur}-{start_ts}"
+                        if calc_slug not in slugs_to_try:
+                            slugs_to_try.append(calc_slug)
+                        # También probar +/- 1 intervalo por si hay desfase
+                        for adj in [-interval, interval]:
+                            adj_slug = f"{coin_prefix}-updown-{dur}-{start_ts + adj}"
+                            if adj_slug not in slugs_to_try:
+                                slugs_to_try.append(adj_slug)
+
                     try:
-                        end_ts = int(end_time.timestamp())
-                        coin_prefix = coin.lower()
-                        # Probar 5m y 15m
-                        for dur, interval in [("5m", 300), ("15m", 900)]:
-                            start_ts = end_ts - interval
-                            # Redondear al intervalo
-                            start_ts = (start_ts // interval) * interval
-                            slug = f"{coin_prefix}-updown-{dur}-{start_ts}"
+                        for slug in slugs_to_try:
                             resp = await client.get(
                                 f"{config.GAMMA_API_URL}/events",
                                 params={"slug": slug},
@@ -630,7 +643,6 @@ class PolymarketAlertBot:
                             for m in ev.get("markets", []):
                                 m_cid = m.get("conditionId", "")
                                 if m_cid == cid and m.get("closed"):
-                                    # Buscar ganador en outcomePrices
                                     prices = m.get("outcomePrices", "")
                                     if isinstance(prices, str):
                                         try:
@@ -650,8 +662,8 @@ class PolymarketAlertBot:
                                                 break
                             if resolution:
                                 break
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[CryptoResolve] Gamma error para {cid[:12]}: {e}", flush=True)
 
                     # Método 2: CLOB API (puede funcionar para mercados más viejos)
                     if not resolution:
