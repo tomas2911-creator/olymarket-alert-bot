@@ -499,6 +499,19 @@ async def crypto_arb_signals(request: Request, limit: int = 100, coin: str = Non
         return []
 
 
+@router.get("/api/crypto-arb/price-sum-arb")
+async def crypto_price_sum_arb(request: Request):
+    """Detectar oportunidades de Price-Sum Arbitrage (YES+NO != $1)."""
+    detector = getattr(request.app.state, 'crypto_detector', None)
+    if not detector:
+        return {"status": "error", "error": "Crypto detector no activo"}
+    try:
+        opportunities = await detector.check_price_sum_arb()
+        return {"status": "ok", "opportunities": opportunities}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @router.delete("/api/crypto-arb/signals")
 async def delete_crypto_signals(request: Request, older_than_hours: int = 24):
     """Borrar señales crypto más viejas que N horas."""

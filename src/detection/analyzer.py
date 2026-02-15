@@ -33,6 +33,11 @@ class AnomalyAnalyzer:
         wallet_category_shift: bool = False,
         cross_basket_count: int = 0,
         sniper_cluster_size: int = 0,
+        # v7.0: señales #19-#22
+        consensus_shift_pct: Optional[float] = None,
+        near_resolution: bool = False,
+        same_market_trade_count: int = 0,
+        wallet_resolved_wins: int = 0,
     ) -> AlertCandidate:
         score = 0
         triggers: list[str] = []
@@ -169,6 +174,31 @@ class AnomalyAnalyzer:
         if config.FEATURE_SNIPER_DBSCAN and sniper_cluster_size >= config.SNIPER_MIN_CLUSTER_SIZE:
             score += config.SNIPER_POINTS
             triggers.append(f"🔫 Sniper cluster ({sniper_cluster_size}w en <{config.SNIPER_TIME_WINDOW_SEC}s)")
+
+        # ── Señales v7.0 (#19-#22) ─────────────────────────────────────
+
+        # 19. CONSENSUS SHIFT: el precio del mercado se movió mucho recientemente
+        if config.FEATURE_CONSENSUS_SHIFT and consensus_shift_pct is not None:
+            if abs(consensus_shift_pct) >= config.CONSENSUS_SHIFT_MIN_PCT:
+                score += config.CONSENSUS_SHIFT_POINTS
+                direction = "↑" if consensus_shift_pct > 0 else "↓"
+                triggers.append(f"📈 Consenso {direction}{abs(consensus_shift_pct):.0f}% en {config.CONSENSUS_SHIFT_MAX_HOURS}h")
+
+        # 20. RESOLUTION PATTERN: múltiples trades en mercado cerca de resolución
+        if config.FEATURE_RESOLUTION_PATTERN and near_resolution:
+            if same_market_trade_count >= config.RESOLUTION_PATTERN_MIN_TRADES:
+                score += config.RESOLUTION_PATTERN_POINTS
+                triggers.append(f"⏰ {same_market_trade_count} trades cerca de resolución")
+
+        # 21. WHALE ALERT: trade individual extremadamente grande
+        if trade.size >= config.WHALE_ALERT_MIN_SIZE:
+            score += config.WHALE_ALERT_POINTS
+            triggers.append(f"🐋 Whale ${trade.size:,.0f}")
+
+        # 22. REPEAT WINNER: wallet con historial comprobado de aciertos
+        if wallet_resolved_wins >= config.REPEAT_WINNER_MIN_WINS:
+            score += config.REPEAT_WINNER_POINTS
+            triggers.append(f"🏆 Repeat winner ({wallet_resolved_wins} wins)")
 
         return AlertCandidate(
             trade=trade,

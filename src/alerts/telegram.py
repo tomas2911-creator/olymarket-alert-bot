@@ -188,6 +188,75 @@ class TelegramNotifier:
             print(f"Error enviando crypto signal: {e}", flush=True)
             return False
 
+    async def send_kill_switch_alert(self, action: str, reason: str = ""):
+        """Enviar notificación de kill switch activado/desactivado."""
+        if not self.is_configured:
+            return
+        try:
+            emoji = "🛑" if action == "stop" else "✅"
+            label = "DETENIDO" if action == "stop" else "REANUDADO"
+            message = (
+                f"{emoji} <b>Kill Switch — Trading {label}</b>\n\n"
+                f"<b>Acción:</b> {action}\n"
+            )
+            if reason:
+                message += f"<b>Razón:</b> {reason}\n"
+            message += "\n💡 <i>Usa /start o /stop para controlar el bot remotamente.</i>"
+            await self._send_to_all(message)
+        except Exception as e:
+            print(f"Error enviando kill switch alert: {e}", flush=True)
+
+    async def send_trade_notification(self, trade_info: dict, action: str = "buy"):
+        """Enviar notificación de trade ejecutado."""
+        if not self.is_configured:
+            return
+        try:
+            emoji = "🟢" if action == "buy" else "🔴"
+            market = trade_info.get("market_slug", "")[:40]
+            outcome = trade_info.get("outcome", "")
+            size = trade_info.get("size_usd", 0)
+            price = trade_info.get("price", 0)
+            score = trade_info.get("alert_score", 0)
+            message = (
+                f"{emoji} <b>Trade {'Ejecutado' if action == 'buy' else 'Cerrado'}</b>\n\n"
+                f"<b>Mercado:</b> {market}\n"
+                f"<b>Outcome:</b> {outcome} | <b>${size:.2f}</b> @ {price:.2f}\n"
+                f"<b>Score:</b> {score}\n"
+            )
+            if action != "buy":
+                pnl = trade_info.get("pnl", 0)
+                result = trade_info.get("result", "")
+                emoji_r = "✅" if pnl >= 0 else "❌"
+                message += f"\n{emoji_r} <b>PnL:</b> ${pnl:.2f} ({result})"
+            await self._send_to_all(message, disable_preview=True)
+        except Exception as e:
+            print(f"Error enviando trade notification: {e}", flush=True)
+
+    async def check_commands(self, app_state=None) -> Optional[str]:
+        """Verificar si hay comandos de Telegram (/stop, /start, /status).
+        Retorna el comando recibido o None.
+        """
+        if not self.is_configured:
+            return None
+        try:
+            updates = await self.bot.get_updates(timeout=1, limit=5)
+            for update in updates:
+                if update.message and update.message.text:
+                    text = update.message.text.strip().lower()
+                    chat_id = str(update.message.chat_id)
+                    # Solo aceptar de chat_ids autorizados
+                    if chat_id not in self.chat_ids:
+                        continue
+                    if text == "/stop":
+                        return "stop"
+                    elif text == "/start":
+                        return "start"
+                    elif text == "/status":
+                        return "status"
+        except Exception:
+            pass
+        return None
+
     def _calc_max_score(self) -> int:
         """Calcular máximo score posible sumando todas las señales configuradas."""
         return (
@@ -202,7 +271,12 @@ class TelegramNotifier:
             (config.ORDERBOOK_DEPTH_POINTS if config.FEATURE_ORDERBOOK_DEPTH else 0) +
             (config.NICHE_MARKET_POINTS if config.FEATURE_MARKET_CLASSIFICATION else 0) +
             (config.BASKET_POINTS + config.CROSS_BASKET_EXTRA_POINTS if config.FEATURE_WALLET_BASKETS else 0) +
-            (config.SNIPER_POINTS if config.FEATURE_SNIPER_DBSCAN else 0)
+            (config.SNIPER_POINTS if config.FEATURE_SNIPER_DBSCAN else 0) +
+            # Señales v7.0
+            (config.CONSENSUS_SHIFT_POINTS if config.FEATURE_CONSENSUS_SHIFT else 0) +
+            (config.RESOLUTION_PATTERN_POINTS if config.FEATURE_RESOLUTION_PATTERN else 0) +
+            config.WHALE_ALERT_POINTS +
+            config.REPEAT_WINNER_POINTS
         )
 
     def _format_message(self, candidate: AlertCandidate) -> str:

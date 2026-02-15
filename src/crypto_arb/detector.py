@@ -149,12 +149,16 @@ class CryptoArbDetector:
                 if "BTC" in enabled_coins:
                     slug_templates.append(("BTC", "btc-updown-5m", 300))   # cada 5 min
                     slug_templates.append(("BTC", "btc-updown-15m", 900))  # cada 15 min
+                    slug_templates.append(("BTC", "btc-updown-1h", 3600))  # cada 1 hora
                 if "ETH" in enabled_coins:
                     slug_templates.append(("ETH", "eth-updown-15m", 900))
+                    slug_templates.append(("ETH", "eth-updown-1h", 3600))
                 if "SOL" in enabled_coins:
                     slug_templates.append(("SOL", "sol-updown-15m", 900))
+                    slug_templates.append(("SOL", "sol-updown-1h", 3600))
                 if "XRP" in enabled_coins:
                     slug_templates.append(("XRP", "xrp-updown-15m", 900))
+                    slug_templates.append(("XRP", "xrp-updown-1h", 3600))
 
                 new_active = {}
                 slugs_checked = 0
@@ -740,6 +744,60 @@ class CryptoArbDetector:
                 "momentum": momentum,
             })
         return sorted(result, key=lambda x: x["time_remaining_sec"])
+
+    async def check_price_sum_arb(self) -> list[dict]:
+        """Detectar oportunidades de Price-Sum Arbitrage: YES + NO != $1.
+        Si la suma < $1, podemos comprar ambos y ganar la diferencia.
+        Si la suma > $1, hay una oportunidad de venta.
+        """
+        opportunities = []
+        for cid, mdata in self._active_markets.items():
+            tokens = mdata.get("tokens", [])
+            if len(tokens) < 2:
+                continue
+
+            up_price = down_price = None
+            up_token = down_token = None
+            for tok in tokens:
+                outcome = tok.get("outcome", "").lower()
+                price = float(tok.get("price", 0))
+                if outcome in ("up", "yes"):
+                    up_price = price
+                    up_token = tok.get("token_id", "")
+                elif outcome in ("down", "no"):
+                    down_price = price
+                    down_token = tok.get("token_id", "")
+
+            if up_price is None or down_price is None:
+                continue
+            if up_price <= 0 or down_price <= 0:
+                continue
+
+            price_sum = up_price + down_price
+            gap_pct = abs(1.0 - price_sum) * 100
+
+            # Solo reportar si el gap es significativo (> 2%)
+            if gap_pct < 2.0:
+                continue
+
+            opp_type = "buy_both" if price_sum < 1.0 else "overpriced"
+            profit_pct = (1.0 - price_sum) * 100 if opp_type == "buy_both" else (price_sum - 1.0) * 100
+
+            opportunities.append({
+                "condition_id": cid,
+                "coin": mdata["coin"],
+                "question": mdata["question"],
+                "up_price": up_price,
+                "down_price": down_price,
+                "price_sum": round(price_sum, 4),
+                "gap_pct": round(gap_pct, 2),
+                "profit_pct": round(profit_pct, 2),
+                "type": opp_type,
+                "up_token": up_token,
+                "down_token": down_token,
+            })
+
+        return sorted(opportunities, key=lambda x: -x["gap_pct"])
 
     def get_stats(self) -> dict:
         """Estadísticas para el dashboard."""

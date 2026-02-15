@@ -95,6 +95,21 @@ FEATURE_MARKET_CLASSIFICATION = _features.get("market_classification", False)
 FEATURE_WALLET_BASKETS = _features.get("wallet_baskets", False)
 FEATURE_SNIPER_DBSCAN = _features.get("sniper_dbscan", False)
 FEATURE_CRYPTO_ARB = _features.get("crypto_arb", False)
+FEATURE_CONSENSUS_SHIFT = _features.get("consensus_shift", True)
+FEATURE_RESOLUTION_PATTERN = _features.get("resolution_pattern", True)
+
+# === Señales v7.0 (#19-#22) ===
+_v7 = _yaml.get("signals_v7", {})
+CONSENSUS_SHIFT_MIN_PCT = _v7.get("consensus_shift_min_pct", 15)
+CONSENSUS_SHIFT_MAX_HOURS = _v7.get("consensus_shift_max_hours", 6)
+CONSENSUS_SHIFT_POINTS = _v7.get("consensus_shift_points", 3)
+RESOLUTION_PATTERN_MIN_TRADES = _v7.get("resolution_pattern_min_trades", 3)
+RESOLUTION_PATTERN_MAX_DAYS = _v7.get("resolution_pattern_max_days", 2)
+RESOLUTION_PATTERN_POINTS = _v7.get("resolution_pattern_points", 3)
+WHALE_ALERT_MIN_SIZE = _v7.get("whale_alert_min_size", 5000)
+WHALE_ALERT_POINTS = _v7.get("whale_alert_points", 3)
+REPEAT_WINNER_MIN_WINS = _v7.get("repeat_winner_min_wins", 3)
+REPEAT_WINNER_POINTS = _v7.get("repeat_winner_points", 2)
 
 # === Scoring (nuevos) ===
 ORDERBOOK_DEPTH_POINTS = _scoring.get("orderbook_depth_points", 2)
