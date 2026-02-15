@@ -69,7 +69,7 @@ class TelegramNotifier:
             return
         try:
             text = (
-                "🤖 <b>Polymarket Alert Bot v2.0 Iniciado</b>\n\n"
+                "🤖 <b>Polymarket Alert Bot v3.0 Iniciado</b>\n\n"
                 "Monitoreando actividad sospechosa...\n"
                 "📊 Dashboard activo en el puerto web"
             )

@@ -263,7 +263,7 @@ class BinanceFeed:
         print("[BinanceFeed] Iniciando HTTP polling", flush=True)
 
         # Mapeo para CoinGecko
-        COINGECKO_IDS = {"btcusdt": "bitcoin", "ethusdt": "ethereum", "solusdt": "solana"}
+        COINGECKO_IDS = {"btcusdt": "bitcoin", "ethusdt": "ethereum", "solusdt": "solana", "xrpusdt": "ripple"}
 
         async with httpx.AsyncClient(timeout=10) as client:
             errors_in_a_row = 0

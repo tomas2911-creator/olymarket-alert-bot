@@ -97,9 +97,8 @@ class AutoTrader:
             )
             self._client = ClobClient(
                 CLOB_HOST,
-                key=self._config["api_key"],
+                key=self._config["private_key"],
                 chain_id=CHAIN_ID,
-                funder=self._config["private_key"],
                 signature_type=2,
                 creds=creds,
             )
@@ -241,8 +240,10 @@ class AutoTrader:
             )
 
             order_type = OrderType.FOK if trade_info["order_type"] == "market" else OrderType.GTC
-            signed_order = self._client.create_order(order_args)
-            resp = self._client.post_order(signed_order, order_type)
+            # py-clob-client es síncrono — ejecutar en executor para no bloquear event loop
+            loop = asyncio.get_event_loop()
+            signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
+            resp = await loop.run_in_executor(None, self._client.post_order, signed_order, order_type)
 
             # Parsear respuesta
             success = False
@@ -475,9 +476,10 @@ class AutoTrader:
             if not self._client:
                 return {"connected": False, "error": "No se pudo crear el cliente CLOB."}
 
-            # Intentar obtener API keys (valida credenciales)
+            # Intentar obtener API keys (valida credenciales) — síncrono, usar executor
             try:
-                api_keys = self._client.get_api_keys()
+                loop = asyncio.get_event_loop()
+                api_keys = await loop.run_in_executor(None, self._client.get_api_keys)
                 return {
                     "connected": True,
                     "api_keys_count": len(api_keys) if isinstance(api_keys, list) else 1,

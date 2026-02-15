@@ -189,7 +189,9 @@ class AnomalyAnalyzer:
             return True
         if ws.total_trades <= config.FRESH_WALLET_MAX_TRADES:
             return True
-        days_old = (datetime.now() - ws.first_seen).days
+        now = datetime.now(timezone.utc)
+        first = ws.first_seen.replace(tzinfo=timezone.utc) if ws.first_seen.tzinfo is None else ws.first_seen
+        days_old = (now - first).days
         return days_old <= config.FRESH_WALLET_MAX_DAYS
 
     def _is_market_anomaly(self, trade: Trade, bl: Optional[MarketBaseline]) -> bool:

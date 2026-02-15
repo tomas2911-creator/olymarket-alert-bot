@@ -694,24 +694,32 @@
                     <!-- Wallet & API -->
                     <div class="space-y-3">
                         <h4 class="text-xs text-gray-500 uppercase tracking-wider">Wallet & API</h4>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">API Key</label>
-                                <input type="password" id="at-api-key" placeholder="pk_..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                        <!-- Estado actual de credenciales -->
+                        <div id="at-creds-status" class="hidden bg-green-900/30 border border-green-700/50 rounded p-3">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-green-400 text-sm font-medium">Wallet conectada</span>
                             </div>
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">API Secret</label>
-                                <input type="password" id="at-api-secret" placeholder="Secret..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                            </div>
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">Private Key (Wallet)</label>
-                                <input type="password" id="at-private-key" placeholder="0x..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                            </div>
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">Passphrase</label>
-                                <input type="password" id="at-passphrase" placeholder="Passphrase..." class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            <div class="text-xs text-gray-400 space-y-0.5">
+                                <div>Wallet: <span id="at-wallet-addr" class="text-purple-300 font-mono">—</span></div>
+                                <div>API Key: <span id="at-key-preview" class="text-green-400 font-mono">—</span></div>
+                                <div>Secret: <span class="text-green-400">configurado</span> | Passphrase: <span class="text-green-400">configurado</span></div>
                             </div>
                         </div>
+                        <!-- Input de Private Key + botón generar -->
+                        <div>
+                            <label class="text-xs text-gray-400 block mb-1">Private Key (de tu wallet MetaMask/Rabby conectada a Polymarket)</label>
+                            <div class="flex gap-2">
+                                <input type="password" id="at-private-key" placeholder="0x... (64 caracteres hex)" class="flex-1 bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                                <button onclick="generateApiKeys()" id="btn-generate-keys" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded text-sm font-medium whitespace-nowrap transition-colors">
+                                    Generar API Keys
+                                </button>
+                            </div>
+                            <p id="at-gen-msg" class="text-[10px] text-gray-500 mt-1">Pega tu Private Key y presiona "Generar". Las API Keys se crean y guardan automáticamente.</p>
+                        </div>
+                        <!-- Campos ocultos para compatibilidad -->
+                        <input type="hidden" id="at-api-key" value="">
+                        <input type="hidden" id="at-api-secret" value="">
+                        <input type="hidden" id="at-passphrase" value="">
                         <p class="text-[10px] text-gray-600">Las credenciales se guardan en el servidor (DB privada Railway). Nunca se exponen en el frontend.</p>
                     </div>
 
@@ -2125,14 +2133,47 @@ async function saveCryptoConfig(){
 }
 
 // ── Autotrading ──
+async function generateApiKeys(){
+    const pk=document.getElementById('at-private-key').value.trim();
+    if(!pk||pk==='••••••••'){alert('Pega tu Private Key primero.');return;}
+    const btn=document.getElementById('btn-generate-keys');
+    const msg=document.getElementById('at-gen-msg');
+    btn.disabled=true;btn.textContent='Generando...';
+    msg.textContent='Firmando EIP-712 y contactando Polymarket CLOB...';msg.className='text-[10px] text-yellow-400 mt-1';
+    try{
+        const r=await fetch('/api/crypto-arb/generate-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({private_key:pk})});
+        const data=await r.json();
+        if(data.status==='ok'){
+            msg.textContent=`API Keys generadas para ${data.wallet}. Listo para trading.`;
+            msg.className='text-[10px] text-green-400 mt-1';
+            document.getElementById('at-private-key').value='••••••••';
+            await loadAutotradeConfig();
+        }else{
+            msg.textContent='Error: '+(data.error||'desconocido');
+            msg.className='text-[10px] text-red-400 mt-1';
+        }
+    }catch(e){
+        msg.textContent='Error de conexión: '+e.message;
+        msg.className='text-[10px] text-red-400 mt-1';
+    }
+    btn.disabled=false;btn.textContent='Generar API Keys';
+}
+
 async function loadAutotradeConfig(){
     const c=await fetchJson('/api/crypto-arb/autotrade-config');
     if(!c)return;
     document.getElementById('at-enabled').checked=c.enabled||false;
-    document.getElementById('at-api-key').value=c.api_key_set?'••••••••':'';
-    document.getElementById('at-api-secret').value=c.api_secret_set?'••••••••':'';
-    document.getElementById('at-private-key').value=c.private_key_set?'••••••••':'';
-    document.getElementById('at-passphrase').value=c.passphrase_set?'••••••••':'';
+    // Mostrar estado de credenciales
+    const credsPanel=document.getElementById('at-creds-status');
+    if(c.api_key_set&&c.private_key_set){
+        credsPanel.classList.remove('hidden');
+        document.getElementById('at-key-preview').textContent=c.api_key_preview||'configurada';
+        document.getElementById('at-wallet-addr').textContent=c.wallet_address||'—';
+        document.getElementById('at-private-key').value='••••••••';
+    }else{
+        credsPanel.classList.add('hidden');
+        document.getElementById('at-private-key').value='';
+    }
     document.getElementById('at-bet-size').value=c.bet_size||5;
     document.getElementById('at-min-edge').value=c.min_edge||15;
     document.getElementById('at-min-conf').value=c.min_confidence||75;
@@ -2177,10 +2218,6 @@ async function saveAutotradeConfig(){
     if(document.getElementById('at-coin-eth').checked)coins.push('ETH');
     if(document.getElementById('at-coin-sol').checked)coins.push('SOL');
     if(document.getElementById('at-coin-xrp').checked)coins.push('XRP');
-    const apiKey=document.getElementById('at-api-key').value;
-    const apiSecret=document.getElementById('at-api-secret').value;
-    const privateKey=document.getElementById('at-private-key').value;
-    const passphrase=document.getElementById('at-passphrase').value;
     const body={
         enabled:document.getElementById('at-enabled').checked,
         bet_size:parseFloat(document.getElementById('at-bet-size').value)||5,
@@ -2194,10 +2231,6 @@ async function saveAutotradeConfig(){
         cooldown_sec:parseInt(document.getElementById('at-cooldown').value)||30,
         coins:coins,
     };
-    if(apiKey&&apiKey!=='••••••••')body.api_key=apiKey;
-    if(apiSecret&&apiSecret!=='••••••••')body.api_secret=apiSecret;
-    if(privateKey&&privateKey!=='••••••••')body.private_key=privateKey;
-    if(passphrase&&passphrase!=='••••••••')body.passphrase=passphrase;
     try{
         const r=await fetch('/api/crypto-arb/autotrade-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         const data=await r.json();

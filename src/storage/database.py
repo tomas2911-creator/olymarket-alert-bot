@@ -1,6 +1,6 @@
 """PostgreSQL database for storing wallet stats, market baselines, alerts and resolution tracking."""
 import asyncpg
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import structlog
 
@@ -215,6 +215,8 @@ class Database:
                     ON crypto_signals(coin);
                 CREATE INDEX IF NOT EXISTS idx_crypto_signals_resolved
                     ON crypto_signals(resolved);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_crypto_signals_condition_id
+                    ON crypto_signals(condition_id);
             """)
 
             # Tabla de autotrades (trades reales ejecutados)
@@ -261,8 +263,8 @@ class Database:
                 return WalletStats(
                     address=row["address"],
                     total_trades=row["total_trades"],
-                    first_seen=row["first_seen"] or datetime.now(),
-                    last_seen=row["last_seen"] or datetime.now(),
+                    first_seen=row["first_seen"] or datetime.now(timezone.utc),
+                    last_seen=row["last_seen"] or datetime.now(timezone.utc),
                     total_volume=row["total_volume"] or 0,
                     avg_trade_size=row["avg_trade_size"] or 0,
                     markets_traded=row["markets_traded"] or 0,
@@ -273,7 +275,7 @@ class Database:
 
     async def update_wallet_stats(self, trade: Trade):
         addr = trade.wallet_address.lower()
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         async with self._pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO wallets (address, total_trades, first_seen, last_seen,
@@ -354,7 +356,7 @@ class Database:
                     median_trade_size=row["median_trade_size"],
                     p90_trade_size=row["p90_trade_size"],
                     p95_trade_size=row["p95_trade_size"],
-                    last_updated=row["last_updated"] or datetime.now(),
+                    last_updated=row["last_updated"] or datetime.now(timezone.utc),
                 )
         return None
 
@@ -384,12 +386,12 @@ class Database:
                     avg_trade_size=EXCLUDED.avg_trade_size, median_trade_size=EXCLUDED.median_trade_size,
                     p90_trade_size=EXCLUDED.p90_trade_size, p95_trade_size=EXCLUDED.p95_trade_size,
                     last_updated=EXCLUDED.last_updated
-            """, condition_id, n, total, avg, median, p90, p95, datetime.now())
+            """, condition_id, n, total, avg, median, p90, p95, datetime.now(timezone.utc))
 
     # ── Alerts ────────────────────────────────────────────────────────
 
     async def should_alert(self, wallet: str, market_id: str, cooldown_hours: int = 6) -> bool:
-        cutoff = datetime.now() - timedelta(hours=cooldown_hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=cooldown_hours)
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow("""
                 SELECT 1 FROM alerts
@@ -524,7 +526,7 @@ class Database:
                                    outcome: str, window_minutes: int = 30,
                                    min_size: float = 1000) -> list[str]:
         """Encontrar wallets que apostaron en el mismo lado en una ventana reciente."""
-        cutoff = datetime.now() - timedelta(minutes=window_minutes)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT DISTINCT wallet_address FROM trades
@@ -725,11 +727,12 @@ class Database:
 
     async def set_config_bulk(self, data: dict):
         async with self._pool.acquire() as conn:
-            for k, v in data.items():
-                await conn.execute("""
-                    INSERT INTO bot_config (key, value) VALUES ($1, $2)
-                    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-                """, k, str(v))
+            async with conn.transaction():
+                for k, v in data.items():
+                    await conn.execute("""
+                        INSERT INTO bot_config (key, value) VALUES ($1, $2)
+                        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                    """, k, str(v))
 
     # ── Wallet Detail ──────────────────────────────────────────────────
 
@@ -1146,7 +1149,7 @@ class Database:
             rows = await conn.fetch("""
                 SELECT LOWER(m.category) as category, COUNT(*) as trade_count, SUM(t.size) as total_vol
                 FROM trades t
-                JOIN markets m ON m.condition_id = t.market_id
+                JOIN markets_tracked m ON m.condition_id = t.market_id
                 WHERE t.wallet_address = $1 AND m.category IS NOT NULL
                 GROUP BY LOWER(m.category)
                 ORDER BY trade_count DESC
@@ -1174,7 +1177,7 @@ class Database:
                     SELECT t.wallet_address, COUNT(*) as total_trades,
                            COUNT(CASE WHEN LOWER(m.category) = LOWER($2) THEN 1 END) as cat_trades
                     FROM trades t
-                    JOIN markets m ON m.condition_id = t.market_id
+                    JOIN markets_tracked m ON m.condition_id = t.market_id
                     WHERE t.wallet_address IN (
                         SELECT DISTINCT wallet_address FROM trades
                         WHERE market_id = $1
@@ -1217,11 +1220,6 @@ class Database:
     async def record_crypto_signal(self, signal: dict) -> int:
         """Registrar señal crypto arb y devolver ID. Rechaza duplicados por condition_id."""
         async with self._pool.acquire() as conn:
-            # Crear índice único si no existe (safety net contra duplicados)
-            await conn.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_crypto_signals_condition_id
-                ON crypto_signals (condition_id)
-            """)
             row = await conn.fetchrow("""
                 INSERT INTO crypto_signals
                 (coin, direction, spot_change_pct, poly_odds, fair_odds,

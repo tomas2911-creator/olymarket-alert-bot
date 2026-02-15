@@ -86,6 +86,7 @@ class CryptoArbDetector:
         self.feed = binance_feed
         self._active_markets: dict[str, dict] = {}  # condition_id -> market_data
         self._last_scan = 0.0
+        self._last_token_refresh = 0.0
         self._signals_today: list[CryptoSignal] = []
         self._signals_today_date: str = ""
         self._running = False
@@ -102,6 +103,12 @@ class CryptoArbDetector:
                 if now - self._last_scan > 60:
                     await self._scan_active_markets()
                     self._last_scan = now
+                    self._last_token_refresh = now
+
+                # Refrescar solo token prices (odds) cada 15 segundos
+                if now - self._last_token_refresh > 15 and self._active_markets:
+                    await self._refresh_token_prices()
+                    self._last_token_refresh = now
 
                 # Buscar señales cada 3 segundos según estrategia activa
                 if config.CRYPTO_ARB_STRATEGY == "divergence":
@@ -268,6 +275,23 @@ class CryptoArbDetector:
             print(f"[CryptoDetector] Scan error: {e}", flush=True)
             import traceback
             traceback.print_exc()
+
+    async def _refresh_token_prices(self):
+        """Refrescar solo los token prices (odds) de mercados activos via CLOB.
+        Más ligero que _scan_active_markets — solo actualiza precios, no busca nuevos mercados.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                for cid, mdata in self._active_markets.items():
+                    try:
+                        resp = await client.get(f"{config.CLOB_API_URL}/markets/{cid}")
+                        if resp.status_code == 200:
+                            clob = resp.json()
+                            mdata["tokens"] = clob.get("tokens", [])
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[CryptoDetector] Token refresh error: {e}", flush=True)
 
     async def _check_divergences(self) -> list[CryptoSignal]:
         """Comparar precios spot vs odds de Polymarket para encontrar divergencias."""

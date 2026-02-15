@@ -13,6 +13,19 @@ router = APIRouter()
 DASHBOARD_HTML = Path(__file__).parent.parent / "dashboard" / "index.html"
 
 
+def _derive_wallet_address(pk: str) -> str:
+    """Derivar dirección de wallet a partir de private key (sin crashear)."""
+    if not pk or len(pk) < 64:
+        return ""
+    try:
+        from eth_account import Account
+        if not pk.startswith("0x"):
+            pk = "0x" + pk
+        return Account.from_key(pk).address
+    except Exception:
+        return ""
+
+
 # ── Dashboard ────────────────────────────────────────────────────────
 
 @router.get("/", response_class=HTMLResponse)
@@ -90,7 +103,7 @@ async def debug_resolve_crypto(request: Request):
             "resolved_count": len(resolved),
             "wins": sum(1 for s in resolved if s.get("paper_result") == "win"),
             "losses": sum(1 for s in resolved if s.get("paper_result") == "loss"),
-            "resolution_method": "gamma_slug → clob → binance_auto",
+            "resolution_method": "gamma_slug → clob",
             "unresolved_signals": results,
         }
     except Exception as e:
@@ -513,7 +526,7 @@ async def reset_all_data(request: Request):
     try:
         async with db._pool.acquire() as conn:
             counts = {}
-            for table in ["trades", "wallets", "wallet_links", "market_baselines", "markets_tracked", "alerts"]:
+            for table in ["trades", "wallets", "wallet_links", "market_baselines", "markets_tracked", "alerts", "crypto_signals", "autotrades"]:
                 result = await conn.execute(f"DELETE FROM {table}")
                 counts[table] = int(result.split(" ")[-1]) if result else 0
         return {"status": "ok", "deleted": counts}
@@ -718,6 +731,8 @@ async def get_autotrade_config(request: Request):
         "api_secret_set": bool(raw.get("at_api_secret")),
         "private_key_set": bool(raw.get("at_private_key")),
         "passphrase_set": bool(raw.get("at_passphrase")),
+        "api_key_preview": (raw.get("at_api_key", "")[:12] + "...") if raw.get("at_api_key") else "",
+        "wallet_address": _derive_wallet_address(raw.get("at_private_key", "")),
         "connected": at_status.get("connected", False),
         "balance": None,
         "open_positions": stats.get("open_positions", 0),
@@ -774,6 +789,139 @@ async def save_autotrade_config(request: Request):
         except Exception:
             pass
     return {"status": "ok"}
+
+
+@router.post("/api/crypto-arb/generate-keys")
+async def generate_api_keys(request: Request):
+    """Generar API Key, Secret y Passphrase a partir de la Private Key.
+    Solo necesita la private key de la wallet — genera las otras 3 credenciales
+    automáticamente via EIP-712 signing + CLOB API.
+    """
+    import httpx as _httpx
+    db = request.app.state.db
+    body = await request.json()
+    private_key = body.get("private_key", "").strip()
+
+    if not private_key:
+        return {"status": "error", "error": "Private key es requerida."}
+
+    # Limpiar formato
+    if not private_key.startswith("0x"):
+        private_key = "0x" + private_key
+    pk_clean = private_key[2:]
+    if len(pk_clean) != 64:
+        return {"status": "error", "error": f"Private key debe tener 64 caracteres hex (sin 0x). La tuya tiene {len(pk_clean)}."}
+
+    try:
+        import time as _time
+        from eth_account import Account
+        from eth_account.messages import encode_typed_data
+
+        account = Account.from_key(private_key)
+        wallet_address = account.address
+        timestamp = str(int(_time.time()))
+        nonce = 0
+
+        # EIP-712 structured data para CLOB auth (L1)
+        typed_data = {
+            "types": {
+                "EIP712Domain": [
+                    {"name": "name", "type": "string"},
+                    {"name": "version", "type": "string"},
+                    {"name": "chainId", "type": "uint256"},
+                ],
+                "ClobAuth": [
+                    {"name": "address", "type": "address"},
+                    {"name": "timestamp", "type": "string"},
+                    {"name": "nonce", "type": "uint256"},
+                    {"name": "message", "type": "string"},
+                ],
+            },
+            "primaryType": "ClobAuth",
+            "domain": {"name": "ClobAuthDomain", "version": "1", "chainId": 137},
+            "message": {
+                "address": wallet_address,
+                "timestamp": timestamp,
+                "nonce": nonce,
+                "message": "This message attests that I control the given wallet",
+            },
+        }
+
+        signable = encode_typed_data(full_message=typed_data)
+        signed = account.sign_message(signable)
+        signature = signed.signature.hex()
+        if not signature.startswith("0x"):
+            signature = "0x" + signature
+
+        # Headers para CLOB L1 auth
+        poly_headers = {
+            "POLY_ADDRESS": wallet_address,
+            "POLY_SIGNATURE": signature,
+            "POLY_TIMESTAMP": timestamp,
+            "POLY_NONCE": str(nonce),
+            "User-Agent": "PolymarketAlertBot/3.0",
+            "Accept": "application/json",
+        }
+
+        api_creds = None
+        error_msg = ""
+
+        async with _httpx.AsyncClient(timeout=15) as client:
+            # Intentar derivar primero (si ya existen keys)
+            try:
+                resp = await client.get("https://clob.polymarket.com/auth/derive-api-key", headers=poly_headers)
+                if resp.status_code == 200:
+                    api_creds = resp.json()
+            except Exception:
+                pass
+
+            # Si no se pudieron derivar, crear nuevas
+            if not api_creds:
+                try:
+                    resp = await client.post("https://clob.polymarket.com/auth/api-key", headers=poly_headers, content=b"")
+                    if resp.status_code == 200:
+                        api_creds = resp.json()
+                    else:
+                        error_msg = f"CLOB respondió HTTP {resp.status_code}: {resp.text[:200]}"
+                except Exception as e:
+                    error_msg = str(e)
+
+        if not api_creds:
+            return {"status": "error", "error": error_msg or "No se pudieron generar las API keys."}
+
+        # Guardar las 4 credenciales en DB
+        api_key = api_creds.get("apiKey", "")
+        api_secret = api_creds.get("secret", "")
+        passphrase = api_creds.get("passphrase", "")
+
+        await db.set_config_bulk({
+            "at_private_key": pk_clean,
+            "at_api_key": api_key,
+            "at_api_secret": api_secret,
+            "at_passphrase": passphrase,
+        })
+
+        # Recargar config en autotrader
+        autotrader = getattr(request.app.state, 'autotrader', None)
+        if autotrader:
+            try:
+                await autotrader.reload_config()
+            except Exception:
+                pass
+
+        return {
+            "status": "ok",
+            "wallet": wallet_address,
+            "api_key_preview": api_key[:12] + "..." if api_key else "",
+            "message": "API Keys generadas y guardadas. Listo para trading.",
+        }
+
+    except ImportError:
+        return {"status": "error", "error": "Dependencia eth-account no instalada. Ejecuta: pip install eth-account"}
+    except ValueError as e:
+        return {"status": "error", "error": f"Private key inválida: {e}"}
+    except Exception as e:
+        return {"status": "error", "error": f"Error generando keys: {e}"}
 
 
 @router.get("/api/crypto-arb/autotrade-test")

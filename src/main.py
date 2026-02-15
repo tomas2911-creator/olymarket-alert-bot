@@ -603,14 +603,13 @@ class PolymarketAlertBot:
         """Resolver señales crypto pendientes.
 
         CLOB API tarda horas en marcar mercados 5-min como cerrados.
-        Usamos Gamma API por slug (rápido) o auto-resolución por precio Binance.
+        Usamos Gamma API por slug (rápido) o CLOB API como fallback.
         """
         try:
             unresolved = await self.db.get_unresolved_crypto_signals()
             if not unresolved:
                 return
 
-            now = datetime.now()
             resolved_count = 0
 
             async with httpx.AsyncClient(timeout=15) as client:
@@ -730,7 +729,7 @@ class PolymarketAlertBot:
                     paper_result = "win" if won else "loss"
                     bet = float(sig.get("paper_bet_size", config.CRYPTO_ARB_PAPER_BET))
                     odds = float(sig.get("poly_odds", 0.5))
-                    paper_pnl = bet * (1 - odds) if won else -(bet * odds)
+                    paper_pnl = bet * ((1.0 / odds) - 1) if won else -bet
 
                     await self.db.resolve_crypto_signal(
                         sig["id"], resolution, paper_result, round(paper_pnl, 2)
