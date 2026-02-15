@@ -599,6 +599,7 @@
                 <button onclick="showCryptoSub('autotrade')" id="csub-autotrade" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Autotrading</button>
                 <button onclick="showCryptoSub('strategy')" id="csub-strategy" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Estrategia</button>
                 <button onclick="showCryptoSub('cconfig')" id="csub-cconfig" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Config</button>
+                <button onclick="showCryptoSub('pricesum')" id="csub-pricesum" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Price-Sum Arb</button>
             </div>
 
             <!-- Crypto Sub: Señales en Vivo -->
@@ -995,6 +996,36 @@
                         <button onclick="saveCryptoConfig()" class="px-4 py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">Guardar</button>
                         <span id="cc-status" class="text-xs text-green-400 self-center hidden">Guardado!</span>
                     </div>
+                </div>
+            </div>
+
+            <!-- Price-Sum Arb Sub-panel -->
+            <div id="cpanel-pricesum" class="hidden p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h4 class="text-sm font-medium">Price-Sum Arbitrage</h4>
+                        <p class="text-[10px] text-gray-600">Oportunidades donde YES + NO != $1. Si la suma < $1, comprar ambos garantiza ganancia.</p>
+                    </div>
+                    <button onclick="loadPriceSumArb()" class="px-3 py-1 rounded bg-purple-900/50 text-purple-300 text-xs hover:bg-purple-800/50 transition">Refrescar</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead>
+                            <tr class="text-gray-500 border-b border-gray-800/50">
+                                <th class="text-left p-2">Mercado</th>
+                                <th class="text-center p-2">Moneda</th>
+                                <th class="text-right p-2">Up $</th>
+                                <th class="text-right p-2">Down $</th>
+                                <th class="text-right p-2">Suma</th>
+                                <th class="text-center p-2">Gap %</th>
+                                <th class="text-center p-2">Tipo</th>
+                                <th class="text-right p-2">Profit %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pricesum-body">
+                            <tr><td colspan="8" class="text-center text-gray-600 p-6">Click "Refrescar" para buscar oportunidades</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -2208,7 +2239,7 @@ async function loadCharts(){
 let cryptoRefreshInterval=null;
 
 function showCryptoSub(sub){
-    ['signals','history','autotrade','strategy','cconfig'].forEach(s=>{
+    ['signals','history','autotrade','strategy','cconfig','pricesum'].forEach(s=>{
         const el=document.getElementById('cpanel-'+s);
         if(el)el.classList.toggle('hidden',s!==sub);
         const btn=document.getElementById('csub-'+s);
@@ -2223,6 +2254,7 @@ function showCryptoSub(sub){
     if(sub==='autotrade')loadAutotradeConfig();
     if(sub==='strategy')loadStrategyConfig();
     if(sub==='cconfig')loadCryptoConfig();
+    if(sub==='pricesum')loadPriceSumArb();
 }
 
 async function loadCryptoTab(){
@@ -2501,6 +2533,32 @@ async function loadCryptoConfig(){
     document.getElementById('cc-bet-size').value=c.paper_bet_size;
     document.getElementById('cc-max-daily').value=c.max_daily_signals;
     document.getElementById('cc-telegram').value=c.telegram_alerts?'true':'false';
+}
+
+async function loadPriceSumArb(){
+    const data=await fetchJson('/api/crypto-arb/price-sum-arb');
+    const tbody=document.getElementById('pricesum-body');
+    if(!data||data.status==='error'||!data.opportunities||data.opportunities.length===0){
+        tbody.innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-6">Sin oportunidades de price-sum arb ahora</td></tr>';
+        return;
+    }
+    tbody.innerHTML=data.opportunities.map(o=>{
+        const q=o.question||'';
+        const short=q.length>45?q.slice(0,42)+'...':q;
+        const sumColor=o.price_sum<1?'text-green-400':'text-red-400';
+        const typeLabel=o.type==='buy_both'?'<span class="bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded text-[10px]">Comprar Ambos</span>'
+            :'<span class="bg-red-900/40 text-red-400 px-1.5 py-0.5 rounded text-[10px]">Sobrevalorado</span>';
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="p-2">${short}</td>
+            <td class="p-2 text-center font-bold">${o.coin}</td>
+            <td class="p-2 text-right font-mono">${o.up_price.toFixed(3)}</td>
+            <td class="p-2 text-right font-mono">${o.down_price.toFixed(3)}</td>
+            <td class="p-2 text-right font-mono ${sumColor}">${o.price_sum.toFixed(4)}</td>
+            <td class="p-2 text-center font-mono text-yellow-400">${o.gap_pct}%</td>
+            <td class="p-2 text-center">${typeLabel}</td>
+            <td class="p-2 text-right font-mono text-green-400">${o.profit_pct}%</td>
+        </tr>`;
+    }).join('');
 }
 
 async function saveCryptoConfig(){
