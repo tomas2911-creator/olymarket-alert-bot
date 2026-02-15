@@ -26,6 +26,19 @@ def _derive_wallet_address(pk: str) -> str:
         return ""
 
 
+async def get_user_id(request: Request) -> int:
+    """Extraer user_id del token de sesión. Retorna 1 si no hay auth (retrocompat)."""
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if not token:
+        return 1
+    try:
+        db = request.app.state.db
+        user = await db.get_session_user(token)
+        return user.get("id", 1) if user else 1
+    except Exception:
+        return 1
+
+
 # ── Dashboard ────────────────────────────────────────────────────────
 
 @router.get("/", response_class=HTMLResponse)
@@ -95,7 +108,8 @@ async def get_me(request: Request):
 @router.get("/api/stats")
 async def get_stats(request: Request):
     db = request.app.state.db
-    stats = await db.get_dashboard_stats()
+    uid = await get_user_id(request)
+    stats = await db.get_dashboard_stats(user_id=uid)
     bot = request.app.state.bot
     if bot:
         uptime = datetime.now() - bot.start_time
@@ -170,7 +184,8 @@ async def debug_resolve_crypto(request: Request):
 @router.get("/api/alerts")
 async def get_alerts(request: Request, limit: int = 50):
     db = request.app.state.db
-    return await db.get_recent_alerts(limit=limit)
+    uid = await get_user_id(request)
+    return await db.get_recent_alerts(limit=limit, user_id=uid)
 
 
 @router.delete("/api/alerts")
@@ -201,7 +216,8 @@ async def get_market_alerts(request: Request, market_id: str):
 @router.get("/api/wallets")
 async def get_top_wallets(request: Request, limit: int = 20):
     db = request.app.state.db
-    return await db.get_top_wallets(limit=limit)
+    uid = await get_user_id(request)
+    return await db.get_top_wallets(limit=limit, user_id=uid)
 
 
 @router.get("/api/wallets/{address}")
@@ -248,13 +264,15 @@ async def recent_trades(request: Request, limit: int = 100):
 @router.get("/api/charts/alerts-by-day")
 async def alerts_by_day(request: Request, days: int = 30):
     db = request.app.state.db
-    return await db.get_alerts_by_day(days=days)
+    uid = await get_user_id(request)
+    return await db.get_alerts_by_day(days=days, user_id=uid)
 
 
 @router.get("/api/charts/score-distribution")
 async def score_distribution(request: Request):
     db = request.app.state.db
-    return await db.get_score_distribution()
+    uid = await get_user_id(request)
+    return await db.get_score_distribution(user_id=uid)
 
 
 # ── Config ───────────────────────────────────────────────────────────
@@ -359,7 +377,8 @@ _CONFIG_MAP = {
 @router.get("/api/config")
 async def get_config(request: Request):
     db = request.app.state.db
-    saved = await db.get_config()
+    uid = await get_user_id(request)
+    saved = await db.get_config(user_id=uid)
     return {
         # Detección general
         "min_size_usd": config.MIN_SIZE_USD,
@@ -416,6 +435,7 @@ async def get_config(request: Request):
 @router.post("/api/config")
 async def update_config(request: Request, body: ConfigUpdate):
     db = request.app.state.db
+    uid = await get_user_id(request)
     data = {}
 
     # Procesar todos los campos usando el mapeo
@@ -423,17 +443,16 @@ async def update_config(request: Request, body: ConfigUpdate):
     for field_name, value in body_dict.items():
         if field_name == "excluded_categories":
             data["excluded_categories"] = value
-            bot = request.app.state.bot
-            if bot:
-                bot._excluded_categories = {c.strip().lower() for c in value.split(",") if c.strip()}
             continue
         if field_name in _CONFIG_MAP:
             db_key, config_attr = _CONFIG_MAP[field_name]
             data[db_key] = str(value)
-            setattr(config, config_attr, value)
+            # Solo aplicar a config global si es user 1 (retrocompat)
+            if uid == 1:
+                setattr(config, config_attr, value)
 
     if data:
-        await db.set_config_bulk(data)
+        await db.set_config_bulk(data, user_id=uid)
     return {"status": "ok", "updated": list(data.keys())}
 
 
@@ -498,30 +517,31 @@ class FeaturesUpdate(BaseModel):
 @router.post("/api/features")
 async def update_features(request: Request, body: FeaturesUpdate):
     db = request.app.state.db
+    uid = await get_user_id(request)
     updated = {}
     data = {}
     if body.orderbook_depth is not None:
-        config.FEATURE_ORDERBOOK_DEPTH = body.orderbook_depth
+        if uid == 1: config.FEATURE_ORDERBOOK_DEPTH = body.orderbook_depth
         updated["orderbook_depth"] = body.orderbook_depth
         data["feature_orderbook_depth"] = str(body.orderbook_depth)
     if body.market_classification is not None:
-        config.FEATURE_MARKET_CLASSIFICATION = body.market_classification
+        if uid == 1: config.FEATURE_MARKET_CLASSIFICATION = body.market_classification
         updated["market_classification"] = body.market_classification
         data["feature_market_classification"] = str(body.market_classification)
     if body.wallet_baskets is not None:
-        config.FEATURE_WALLET_BASKETS = body.wallet_baskets
+        if uid == 1: config.FEATURE_WALLET_BASKETS = body.wallet_baskets
         updated["wallet_baskets"] = body.wallet_baskets
         data["feature_wallet_baskets"] = str(body.wallet_baskets)
     if body.sniper_dbscan is not None:
-        config.FEATURE_SNIPER_DBSCAN = body.sniper_dbscan
+        if uid == 1: config.FEATURE_SNIPER_DBSCAN = body.sniper_dbscan
         updated["sniper_dbscan"] = body.sniper_dbscan
         data["feature_sniper_dbscan"] = str(body.sniper_dbscan)
     if body.crypto_arb is not None:
-        config.FEATURE_CRYPTO_ARB = body.crypto_arb
+        if uid == 1: config.FEATURE_CRYPTO_ARB = body.crypto_arb
         updated["crypto_arb"] = body.crypto_arb
         data["feature_crypto_arb"] = str(body.crypto_arb)
     if data:
-        await db.set_config_bulk(data)
+        await db.set_config_bulk(data, user_id=uid)
     return {"status": "ok", "updated": updated}
 
 
@@ -679,7 +699,7 @@ async def get_backtest_result(request: Request):
 # ── Crypto Arb Config ────────────────────────────────────────
 
 @router.get("/api/crypto-arb/config")
-async def get_crypto_config():
+async def get_crypto_config(request: Request):
     return {
         "mode": config.CRYPTO_ARB_MODE,
         "coins": config.CRYPTO_ARB_COINS,
@@ -717,6 +737,7 @@ class CryptoConfigUpdate(BaseModel):
 @router.post("/api/crypto-arb/config")
 async def update_crypto_config(request: Request, body: CryptoConfigUpdate):
     db = request.app.state.db
+    uid = await get_user_id(request)
     updated = {}
     data = {}
     if body.min_price_move_pct is not None:
@@ -764,7 +785,7 @@ async def update_crypto_config(request: Request, body: CryptoConfigUpdate):
         updated["min_trend_consistency"] = body.min_trend_consistency
         data["crypto_min_trend_consistency"] = str(body.min_trend_consistency)
     if data:
-        await db.set_config_bulk(data)
+        await db.set_config_bulk(data, user_id=uid)
     return {"status": "ok", "updated": updated}
 
 
@@ -774,14 +795,15 @@ async def update_crypto_config(request: Request, body: CryptoConfigUpdate):
 async def get_autotrade_config(request: Request):
     """Obtener configuración de autotrading (sin exponer credenciales)."""
     db = request.app.state.db
+    uid = await get_user_id(request)
     raw = await db.get_config_bulk([
         "at_enabled", "at_bet_size", "at_min_edge", "at_min_confidence",
         "at_max_odds", "at_max_positions", "at_order_type",
         "at_max_daily_loss", "at_max_daily_trades", "at_cooldown_sec",
         "at_coins", "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
-    ])
+    ], user_id=uid)
     # Estadísticas reales del autotrader
-    stats = await db.get_autotrade_stats()
+    stats = await db.get_autotrade_stats(user_id=uid)
     # Estado del motor
     autotrader = getattr(request.app.state, 'autotrader', None)
     at_status = autotrader.get_status() if autotrader else {}
@@ -815,8 +837,9 @@ async def get_autotrade_config(request: Request):
 
 @router.post("/api/crypto-arb/autotrade-config")
 async def save_autotrade_config(request: Request):
-    """Guardar configuración de autotrading."""
+    """Guardar configuración de autotrading per-user."""
     db = request.app.state.db
+    uid = await get_user_id(request)
     body = await request.json()
     data = {}
     if "enabled" in body:
@@ -850,14 +873,15 @@ async def save_autotrade_config(request: Request):
     if "passphrase" in body:
         data["at_passphrase"] = body["passphrase"]
     if data:
-        await db.set_config_bulk(data)
-    # Recargar config en el autotrader si existe
-    autotrader = getattr(request.app.state, 'autotrader', None)
-    if autotrader:
-        try:
-            await autotrader.reload_config()
-        except Exception:
-            pass
+        await db.set_config_bulk(data, user_id=uid)
+    # Recargar config en el autotrader si existe (solo user 1 retrocompat)
+    if uid == 1:
+        autotrader = getattr(request.app.state, 'autotrader', None)
+        if autotrader:
+            try:
+                await autotrader.reload_config()
+            except Exception:
+                pass
     return {"status": "ok"}
 
 
@@ -869,6 +893,7 @@ async def generate_api_keys(request: Request):
     """
     import httpx as _httpx
     db = request.app.state.db
+    uid = await get_user_id(request)
     body = await request.json()
     private_key = body.get("private_key", "").strip()
 
@@ -969,7 +994,7 @@ async def generate_api_keys(request: Request):
             "at_api_key": api_key,
             "at_api_secret": api_secret,
             "at_passphrase": passphrase,
-        })
+        }, user_id=uid)
 
         # Recargar config en autotrader
         autotrader = getattr(request.app.state, 'autotrader', None)
@@ -1003,7 +1028,8 @@ async def test_autotrade_connection(request: Request):
         return result
     # Fallback sin autotrader
     db = request.app.state.db
-    raw = await db.get_config_bulk(["at_api_key", "at_api_secret", "at_private_key"])
+    uid = await get_user_id(request)
+    raw = await db.get_config_bulk(["at_api_key", "at_api_secret", "at_private_key"], user_id=uid)
     if not raw.get("at_api_key") or not raw.get("at_api_secret"):
         return {"connected": False, "error": "No hay credenciales configuradas."}
     try:
@@ -1021,8 +1047,9 @@ async def test_autotrade_connection(request: Request):
 async def get_autotrades(request: Request, hours: int = 48, limit: int = 50):
     """Obtener historial de autotrades ejecutados."""
     db = request.app.state.db
-    trades = await db.get_autotrades(hours=hours, limit=limit)
-    stats = await db.get_autotrade_stats()
+    uid = await get_user_id(request)
+    trades = await db.get_autotrades(hours=hours, limit=limit, user_id=uid)
+    stats = await db.get_autotrade_stats(user_id=uid)
     return {"trades": trades, "stats": stats}
 
 
@@ -1032,6 +1059,7 @@ async def get_autotrades(request: Request, hours: int = 48, limit: int = 50):
 async def get_alert_trading_config(request: Request):
     """Obtener configuración del alert autotrader."""
     db = request.app.state.db
+    uid = await get_user_id(request)
     raw = await db.get_config_bulk([
         "aat_enabled", "aat_bet_size", "aat_min_score",
         "aat_max_odds", "aat_min_odds", "aat_max_positions",
@@ -1047,8 +1075,8 @@ async def get_alert_trading_config(request: Request):
         "aat_auto_scale_enabled", "aat_auto_scale_win_boost", "aat_auto_scale_loss_reduce",
         "aat_max_category_exposure", "aat_max_drawdown",
         "aat_api_key", "aat_private_key",
-    ])
-    stats = await db.get_alert_autotrade_stats()
+    ], user_id=uid)
+    stats = await db.get_alert_autotrade_stats(user_id=uid)
     aat = getattr(request.app.state, 'alert_autotrader', None)
     aat_status = aat.get_status() if aat else {}
     has_own_wallet = bool(raw.get("aat_private_key"))
@@ -1115,8 +1143,9 @@ async def get_alert_trading_config(request: Request):
 
 @router.post("/api/alert-trading/config")
 async def save_alert_trading_config(request: Request):
-    """Guardar configuración del alert autotrader."""
+    """Guardar configuración del alert autotrader per-user."""
     db = request.app.state.db
+    uid = await get_user_id(request)
     body = await request.json()
     data = {}
     if "enabled" in body:
@@ -1194,14 +1223,15 @@ async def save_alert_trading_config(request: Request):
     if "max_drawdown" in body:
         data["aat_max_drawdown"] = str(body["max_drawdown"])
     if data:
-        await db.set_config_bulk(data)
-    # Recargar config en alert autotrader
-    aat = getattr(request.app.state, 'alert_autotrader', None)
-    if aat:
-        try:
-            await aat.reload_config()
-        except Exception:
-            pass
+        await db.set_config_bulk(data, user_id=uid)
+    # Recargar config en alert autotrader (solo user 1 retrocompat)
+    if uid == 1:
+        aat = getattr(request.app.state, 'alert_autotrader', None)
+        if aat:
+            try:
+                await aat.reload_config()
+            except Exception:
+                pass
     return {"status": "ok"}
 
 
@@ -1290,8 +1320,9 @@ async def alert_backtest(request: Request, days: int = 30, min_score: int = 5, b
 async def get_alert_pnl_history(request: Request, days: int = 30):
     """Historial de PnL diario para gráfico de evolución."""
     db = request.app.state.db
+    uid = await get_user_id(request)
     try:
-        history = await db.get_alert_pnl_history(days)
+        history = await db.get_alert_pnl_history(days, user_id=uid)
         return {"status": "ok", "history": history}
     except Exception as e:
         return {"status": "error", "error": str(e)}
@@ -1319,6 +1350,7 @@ async def generate_aat_api_keys(request: Request):
     """Generar API Keys propias para Alert Trading (wallet separada)."""
     import httpx as _httpx
     db = request.app.state.db
+    uid = await get_user_id(request)
     body = await request.json()
     private_key = body.get("private_key", "").strip()
     if not private_key:
@@ -1397,7 +1429,7 @@ async def generate_aat_api_keys(request: Request):
             "aat_api_key": api_creds.get("apiKey", ""),
             "aat_api_secret": api_creds.get("secret", ""),
             "aat_passphrase": api_creds.get("passphrase", ""),
-        })
+        }, user_id=uid)
         aat = getattr(request.app.state, 'alert_autotrader', None)
         if aat:
             try:
@@ -1413,12 +1445,13 @@ async def generate_aat_api_keys(request: Request):
 async def disconnect_aat_wallet(request: Request):
     """Desconectar wallet propia del Alert Trading (vuelve a usar la compartida)."""
     db = request.app.state.db
+    uid = await get_user_id(request)
     await db.set_config_bulk({
         "aat_private_key": "",
         "aat_api_key": "",
         "aat_api_secret": "",
         "aat_passphrase": "",
-    })
+    }, user_id=uid)
     aat = getattr(request.app.state, 'alert_autotrader', None)
     if aat:
         try:
@@ -1432,8 +1465,9 @@ async def disconnect_aat_wallet(request: Request):
 async def get_alert_trades(request: Request, hours: int = 168, limit: int = 50):
     """Obtener historial de alert autotrades (default última semana)."""
     db = request.app.state.db
-    trades = await db.get_alert_autotrades(hours=hours, limit=limit)
-    stats = await db.get_alert_autotrade_stats()
+    uid = await get_user_id(request)
+    trades = await db.get_alert_autotrades(hours=hours, limit=limit, user_id=uid)
+    stats = await db.get_alert_autotrade_stats(user_id=uid)
     return {"trades": trades, "stats": stats}
 
 
@@ -1450,26 +1484,29 @@ async def get_heatmap(request: Request):
 @router.get("/api/journal")
 async def get_journal(request: Request, limit: int = 50):
     db = request.app.state.db
-    notes = await db.get_journal_notes(user_id=1, limit=limit)
+    uid = await get_user_id(request)
+    notes = await db.get_journal_notes(user_id=uid, limit=limit)
     return notes
 
 @router.post("/api/journal")
 async def add_journal(request: Request):
     db = request.app.state.db
+    uid = await get_user_id(request)
     body = await request.json()
     await db.add_journal_note(
         trade_type=body.get("trade_type", "manual"),
         trade_id=body.get("trade_id", 0),
         note=body.get("note", ""),
         tags=body.get("tags", ""),
-        user_id=body.get("user_id", 1),
+        user_id=uid,
     )
     return {"status": "ok"}
 
 @router.get("/api/bankroll")
 async def get_bankroll(request: Request, days: int = 30):
     db = request.app.state.db
-    history = await db.get_bankroll_history(days=days)
+    uid = await get_user_id(request)
+    history = await db.get_bankroll_history(days=days, user_id=uid)
     bankroll = getattr(request.app.state, 'bankroll', None)
     stats = bankroll.get_stats() if bankroll else {"enabled": False}
     return {"stats": stats, "history": history}
@@ -1477,15 +1514,17 @@ async def get_bankroll(request: Request, days: int = 30):
 @router.get("/api/notifications")
 async def get_notifications(request: Request, unread: bool = True):
     db = request.app.state.db
-    notifs = await db.get_notifications(user_id=1, unread_only=unread)
+    uid = await get_user_id(request)
+    notifs = await db.get_notifications(user_id=uid, unread_only=unread)
     return notifs
 
 @router.post("/api/notifications/read")
 async def mark_read(request: Request):
     db = request.app.state.db
+    uid = await get_user_id(request)
     body = await request.json()
     ids = body.get("ids")
-    await db.mark_notifications_read(user_id=1, notification_ids=ids)
+    await db.mark_notifications_read(user_id=uid, notification_ids=ids)
     return {"status": "ok"}
 
 @router.get("/api/strategies/stats")
@@ -1513,30 +1552,35 @@ async def get_infra_stats(request: Request):
     return result
 
 @router.get("/api/features/v8")
-async def get_features_v8():
+async def get_features_v8(request: Request):
     """Obtener estado de features v8.0 configurables (12 toggleables + 6 always-on)."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    saved = await db.get_config(user_id=uid)
+    _b = lambda k, default: saved[k].lower() in ("true", "1", "yes") if k in saved else default
     return {
         # Always-on (info only)
         "always_on": ["correlation_filter", "rate_limiting", "bankroll_tracking", "heatmap", "trade_journal", "push_notifications"],
-        # Toggleables
-        "multi_timeframe": config.FEATURE_MULTI_TIMEFRAME,
-        "vwap": config.FEATURE_VWAP,
-        "orderbook_crypto": config.FEATURE_ORDERBOOK_CRYPTO,
-        "hedging": config.FEATURE_HEDGING,
-        "news_catalyst": config.FEATURE_NEWS_CATALYST,
-        "ml_scoring": config.FEATURE_ML_SCORING,
-        "websocket": config.FEATURE_WEBSOCKET,
-        "queue_system": config.FEATURE_QUEUE,
-        "market_making": config.FEATURE_MARKET_MAKING,
-        "event_driven": config.FEATURE_EVENT_DRIVEN,
-        "spike_detection": config.FEATURE_SPIKE_DETECTION,
-        "cross_platform_arb": config.FEATURE_CROSS_PLATFORM,
+        # Toggleables (per-user desde DB)
+        "multi_timeframe": _b("feature_multi_timeframe", config.FEATURE_MULTI_TIMEFRAME),
+        "vwap": _b("feature_vwap", config.FEATURE_VWAP),
+        "orderbook_crypto": _b("feature_orderbook_crypto", config.FEATURE_ORDERBOOK_CRYPTO),
+        "hedging": _b("feature_hedging", config.FEATURE_HEDGING),
+        "news_catalyst": _b("feature_news_catalyst", config.FEATURE_NEWS_CATALYST),
+        "ml_scoring": _b("feature_ml_scoring", config.FEATURE_ML_SCORING),
+        "websocket": _b("feature_websocket", config.FEATURE_WEBSOCKET),
+        "queue_system": _b("feature_queue", config.FEATURE_QUEUE),
+        "market_making": _b("feature_market_making", config.FEATURE_MARKET_MAKING),
+        "event_driven": _b("feature_event_driven", config.FEATURE_EVENT_DRIVEN),
+        "spike_detection": _b("feature_spike_detection", config.FEATURE_SPIKE_DETECTION),
+        "cross_platform_arb": _b("feature_cross_platform", config.FEATURE_CROSS_PLATFORM),
     }
 
 @router.post("/api/features/v8")
 async def save_features_v8(request: Request):
-    """Guardar estado de features v8.0."""
+    """Guardar estado de features v8.0 per-user."""
     db = request.app.state.db
+    uid = await get_user_id(request)
     body = await request.json()
     mapping = {
         "multi_timeframe": "feature_multi_timeframe",
@@ -1558,14 +1602,17 @@ async def save_features_v8(request: Request):
         if ui_key in body:
             val = body[ui_key]
             save_data[cfg_key] = str(val).lower()
-            setattr(cfg, cfg_key.upper(), val)
-    await db.set_config(save_data)
+            # Solo aplicar a config global si es user 1 (retrocompat)
+            if uid == 1:
+                setattr(cfg, cfg_key.upper(), val)
+    await db.set_config(save_data, user_id=uid)
     return {"status": "ok"}
 
 @router.get("/api/mm/orders")
 async def get_mm_orders(request: Request, limit: int = 50):
     db = request.app.state.db
-    orders = await db.get_mm_orders(limit=limit)
+    uid = await get_user_id(request)
+    orders = await db.get_mm_orders(limit=limit, user_id=uid)
     mm = getattr(request.app.state, 'market_maker', None)
     stats = mm.get_stats() if mm else {"running": False}
     return {"orders": orders, "stats": stats}
@@ -1578,7 +1625,8 @@ async def get_mm_orders(request: Request, limit: int = 50):
 @router.get("/api/telegram/config")
 async def get_telegram_config(request: Request):
     db = request.app.state.db
-    saved = await db.get_config()
+    uid = await get_user_id(request)
+    saved = await db.get_config(user_id=uid)
     token = saved.get("telegram_bot_token", "")
     chat_ids = saved.get("telegram_chat_ids", "")
     # Enmascarar token para seguridad (mostrar solo últimos 8 chars)
@@ -1590,6 +1638,7 @@ async def get_telegram_config(request: Request):
 @router.post("/api/telegram/config")
 async def save_telegram_config(request: Request):
     db = request.app.state.db
+    uid = await get_user_id(request)
     body = await request.json()
     token = body.get("bot_token", "").strip()
     chat_ids = body.get("chat_ids", "").strip()
@@ -1597,17 +1646,20 @@ async def save_telegram_config(request: Request):
     save_data = {}
     if token and not token.startswith("*"):
         save_data["telegram_bot_token"] = token
-        config.TELEGRAM_BOT_TOKEN = token
+        if uid == 1:
+            config.TELEGRAM_BOT_TOKEN = token
     if chat_ids:
         save_data["telegram_chat_ids"] = chat_ids
-        config.TELEGRAM_CHAT_IDS = chat_ids
+        if uid == 1:
+            config.TELEGRAM_CHAT_IDS = chat_ids
     if save_data:
-        await db.set_config(save_data)
-    # Recargar el notifier con las nuevas credenciales
-    bot = getattr(request.app.state, 'bot', None)
-    if bot and bot.notifier:
-        bot.notifier._token = config.TELEGRAM_BOT_TOKEN
-        bot.notifier._chat_ids = [c.strip() for c in config.TELEGRAM_CHAT_IDS.split(",") if c.strip()]
+        await db.set_config(save_data, user_id=uid)
+    # Recargar el notifier solo si es user 1 (retrocompat)
+    if uid == 1:
+        bot = getattr(request.app.state, 'bot', None)
+        if bot and bot.notifier:
+            bot.notifier._token = config.TELEGRAM_BOT_TOKEN
+            bot.notifier._chat_ids = [c.strip() for c in config.TELEGRAM_CHAT_IDS.split(",") if c.strip()]
     return {"status": "ok"}
 
 @router.post("/api/telegram/test")

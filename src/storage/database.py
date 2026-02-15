@@ -348,14 +348,25 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_journal_user ON trade_journal(user_id);
             """)
 
-            # Migración: agregar user_id a bot_config para config por usuario
+            # Migración multi-tenant: agregar user_id a todas las tablas per-user
             user_migrations = [
                 "ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
                 "ALTER TABLE alert_autotrades ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
                 "ALTER TABLE autotrades ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
+                "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
+                "ALTER TABLE bankroll_history ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
+                "ALTER TABLE mm_orders ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
+                "ALTER TABLE crypto_signals ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
                 # Índice único compuesto para config por usuario
                 "DROP INDEX IF EXISTS bot_config_pkey",
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_bot_config_key_user ON bot_config(key, user_id)",
+                # Índices per-user para queries rápidas
+                "CREATE INDEX IF NOT EXISTS idx_alerts_user ON alerts(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_autotrades_user ON autotrades(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_alert_autotrades_user ON alert_autotrades(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_bankroll_user ON bankroll_history(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_mm_orders_user ON mm_orders(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_crypto_signals_user ON crypto_signals(user_id)",
                 # Quitar UNIQUE de email (permite múltiples usuarios sin email)
                 "DROP INDEX IF EXISTS users_email_key",
             ]
@@ -431,6 +442,16 @@ class Database:
         """Cerrar sesión."""
         async with self._pool.acquire() as conn:
             await conn.execute("DELETE FROM user_sessions WHERE token = $1", token)
+
+    async def get_all_active_users(self) -> list[dict]:
+        """Obtener todos los usuarios activos (con sesión válida o config guardada)."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT DISTINCT u.id, u.username, u.display_name
+                FROM users u
+                ORDER BY u.id
+            """)
+            return [dict(r) for r in rows]
 
     async def get_config_for_user(self, user_id: int, keys: list) -> dict:
         """Obtener config específica de un usuario."""
@@ -600,13 +621,13 @@ class Database:
 
     # ── Alerts ────────────────────────────────────────────────────────
 
-    async def should_alert(self, wallet: str, market_id: str, cooldown_hours: int = 6) -> bool:
+    async def should_alert(self, wallet: str, market_id: str, cooldown_hours: int = 6, user_id: int = 1) -> bool:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=cooldown_hours)
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow("""
                 SELECT 1 FROM alerts
-                WHERE wallet_address = $1 AND market_id = $2 AND created_at > $3
-            """, wallet.lower(), market_id, cutoff)
+                WHERE wallet_address = $1 AND market_id = $2 AND created_at > $3 AND user_id = $4
+            """, wallet.lower(), market_id, cutoff, user_id)
             return row is None
 
     async def record_alert(
@@ -614,7 +635,7 @@ class Database:
         market_slug: str, side: str, outcome: str, size: float,
         price: float, score: int, triggers: list[str],
         cluster_wallets: list[str], days_to_close: Optional[float],
-        wallet_hit_rate: Optional[float],
+        wallet_hit_rate: Optional[float], user_id: int = 1,
     ) -> int:
         """Registrar alerta y devolver ID."""
         async with self._pool.acquire() as conn:
@@ -622,14 +643,14 @@ class Database:
                 INSERT INTO alerts
                 (wallet_address, market_id, market_question, market_slug,
                  side, outcome, size, price, score, triggers,
-                 cluster_wallets, days_to_close, wallet_hit_rate)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                 cluster_wallets, days_to_close, wallet_hit_rate, user_id)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
                 RETURNING id
             """,
                 wallet.lower(), market_id, market_question, market_slug,
                 side, outcome, size, price, score,
                 "||".join(triggers), ",".join(cluster_wallets),
-                days_to_close, wallet_hit_rate,
+                days_to_close, wallet_hit_rate, user_id,
             )
             return row["id"] if row else 0
 
@@ -825,17 +846,17 @@ class Database:
 
     # ── Dashboard Queries ─────────────────────────────────────────────
 
-    async def get_dashboard_stats(self) -> dict:
+    async def get_dashboard_stats(self, user_id: int = 1) -> dict:
         async with self._pool.acquire() as conn:
-            total_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts")
-            resolved_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE resolved = TRUE")
-            correct_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE was_correct = TRUE")
+            total_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE user_id = $1", user_id)
+            resolved_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE resolved = TRUE AND user_id = $1", user_id)
+            correct_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE was_correct = TRUE AND user_id = $1", user_id)
             total_trades = await conn.fetchval("SELECT COUNT(*) FROM trades")
-            unique_wallets = await conn.fetchval("SELECT COUNT(DISTINCT wallet_address) FROM alerts")
+            unique_wallets = await conn.fetchval("SELECT COUNT(DISTINCT wallet_address) FROM alerts WHERE user_id = $1", user_id)
             alerts_24h = await conn.fetchval(
-                "SELECT COUNT(*) FROM alerts WHERE created_at > NOW() - INTERVAL '24 hours'"
+                "SELECT COUNT(*) FROM alerts WHERE created_at > NOW() - INTERVAL '24 hours' AND user_id = $1", user_id
             )
-            avg_score = await conn.fetchval("SELECT COALESCE(AVG(score), 0) FROM alerts")
+            avg_score = await conn.fetchval("SELECT COALESCE(AVG(score), 0) FROM alerts WHERE user_id = $1", user_id)
             return {
                 "total_alerts": total_alerts or 0,
                 "resolved_alerts": resolved_alerts or 0,
@@ -847,11 +868,11 @@ class Database:
                 "avg_score": round(float(avg_score), 1),
             }
 
-    async def get_recent_alerts(self, limit: int = 50) -> list[dict]:
+    async def get_recent_alerts(self, limit: int = 50, user_id: int = 1) -> list[dict]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT * FROM alerts ORDER BY created_at DESC LIMIT $1
-            """, limit)
+                SELECT * FROM alerts WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2
+            """, user_id, limit)
             result = []
             for r in rows:
                 d = dict(r)
@@ -861,7 +882,7 @@ class Database:
                 result.append(d)
             return result
 
-    async def get_top_wallets(self, limit: int = 20) -> list[dict]:
+    async def get_top_wallets(self, limit: int = 20, user_id: int = 1) -> list[dict]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT w.address,
@@ -870,15 +891,15 @@ class Database:
                        COUNT(a.id) as alert_count,
                        MAX(a.score) as max_score
                 FROM wallets w
-                JOIN alerts a ON a.wallet_address = w.address
+                JOIN alerts a ON a.wallet_address = w.address AND a.user_id = $2
                 GROUP BY w.address, w.total_trades, w.total_volume,
                          w.avg_trade_size, w.win_count, w.loss_count, w.markets_traded
                 ORDER BY alert_count DESC, max_score DESC
                 LIMIT $1
-            """, limit)
+            """, limit, user_id)
             return [dict(r) for r in rows]
 
-    async def get_alerts_by_day(self, days: int = 30) -> list[dict]:
+    async def get_alerts_by_day(self, days: int = 30, user_id: int = 1) -> list[dict]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT DATE(created_at) as day,
@@ -886,20 +907,20 @@ class Database:
                        AVG(score) as avg_score,
                        SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) as correct
                 FROM alerts
-                WHERE created_at > NOW() - ($1 || ' days')::INTERVAL
+                WHERE created_at > NOW() - ($1 || ' days')::INTERVAL AND user_id = $2
                 GROUP BY DATE(created_at)
                 ORDER BY day
-            """, str(days))
+            """, str(days), user_id)
             return [{"day": str(r["day"]), "count": r["count"],
                      "avg_score": round(float(r["avg_score"] or 0), 1),
                      "correct": r["correct"] or 0} for r in rows]
 
-    async def get_score_distribution(self) -> list[dict]:
+    async def get_score_distribution(self, user_id: int = 1) -> list[dict]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT score, COUNT(*) as count
-                FROM alerts GROUP BY score ORDER BY score
-            """)
+                FROM alerts WHERE user_id = $1 GROUP BY score ORDER BY score
+            """, user_id)
             return [{"score": r["score"], "count": r["count"]} for r in rows]
 
     async def get_market_alerts(self, market_id: str) -> list[dict]:
@@ -918,31 +939,44 @@ class Database:
 
     # ── Config Persistente ─────────────────────────────────────────────
 
-    async def get_config(self) -> dict:
+    async def get_config(self, user_id: int = 1) -> dict:
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch("SELECT key, value FROM bot_config")
-            return {r["key"]: r["value"] for r in rows}
+            rows = await conn.fetch("SELECT key, value FROM bot_config WHERE user_id = $1", user_id)
+            result = {r["key"]: r["value"] for r in rows}
+            # Fallback a config global (user_id=1) para keys faltantes
+            if user_id != 1:
+                rows2 = await conn.fetch("SELECT key, value FROM bot_config WHERE user_id = 1")
+                for r in rows2:
+                    if r["key"] not in result:
+                        result[r["key"]] = r["value"]
+            return result
 
-    async def get_config_bulk(self, keys: list[str]) -> dict:
+    async def get_config_bulk(self, keys: list[str], user_id: int = 1) -> dict:
         """Obtener múltiples valores de config por lista de keys."""
-        all_config = await self.get_config()
+        all_config = await self.get_config(user_id=user_id)
         return {k: all_config[k] for k in keys if k in all_config}
 
-    async def set_config(self, key: str, value: str):
+    async def set_config(self, data: dict, user_id: int = 1):
+        """Guardar config (acepta dict o key/value para retrocompat)."""
+        if isinstance(data, str):
+            # Retrocompat: set_config(key, value) → set_config({key: value})
+            # No debería pasar pero por seguridad
+            return
         async with self._pool.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO bot_config (key, value) VALUES ($1, $2)
-                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-            """, key, value)
+            for k, v in data.items():
+                await conn.execute("""
+                    INSERT INTO bot_config (key, value, user_id) VALUES ($1, $2, $3)
+                    ON CONFLICT (key, user_id) DO UPDATE SET value = $2
+                """, k, str(v), user_id)
 
-    async def set_config_bulk(self, data: dict):
+    async def set_config_bulk(self, data: dict, user_id: int = 1):
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 for k, v in data.items():
                     await conn.execute("""
-                        INSERT INTO bot_config (key, value) VALUES ($1, $2)
-                        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-                    """, k, str(v))
+                        INSERT INTO bot_config (key, value, user_id) VALUES ($1, $2, $3)
+                        ON CONFLICT (key, user_id) DO UPDATE SET value = $2
+                    """, k, str(v), user_id)
 
     # ── Wallet Detail ──────────────────────────────────────────────────
 
@@ -1562,15 +1596,15 @@ class Database:
 
     # ── Autotrades ──────────────────────────────────────────────────────
 
-    async def record_autotrade(self, trade: dict):
+    async def record_autotrade(self, trade: dict, user_id: int = 1):
         """Guardar un trade ejecutado (o rechazado) por el autotrader."""
         async with self._pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO autotrades
                     (condition_id, order_id, coin, direction, side, price, size_usd,
                      shares, token_id, edge_pct, confidence, event_slug,
-                     order_type, status, error)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                     order_type, status, error, user_id)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
             """,
                 trade.get("condition_id", ""),
                 trade.get("order_id", ""),
@@ -1587,6 +1621,7 @@ class Database:
                 trade.get("order_type", "limit"),
                 trade.get("status", "filled"),
                 trade.get("error"),
+                user_id,
             )
 
     async def resolve_autotrade(self, condition_id: str, result: str, pnl: float):
@@ -1598,27 +1633,27 @@ class Database:
                 WHERE condition_id = $1 AND resolved = FALSE
             """, condition_id, result, pnl)
 
-    async def get_autotrades(self, hours: int = 24, limit: int = 100) -> list[dict]:
+    async def get_autotrades(self, hours: int = 24, limit: int = 100, user_id: int = 1) -> list[dict]:
         """Obtener autotrades recientes."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT * FROM autotrades
-                WHERE created_at > NOW() - INTERVAL '1 hour' * $1
+                WHERE created_at > NOW() - INTERVAL '1 hour' * $1 AND user_id = $3
                 ORDER BY created_at DESC LIMIT $2
-            """, hours, limit)
+            """, hours, limit, user_id)
             return [_serialize_row(r) for r in rows]
 
-    async def get_open_autotrades(self) -> list[dict]:
+    async def get_open_autotrades(self, user_id: int = 1) -> list[dict]:
         """Obtener autotrades no resueltos (posiciones abiertas)."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT * FROM autotrades
-                WHERE resolved = FALSE AND status = 'filled'
+                WHERE resolved = FALSE AND status = 'filled' AND user_id = $1
                 ORDER BY created_at DESC
-            """)
+            """, user_id)
             return [_serialize_row(r) for r in rows]
 
-    async def get_autotrade_stats(self) -> dict:
+    async def get_autotrade_stats(self, user_id: int = 1) -> dict:
         """Estadísticas de autotrading."""
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow("""
@@ -1631,8 +1666,8 @@ class Database:
                     COALESCE(SUM(size_usd) FILTER (WHERE status = 'filled'), 0) as total_volume,
                     COALESCE(SUM(pnl) FILTER (WHERE resolved AND created_at > NOW() - INTERVAL '24 hours'), 0) as pnl_24h,
                     COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours' AND status = 'filled') as trades_24h
-                FROM autotrades
-            """)
+                FROM autotrades WHERE user_id = $1
+            """, user_id)
             total = (row["wins"] or 0) + (row["losses"] or 0)
             return {
                 "total_trades": row["total_trades"] or 0,
@@ -1649,7 +1684,7 @@ class Database:
 
     # ── Alert AutoTrades (copy-trading de insiders) ────────────────────
 
-    async def record_alert_autotrade(self, trade: dict):
+    async def record_alert_autotrade(self, trade: dict, user_id: int = 1):
         """Guardar un trade ejecutado por el alert autotrader."""
         async with self._pool.acquire() as conn:
             await conn.execute("""
@@ -1657,8 +1692,8 @@ class Database:
                     (condition_id, order_id, market_slug, market_question,
                      wallet_address, insider_side, insider_outcome, insider_size,
                      alert_score, triggers, side, outcome, price, size_usd,
-                     shares, token_id, category, wallet_hit_rate, status, error)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+                     shares, token_id, category, wallet_hit_rate, status, error, user_id)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
             """,
                 trade.get("condition_id", ""),
                 trade.get("order_id", ""),
@@ -1680,6 +1715,7 @@ class Database:
                 trade.get("wallet_hit_rate", 0),
                 trade.get("status", "filled"),
                 trade.get("error"),
+                user_id,
             )
 
     async def resolve_alert_autotrade(self, condition_id: str, result: str, pnl: float):
@@ -1691,24 +1727,24 @@ class Database:
                 WHERE condition_id = $1 AND resolved = FALSE
             """, condition_id, result, pnl)
 
-    async def get_alert_autotrades(self, hours: int = 24, limit: int = 100) -> list[dict]:
+    async def get_alert_autotrades(self, hours: int = 24, limit: int = 100, user_id: int = 1) -> list[dict]:
         """Obtener alert autotrades recientes."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT * FROM alert_autotrades
-                WHERE created_at > NOW() - INTERVAL '1 hour' * $1
+                WHERE created_at > NOW() - INTERVAL '1 hour' * $1 AND user_id = $3
                 ORDER BY created_at DESC LIMIT $2
-            """, hours, limit)
+            """, hours, limit, user_id)
             return [_serialize_row(r) for r in rows]
 
-    async def get_open_alert_autotrades(self) -> list[dict]:
+    async def get_open_alert_autotrades(self, user_id: int = 1) -> list[dict]:
         """Obtener alert autotrades no resueltos."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT * FROM alert_autotrades
-                WHERE resolved = FALSE AND status = 'filled'
+                WHERE resolved = FALSE AND status = 'filled' AND user_id = $1
                 ORDER BY created_at DESC
-            """)
+            """, user_id)
             return [_serialize_row(r) for r in rows]
 
     async def update_alert_autotrade_shares(self, condition_id: str, new_shares: float):
@@ -1720,7 +1756,7 @@ class Database:
                 WHERE condition_id = $1 AND resolved = FALSE
             """, condition_id, new_shares)
 
-    async def get_alert_pnl_history(self, days: int = 30) -> list[dict]:
+    async def get_alert_pnl_history(self, days: int = 30, user_id: int = 1) -> list[dict]:
         """Obtener historial de PnL para gráfico de evolución."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
@@ -1730,10 +1766,10 @@ class Database:
                        SUM(CASE WHEN result IN ('win','take_profit','trailing_stop','partial_tp') THEN 1 ELSE 0 END) as wins,
                        SUM(CASE WHEN result IN ('loss','stop_loss') THEN 1 ELSE 0 END) as losses
                 FROM alert_autotrades
-                WHERE resolved = TRUE AND resolved_at > NOW() - INTERVAL '1 day' * $1
+                WHERE resolved = TRUE AND resolved_at > NOW() - INTERVAL '1 day' * $1 AND user_id = $2
                 GROUP BY DATE(resolved_at)
                 ORDER BY date ASC
-            """, days)
+            """, days, user_id)
             result = []
             cumulative = 0
             for r in rows:
@@ -1830,7 +1866,7 @@ class Database:
                 })
             return result
 
-    async def get_alert_autotrade_stats(self) -> dict:
+    async def get_alert_autotrade_stats(self, user_id: int = 1) -> dict:
         """Estadísticas de alert autotrading."""
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow("""
@@ -1843,8 +1879,8 @@ class Database:
                     COALESCE(SUM(size_usd) FILTER (WHERE status = 'filled'), 0) as total_volume,
                     COALESCE(SUM(pnl) FILTER (WHERE resolved AND created_at > NOW() - INTERVAL '24 hours'), 0) as pnl_24h,
                     COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours' AND status = 'filled') as trades_24h
-                FROM alert_autotrades
-            """)
+                FROM alert_autotrades WHERE user_id = $1
+            """, user_id)
             total = (row["wins"] or 0) + (row["losses"] or 0)
             return {
                 "total_trades": row["total_trades"] or 0,
@@ -1876,33 +1912,33 @@ class Database:
             return [_serialize_row(r) for r in rows]
 
     # ── v8.0: Bankroll ────────────────────────────────────────────
-    async def log_bankroll(self, balance: float, daily_pnl: float):
+    async def log_bankroll(self, balance: float, daily_pnl: float, user_id: int = 1):
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "INSERT INTO bankroll_history (balance, daily_pnl) VALUES ($1,$2)",
-                balance, daily_pnl
+                "INSERT INTO bankroll_history (balance, daily_pnl, user_id) VALUES ($1,$2,$3)",
+                balance, daily_pnl, user_id
             )
 
-    async def get_bankroll_history(self, days: int = 30):
+    async def get_bankroll_history(self, days: int = 30, user_id: int = 1):
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT balance, daily_pnl, created_at FROM bankroll_history WHERE created_at > NOW() - $1::interval ORDER BY created_at",
-                f"{days} days"
+                "SELECT balance, daily_pnl, created_at FROM bankroll_history WHERE created_at > NOW() - $1::interval AND user_id = $2 ORDER BY created_at",
+                f"{days} days", user_id
             )
             return [_serialize_row(r) for r in rows]
 
     # ── v8.0: Market Making Orders ────────────────────────────────
-    async def log_mm_order(self, market_id: str, side: str, price: float, size: float):
+    async def log_mm_order(self, market_id: str, side: str, price: float, size: float, user_id: int = 1):
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "INSERT INTO mm_orders (market_id, side, price, size) VALUES ($1,$2,$3,$4)",
-                market_id, side, price, size
+                "INSERT INTO mm_orders (market_id, side, price, size, user_id) VALUES ($1,$2,$3,$4,$5)",
+                market_id, side, price, size, user_id
             )
 
-    async def get_mm_orders(self, limit: int = 50):
+    async def get_mm_orders(self, limit: int = 50, user_id: int = 1):
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT * FROM mm_orders ORDER BY created_at DESC LIMIT $1", limit
+                "SELECT * FROM mm_orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2", user_id, limit
             )
             return [_serialize_row(r) for r in rows]
 

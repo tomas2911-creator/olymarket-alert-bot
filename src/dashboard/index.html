@@ -2459,7 +2459,7 @@ async function cleanAlerts(){
     const labels={'6':'6 horas','24':'24 horas','72':'3 días','168':'7 días','720':'30 días'};
     if(!confirm(`¿Borrar alertas más viejas de ${labels[hours]||hours+'h'}?`))return;
     try{
-        const r=await fetch(`/api/alerts?older_than_hours=${hours}`,{method:'DELETE'});
+        const r=await fetch(`/api/alerts?older_than_hours=${hours}`,{method:'DELETE',headers:authHeaders()});
         const data=await r.json();
         if(data.status==='ok'){
             alert(`${data.deleted} alertas eliminadas`);
@@ -3111,7 +3111,7 @@ async function cleanSignals(){
     const msg=hours==='0'?'¿Borrar TODAS las señales?':`¿Borrar señales más viejas de ${labels[hours]||hours+'h'}?`;
     if(!confirm(msg))return;
     try{
-        const r=await fetch(`/api/crypto-arb/signals?older_than_hours=${hours}`,{method:'DELETE'});
+        const r=await fetch(`/api/crypto-arb/signals?older_than_hours=${hours}`,{method:'DELETE',headers:authHeaders()});
         const data=await r.json();
         if(data.status==='ok'){
             alert(`${data.deleted} señales eliminadas`);
@@ -3454,7 +3454,7 @@ async function testAutotradeConnection(){
     st.textContent='Probando conexión...';st.className='text-xs text-yellow-400 self-center';
     st.classList.remove('hidden');
     try{
-        const r=await fetch('/api/crypto-arb/autotrade-test');
+        const r=await fetch('/api/crypto-arb/autotrade-test',{headers:authHeaders()});
         const data=await r.json();
         if(data.connected){
             st.textContent=`Conectado! Balance: $${(data.balance||0).toFixed(2)} USDC`;
