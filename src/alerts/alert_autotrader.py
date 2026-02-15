@@ -14,7 +14,7 @@ La config de trading es independiente con prefijo "aat_".
 """
 import asyncio
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 import structlog
 
@@ -179,11 +179,6 @@ class AlertAutoTrader:
             if cat and cat in cfg["excluded_categories"]:
                 return None
 
-        # Filtro: odds del mercado
-        market_odds = trade.price
-        if market_odds > cfg["max_odds"] or market_odds < cfg["min_odds"]:
-            return None
-
         # Filtro: cooldown entre trades del mismo mercado
         cooldown_secs = cfg["cooldown_hours"] * 3600
         for t in self._trades_today:
@@ -226,6 +221,8 @@ class AlertAutoTrader:
             "wallet_address": trade.wallet_address,
             "insider_side": trade.side,
             "insider_outcome": trade.outcome,
+            # Derivar outcome a comprar: si insider COMPRA Yes→compramos Yes, si VENDE Yes→compramos No
+            "buy_outcome": trade.outcome if trade.side == "BUY" else ("No" if trade.outcome == "Yes" else "Yes"),
             "insider_size": trade.size,
             "insider_price": trade.price,
             "alert_score": candidate.score,
@@ -243,7 +240,7 @@ class AlertAutoTrader:
             return {"success": False, "error": "Cliente CLOB no inicializado"}
 
         cid = trade_info["condition_id"]
-        outcome = trade_info["insider_outcome"]  # "Yes" o "No"
+        outcome = trade_info["buy_outcome"]  # Outcome correcto considerando BUY/SELL del insider
         bet_size = trade_info["bet_size"]
 
         try:
@@ -253,6 +250,16 @@ class AlertAutoTrader:
                 return {"success": False, "error": f"No se encontró token_id para {outcome}"}
 
             price = current_price or trade_info["insider_price"]
+
+            # Guard: precio inválido
+            if not price or price <= 0:
+                return {"success": False, "error": f"Precio inválido: {price}"}
+
+            # Filtro: odds actuales del mercado (no del insider)
+            cfg = self._config
+            if price > cfg["max_odds"] or price < cfg["min_odds"]:
+                return {"success": False, "error": f"Precio actual {price:.2f} fuera de rango [{cfg['min_odds']}, {cfg['max_odds']}]"}
+
             shares = round(bet_size / price, 2)
 
             from py_clob_client.clob_types import OrderArgs, OrderType
