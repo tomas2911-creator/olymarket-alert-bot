@@ -69,6 +69,7 @@ class PolymarketAlertBot:
         self._debug = {"too_small": 0, "scored": 0, "low_score": 0, "excluded_cat": 0, "cooldown": 0, "alerted": 0, "last_scores": []}
         self._watchlist: set[str] = set()
         self._excluded_categories: set[str] = set()
+        self._last_markets = []  # Cache de mercados para spike detector
         # Crypto Arb (inicializado solo si feature está habilitada)
         self.binance_feed = None
         self.crypto_detector = None
@@ -279,13 +280,13 @@ class PolymarketAlertBot:
                     try:
                         if self.market_maker:
                             await self.market_maker.tick()
-                        if self.spike_detector:
+                        if self.spike_detector and self._last_markets:
                             spike_markets = [{
                                 "condition_id": m.condition_id,
                                 "market_id": m.condition_id,
                                 "price": m.volume_24h / max(m.liquidity, 1) if m.liquidity else 0.5,
                                 "question": m.question,
-                            } for m in markets[:50]] if markets else []
+                            } for m in self._last_markets[:50]]
                             spike_signals = await self.spike_detector.tick(spike_markets)
                             if spike_signals:
                                 print(f"[SpikeDetector] {len(spike_signals)} spikes detectados", flush=True)
@@ -348,7 +349,7 @@ class PolymarketAlertBot:
         print("--- Ciclo de polling ---", flush=True)
         async with PolymarketClient() as client:
             # Pre-cargar cache de mercados para enriquecer trades
-            await client.get_markets(limit=config.MAX_MARKETS)
+            self._last_markets = await client.get_markets(limit=config.MAX_MARKETS) or []
 
             trades = await client.get_recent_trades(limit=500)
 
@@ -601,9 +602,10 @@ class PolymarketAlertBot:
                 try:
                     level = "critical" if candidate.score >= 12 else "high" if candidate.score >= 8 else "medium"
                     await self.db.create_notification(
+                        user_id=1,
+                        ntype=level,
                         title=f"Alerta Score {candidate.score}",
-                        message=f"{trade.market_question[:80]} | ${trade.size:,.0f} | {', '.join(candidate.triggers[:3])}",
-                        level=level,
+                        body=f"{trade.market_question[:80]} | ${trade.size:,.0f} | {', '.join(candidate.triggers[:3])}",
                     )
                 except Exception:
                     pass
@@ -704,7 +706,7 @@ class PolymarketAlertBot:
     async def _check_telegram_commands(self):
         """Chequear comandos de Telegram para kill switch remoto."""
         try:
-            cmd = await self.telegram.check_commands()
+            cmd = await self.notifier.check_commands()
             if not cmd:
                 return
             if cmd == "stop":
@@ -715,7 +717,7 @@ class PolymarketAlertBot:
                 if self.autotrader and self.autotrader._enabled:
                     self.autotrader._enabled = False
                     await self.db.set_config_bulk({"at_enabled": "false"})
-                await self.telegram.send_kill_switch_alert("stop", "Comando /stop recibido")
+                await self.notifier.send_kill_switch_alert("stop", "Comando /stop recibido")
                 print("[KillSwitch] Trading DETENIDO via Telegram", flush=True)
             elif cmd == "start":
                 await self.db.set_config_bulk({"aat_enabled": "true"})
@@ -724,7 +726,7 @@ class PolymarketAlertBot:
                 await self.db.set_config_bulk({"at_enabled": "true"})
                 if self.autotrader:
                     await self.autotrader.reload_config()
-                await self.telegram.send_kill_switch_alert("start", "Comando /start recibido")
+                await self.notifier.send_kill_switch_alert("start", "Comando /start recibido")
                 print("[KillSwitch] Trading REANUDADO via Telegram", flush=True)
             elif cmd == "status":
                 aat_status = self.alert_autotrader.get_status() if self.alert_autotrader else {}
@@ -735,7 +737,7 @@ class PolymarketAlertBot:
                     f"PnL hoy: ${aat_status.get('pnl_today', 0):.2f}\n"
                     f"Drawdown pausado: {'Sí' if aat_status.get('drawdown_paused') else 'No'}"
                 )
-                await self.telegram._send_to_all(msg)
+                await self.notifier._send_to_all(msg)
         except Exception as e:
             print(f"[KillSwitch] Error: {e}", flush=True)
 

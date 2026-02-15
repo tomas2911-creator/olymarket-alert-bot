@@ -379,56 +379,69 @@ async def get_config(request: Request):
     db = request.app.state.db
     uid = await get_user_id(request)
     saved = await db.get_config(user_id=uid)
+    # Helper: leer de DB per-user con fallback a config global
+    def _v(db_key, default):
+        v = saved.get(db_key)
+        if v is None:
+            return default
+        try:
+            if isinstance(default, float):
+                return float(v)
+            if isinstance(default, int):
+                return int(float(v))
+            return v
+        except (ValueError, TypeError):
+            return default
     return {
         # Detección general
-        "min_size_usd": config.MIN_SIZE_USD,
-        "large_size_usd": config.LARGE_SIZE_USD,
-        "alert_threshold": config.ALERT_THRESHOLD,
+        "min_size_usd": _v("min_size_usd", config.MIN_SIZE_USD),
+        "large_size_usd": _v("large_size_usd", config.LARGE_SIZE_USD),
+        "alert_threshold": _v("alert_threshold", config.ALERT_THRESHOLD),
         "excluded_categories": saved.get("excluded_categories", "sports,nba,nfl,nhl,mlb,mls,soccer,esports,crypto-prices"),
-        "poll_interval": config.POLL_INTERVAL,
-        "max_markets": config.MAX_MARKETS,
+        "poll_interval": _v("poll_interval", config.POLL_INTERVAL),
+        "max_markets": _v("max_markets", config.MAX_MARKETS),
         # Señales 1-7
-        "fresh_wallet_points": config.FRESH_WALLET_POINTS,
-        "large_size_points": config.LARGE_SIZE_POINTS,
-        "market_anomaly_points": config.MARKET_ANOMALY_POINTS,
-        "wallet_shift_points": config.WALLET_SHIFT_POINTS,
-        "concentration_points": config.CONCENTRATION_POINTS,
-        "time_proximity_points": config.TIME_PROXIMITY_POINTS,
-        "cluster_points": config.CLUSTER_POINTS,
+        "fresh_wallet_points": _v("fresh_wallet_points", config.FRESH_WALLET_POINTS),
+        "large_size_points": _v("large_size_points", config.LARGE_SIZE_POINTS),
+        "market_anomaly_points": _v("market_anomaly_points", config.MARKET_ANOMALY_POINTS),
+        "wallet_shift_points": _v("wallet_shift_points", config.WALLET_SHIFT_POINTS),
+        "concentration_points": _v("concentration_points", config.CONCENTRATION_POINTS),
+        "time_proximity_points": _v("time_proximity_points", config.TIME_PROXIMITY_POINTS),
+        "cluster_points": _v("cluster_points", config.CLUSTER_POINTS),
         # Señales 8-14
-        "hit_rate_min_resolved": config.HIT_RATE_MIN_RESOLVED,
-        "hit_rate_min_pct": config.HIT_RATE_MIN_PCT,
-        "hit_rate_points": config.HIT_RATE_POINTS,
-        "contrarian_points": config.CONTRARIAN_POINTS,
-        "accumulation_points": config.ACCUMULATION_POINTS,
-        "proven_winner_min_resolved": config.PROVEN_WINNER_MIN_RESOLVED,
-        "proven_winner_min_pct": config.PROVEN_WINNER_MIN_PCT,
-        "proven_winner_points": config.PROVEN_WINNER_POINTS,
-        "multi_smart_points": config.MULTI_SMART_POINTS,
-        "late_insider_points": config.LATE_INSIDER_POINTS,
-        "exit_alert_min_resolved": config.EXIT_ALERT_MIN_RESOLVED,
-        "exit_alert_min_pct": config.EXIT_ALERT_MIN_PCT,
-        "exit_alert_points": config.EXIT_ALERT_POINTS,
-        "cross_basket_extra_points": config.CROSS_BASKET_EXTRA_POINTS,
+        "hit_rate_min_resolved": _v("hit_rate_min_resolved", config.HIT_RATE_MIN_RESOLVED),
+        "hit_rate_min_pct": _v("hit_rate_min_pct", config.HIT_RATE_MIN_PCT),
+        "hit_rate_points": _v("hit_rate_points", config.HIT_RATE_POINTS),
+        "contrarian_points": _v("contrarian_points", config.CONTRARIAN_POINTS),
+        "accumulation_points": _v("accumulation_points", config.ACCUMULATION_POINTS),
+        "proven_winner_min_resolved": _v("proven_winner_min_resolved", config.PROVEN_WINNER_MIN_RESOLVED),
+        "proven_winner_min_pct": _v("proven_winner_min_pct", config.PROVEN_WINNER_MIN_PCT),
+        "proven_winner_points": _v("proven_winner_points", config.PROVEN_WINNER_POINTS),
+        "multi_smart_points": _v("multi_smart_points", config.MULTI_SMART_POINTS),
+        "late_insider_points": _v("late_insider_points", config.LATE_INSIDER_POINTS),
+        "exit_alert_min_resolved": _v("exit_alert_min_resolved", config.EXIT_ALERT_MIN_RESOLVED),
+        "exit_alert_min_pct": _v("exit_alert_min_pct", config.EXIT_ALERT_MIN_PCT),
+        "exit_alert_points": _v("exit_alert_points", config.EXIT_ALERT_POINTS),
+        "cross_basket_extra_points": _v("cross_basket_extra_points", config.CROSS_BASKET_EXTRA_POINTS),
         # Módulos
-        "orderbook_depth_points": config.ORDERBOOK_DEPTH_POINTS,
-        "niche_market_points": config.NICHE_MARKET_POINTS,
-        "ob_min_depth_pct": config.ORDERBOOK_MIN_DEPTH_PCT,
-        "niche_max_liquidity": config.NICHE_MAX_LIQUIDITY,
-        "niche_score_multiplier": config.NICHE_SCORE_MULTIPLIER,
+        "orderbook_depth_points": _v("orderbook_depth_points", config.ORDERBOOK_DEPTH_POINTS),
+        "niche_market_points": _v("niche_market_points", config.NICHE_MARKET_POINTS),
+        "ob_min_depth_pct": _v("ob_min_depth_pct", config.ORDERBOOK_MIN_DEPTH_PCT),
+        "niche_max_liquidity": _v("niche_max_liquidity", config.NICHE_MAX_LIQUIDITY),
+        "niche_score_multiplier": _v("niche_score_multiplier", config.NICHE_SCORE_MULTIPLIER),
         # Wallet Baskets
-        "basket_min_trades": config.BASKET_MIN_WALLET_TRADES,
-        "basket_shift_threshold": config.BASKET_CATEGORY_SHIFT_THRESHOLD,
-        "basket_points": config.BASKET_POINTS,
-        "basket_cross_min": config.BASKET_CROSS_MIN,
+        "basket_min_trades": _v("basket_min_trades", config.BASKET_MIN_WALLET_TRADES),
+        "basket_shift_threshold": _v("basket_shift_threshold", config.BASKET_CATEGORY_SHIFT_THRESHOLD),
+        "basket_points": _v("basket_points", config.BASKET_POINTS),
+        "basket_cross_min": _v("basket_cross_min", config.BASKET_CROSS_MIN),
         # Sniper DBSCAN
-        "sniper_time_window": config.SNIPER_TIME_WINDOW_SEC,
-        "sniper_min_cluster": config.SNIPER_MIN_CLUSTER_SIZE,
-        "sniper_min_size": config.SNIPER_MIN_TRADE_SIZE,
-        "sniper_points": config.SNIPER_POINTS,
+        "sniper_time_window": _v("sniper_time_window", config.SNIPER_TIME_WINDOW_SEC),
+        "sniper_min_cluster": _v("sniper_min_cluster", config.SNIPER_MIN_CLUSTER_SIZE),
+        "sniper_min_size": _v("sniper_min_size", config.SNIPER_MIN_TRADE_SIZE),
+        "sniper_points": _v("sniper_points", config.SNIPER_POINTS),
         # Smart Money
-        "smart_wallet_min_winrate": config.SMART_WALLET_MIN_WINRATE,
-        "cooldown_hours": config.COOLDOWN_HOURS,
+        "smart_wallet_min_winrate": _v("smart_wallet_min_winrate", config.SMART_WALLET_MIN_WINRATE),
+        "cooldown_hours": _v("cooldown_hours", config.COOLDOWN_HOURS),
     }
 
 
@@ -700,23 +713,35 @@ async def get_backtest_result(request: Request):
 
 @router.get("/api/crypto-arb/config")
 async def get_crypto_config(request: Request):
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    saved = await db.get_config(user_id=uid)
+    def _v(db_key, default):
+        v = saved.get(db_key)
+        if v is None: return default
+        try:
+            if isinstance(default, float): return float(v)
+            if isinstance(default, int): return int(float(v))
+            if isinstance(default, bool): return v.lower() in ("true", "1", "yes")
+            return v
+        except (ValueError, TypeError): return default
     return {
         "mode": config.CRYPTO_ARB_MODE,
         "coins": config.CRYPTO_ARB_COINS,
-        "min_price_move_pct": config.CRYPTO_ARB_MIN_MOVE_PCT,
-        "max_poly_odds": config.CRYPTO_ARB_MAX_POLY_ODDS,
-        "min_confidence_pct": config.CRYPTO_ARB_MIN_CONFIDENCE,
+        "min_price_move_pct": _v("crypto_min_move_pct", config.CRYPTO_ARB_MIN_MOVE_PCT),
+        "max_poly_odds": _v("crypto_max_poly_odds", config.CRYPTO_ARB_MAX_POLY_ODDS),
+        "min_confidence_pct": _v("crypto_min_confidence", config.CRYPTO_ARB_MIN_CONFIDENCE),
         "min_time_remaining_sec": config.CRYPTO_ARB_MIN_TIME_SEC,
         "max_time_remaining_sec": config.CRYPTO_ARB_MAX_TIME_SEC,
         "lookback_seconds": config.CRYPTO_ARB_LOOKBACK_SEC,
-        "paper_bet_size": config.CRYPTO_ARB_PAPER_BET,
-        "max_daily_signals": config.CRYPTO_ARB_MAX_DAILY,
-        "telegram_alerts": config.CRYPTO_ARB_TELEGRAM,
-        "strategy": config.CRYPTO_ARB_STRATEGY,
-        "min_score": config.CRYPTO_ARB_MIN_SCORE,
-        "entry_max_time_sec": config.CRYPTO_ARB_ENTRY_MAX_TIME,
-        "min_distance_atr": config.CRYPTO_ARB_MIN_DISTANCE_ATR,
-        "min_trend_consistency": config.CRYPTO_ARB_MIN_TREND_CONSISTENCY,
+        "paper_bet_size": _v("crypto_paper_bet", config.CRYPTO_ARB_PAPER_BET),
+        "max_daily_signals": _v("crypto_max_daily", config.CRYPTO_ARB_MAX_DAILY),
+        "telegram_alerts": _v("crypto_telegram", config.CRYPTO_ARB_TELEGRAM),
+        "strategy": _v("crypto_strategy", config.CRYPTO_ARB_STRATEGY),
+        "min_score": _v("crypto_min_score", config.CRYPTO_ARB_MIN_SCORE),
+        "entry_max_time_sec": _v("crypto_entry_max_time", config.CRYPTO_ARB_ENTRY_MAX_TIME),
+        "min_distance_atr": _v("crypto_min_distance_atr", config.CRYPTO_ARB_MIN_DISTANCE_ATR),
+        "min_trend_consistency": _v("crypto_min_trend_consistency", config.CRYPTO_ARB_MIN_TREND_CONSISTENCY),
     }
 
 

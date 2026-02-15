@@ -159,6 +159,8 @@ class Database:
                 # Trades: PnL calculado
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS pnl DOUBLE PRECISION",
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS pnl_calculated BOOLEAN DEFAULT FALSE",
+                # Alerts: resolved_at para backtest
+                "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ",
             ]
             for m in migrations:
                 try:
@@ -357,8 +359,9 @@ class Database:
                 "ALTER TABLE bankroll_history ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
                 "ALTER TABLE mm_orders ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
                 "ALTER TABLE crypto_signals ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
+                # Eliminar PK original de bot_config para permitir multi-tenant
+                "ALTER TABLE bot_config DROP CONSTRAINT IF EXISTS bot_config_pkey",
                 # Índice único compuesto para config por usuario
-                "DROP INDEX IF EXISTS bot_config_pkey",
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_bot_config_key_user ON bot_config(key, user_id)",
                 # Índices per-user para queries rápidas
                 "CREATE INDEX IF NOT EXISTS idx_alerts_user ON alerts(user_id)",
@@ -1810,10 +1813,13 @@ class Database:
                 SELECT a.id, a.market_id, a.market_slug, a.market_question,
                        a.wallet_address, a.outcome, a.side, a.size as trade_size,
                        a.price as entry_price, a.score, a.triggers,
-                       a.created_at, a.category,
+                       a.created_at, a.market_category as category,
                        a.price_1h, a.price_6h, a.price_24h, a.price_latest,
-                       a.resolution, a.resolved_at,
-                       w.hit_rate, w.smart_money_score
+                       a.resolution,
+                       CASE WHEN (w.win_count + w.loss_count) > 0
+                           THEN (w.win_count::float / (w.win_count + w.loss_count) * 100)
+                           ELSE 0 END as hit_rate,
+                       w.smart_money_score
                 FROM alerts a
                 LEFT JOIN wallets w ON a.wallet_address = w.address
                 WHERE a.created_at > NOW() - INTERVAL '1 day' * $1
@@ -1979,23 +1985,43 @@ class Database:
 
     # ── v8.0: Heatmap ────────────────────────────────────────────
     async def get_heatmap_data(self):
-        """Volumen y alertas por categoría para heatmap."""
+        """Volumen y alertas por categoría para heatmap.
+        Usa market_category de trades, con fallback a markets_tracked.category
+        y a la categoría del slug (crypto-prices, sports, etc.)."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
-                WITH trade_stats AS (
+                WITH trade_cats AS (
                     SELECT
-                        COALESCE(market_category, 'unknown') as category,
-                        COUNT(*) as total_trades,
-                        COALESCE(SUM(size), 0) as total_volume
-                    FROM trades
-                    WHERE market_category IS NOT NULL
-                      AND market_category != ''
-                      AND timestamp > NOW() - INTERVAL '30 days'
-                    GROUP BY COALESCE(market_category, 'unknown')
+                        COALESCE(
+                            NULLIF(t.market_category, ''),
+                            NULLIF(mt.category, ''),
+                            CASE
+                                WHEN t.market_slug ILIKE '%crypto%' OR t.market_slug ILIKE '%btc%'
+                                     OR t.market_slug ILIKE '%eth%' OR t.market_slug ILIKE '%sol%' THEN 'crypto'
+                                WHEN t.market_slug ILIKE '%nba%' OR t.market_slug ILIKE '%nfl%'
+                                     OR t.market_slug ILIKE '%soccer%' OR t.market_slug ILIKE '%sports%' THEN 'sports'
+                                WHEN t.market_slug ILIKE '%president%' OR t.market_slug ILIKE '%election%'
+                                     OR t.market_slug ILIKE '%trump%' OR t.market_slug ILIKE '%politic%' THEN 'politics'
+                                ELSE 'other'
+                            END
+                        ) as category,
+                        t.size
+                    FROM trades t
+                    LEFT JOIN markets_tracked mt ON t.market_id = mt.condition_id
+                    WHERE t.timestamp > NOW() - INTERVAL '30 days'
+                ),
+                trade_stats AS (
+                    SELECT category, COUNT(*) as total_trades, COALESCE(SUM(size), 0) as total_volume
+                    FROM trade_cats
+                    GROUP BY category
                 ),
                 alert_stats AS (
                     SELECT
-                        COALESCE(NULLIF(a.market_category,''), t2.market_category, 'unknown') as category,
+                        COALESCE(
+                            NULLIF(a.market_category, ''),
+                            NULLIF(mt.category, ''),
+                            'other'
+                        ) as category,
                         COUNT(*) as total_alerts,
                         COUNT(*) FILTER (WHERE a.resolved AND a.was_correct) as correct,
                         COUNT(*) FILTER (WHERE a.resolved AND NOT a.was_correct) as incorrect,
@@ -2003,26 +2029,22 @@ class Database:
                         COALESCE(SUM(CASE WHEN a.was_correct THEN a.size ELSE 0 END), 0)
                           - COALESCE(SUM(CASE WHEN a.was_correct = FALSE THEN a.size ELSE 0 END), 0) as total_pnl
                     FROM alerts a
-                    LEFT JOIN LATERAL (
-                        SELECT market_category FROM trades
-                        WHERE market_id = a.market_id AND market_category IS NOT NULL
-                        LIMIT 1
-                    ) t2 ON TRUE
+                    LEFT JOIN markets_tracked mt ON a.market_id = mt.condition_id
                     WHERE a.created_at > NOW() - INTERVAL '30 days'
-                    GROUP BY COALESCE(NULLIF(a.market_category,''), t2.market_category, 'unknown')
+                    GROUP BY COALESCE(NULLIF(a.market_category, ''), NULLIF(mt.category, ''), 'other')
                 )
                 SELECT
-                    t.category,
-                    t.total_trades,
+                    COALESCE(t.category, a.category) as category,
+                    COALESCE(t.total_trades, 0) as total_trades,
                     COALESCE(a.total_alerts, 0) as total_alerts,
                     COALESCE(a.correct, 0) as correct,
                     COALESCE(a.incorrect, 0) as incorrect,
                     COALESCE(a.pending, 0) as pending,
-                    t.total_volume,
+                    COALESCE(t.total_volume, 0) as total_volume,
                     COALESCE(a.total_pnl, 0) as total_pnl
                 FROM trade_stats t
-                LEFT JOIN alert_stats a ON t.category = a.category
-                ORDER BY t.total_volume DESC
+                FULL OUTER JOIN alert_stats a ON t.category = a.category
+                ORDER BY COALESCE(t.total_volume, 0) DESC
             """)
             return [dict(r) for r in rows]
 
@@ -2033,7 +2055,7 @@ class Database:
             rows = await conn.fetch("""
                 SELECT
                     a.score, a.size, a.triggers, a.was_correct, a.resolved,
-                    a.category, a.created_at,
+                    a.market_category as category, a.created_at,
                     EXTRACT(HOUR FROM a.created_at) as hour,
                     w.total_trades as wallet_trades,
                     CASE WHEN (w.win_count + w.loss_count) > 0
@@ -2041,7 +2063,7 @@ class Database:
                         ELSE 0 END as wallet_winrate,
                     w.smart_money_score
                 FROM alerts a
-                LEFT JOIN wallets w ON a.wallet = w.address
+                LEFT JOIN wallets w ON a.wallet_address = w.address
                 WHERE a.resolved = TRUE
                 ORDER BY a.created_at DESC
                 LIMIT 5000
