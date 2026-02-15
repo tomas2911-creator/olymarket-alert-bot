@@ -637,6 +637,7 @@
                     </select>
                     <span id="crypto-hist-count" class="text-xs text-gray-500 ml-auto"></span>
                     <select id="clean-hours" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300">
+                        <option value="0">Borrar Todo</option>
                         <option value="1">+1h</option>
                         <option value="6">+6h</option>
                         <option value="24" selected>+24h</option>
@@ -1953,8 +1954,9 @@ function render_cl(){
 
 async function cleanSignals(){
     const hours=document.getElementById('clean-hours').value;
-    const labels={'1':'1 hora','6':'6 horas','24':'24 horas','72':'3 días','168':'7 días','720':'30 días'};
-    if(!confirm(`¿Borrar señales más viejas de ${labels[hours]||hours+'h'}?`))return;
+    const labels={'0':'TODAS las señales','1':'1 hora','6':'6 horas','24':'24 horas','72':'3 días','168':'7 días','720':'30 días'};
+    const msg=hours==='0'?'¿Borrar TODAS las señales?':`¿Borrar señales más viejas de ${labels[hours]||hours+'h'}?`;
+    if(!confirm(msg))return;
     try{
         const r=await fetch(`/api/crypto-arb/signals?older_than_hours=${hours}`,{method:'DELETE'});
         const data=await r.json();

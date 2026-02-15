@@ -492,11 +492,14 @@ async def delete_crypto_signals(request: Request, older_than_hours: int = 24):
     db = request.app.state.db
     try:
         from datetime import timedelta
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
         async with db._pool.acquire() as conn:
-            result = await conn.execute(
-                "DELETE FROM crypto_signals WHERE created_at < $1", cutoff
-            )
+            if older_than_hours <= 0:
+                result = await conn.execute("DELETE FROM crypto_signals")
+            else:
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
+                result = await conn.execute(
+                    "DELETE FROM crypto_signals WHERE created_at < $1", cutoff
+                )
             deleted = int(result.split(" ")[-1]) if result else 0
         return {"status": "ok", "deleted": deleted, "older_than_hours": older_than_hours}
     except Exception as e:
