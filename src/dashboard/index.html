@@ -1029,10 +1029,12 @@
                 </div>
             </div>
 
-            <!-- Sub-tabs: Config / Historial -->
+            <!-- Sub-tabs: Config / Historial / Chart / Ranking -->
             <div class="border-b border-gray-700/30 px-4">
                 <button onclick="showAatSub('config')" id="aat-sub-config" class="px-3 py-2 text-xs font-medium border-b-2 border-purple-500 text-purple-400">Configuracion</button>
-                <button onclick="showAatSub('history')" id="aat-sub-history" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500">Historial Trades</button>
+                <button onclick="showAatSub('history')" id="aat-sub-history" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500">Historial</button>
+                <button onclick="showAatSub('chart')" id="aat-sub-chart" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500">P&L Chart</button>
+                <button onclick="showAatSub('ranking')" id="aat-sub-ranking" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500">Ranking</button>
             </div>
 
             <!-- Config Sub-panel -->
@@ -1312,6 +1314,64 @@
                         </thead>
                         <tbody id="aat-trades-body">
                             <tr><td colspan="8" class="text-center text-gray-600 p-8">Sin trades aun</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- P&L Chart Sub-panel -->
+            <div id="aat-panel-chart" class="hidden p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-sm font-medium">Evolucion del PnL</h4>
+                    <select id="aat-chart-days" onchange="loadAatPnlChart()" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300">
+                        <option value="7">7 dias</option>
+                        <option value="14">14 dias</option>
+                        <option value="30" selected>30 dias</option>
+                        <option value="90">90 dias</option>
+                    </select>
+                </div>
+                <div class="bg-gray-800/30 rounded-lg p-3" style="height:280px">
+                    <canvas id="aat-pnl-canvas"></canvas>
+                </div>
+                <div class="grid grid-cols-4 gap-3 mt-3">
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500">Total Trades</div>
+                        <div class="text-sm font-bold" id="aat-chart-trades">-</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500">Wins</div>
+                        <div class="text-sm font-bold text-green-400" id="aat-chart-wins">-</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500">Losses</div>
+                        <div class="text-sm font-bold text-red-400" id="aat-chart-losses">-</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500">PnL Acum.</div>
+                        <div class="text-sm font-bold" id="aat-chart-cumulative">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wallet Ranking Sub-panel -->
+            <div id="aat-panel-ranking" class="hidden p-4">
+                <h4 class="text-sm font-medium mb-3">Ranking de Wallets por Profit</h4>
+                <p class="text-[10px] text-gray-600 mb-3">Wallets cuyos copy-trades generaron mas (o menos) profit. Min 2 trades resueltos.</p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead>
+                            <tr class="text-gray-500 border-b border-gray-800/50">
+                                <th class="text-left p-2">#</th>
+                                <th class="text-left p-2">Wallet</th>
+                                <th class="text-center p-2">Trades</th>
+                                <th class="text-center p-2">W/L</th>
+                                <th class="text-center p-2">Win Rate</th>
+                                <th class="text-right p-2">PnL Total</th>
+                                <th class="text-center p-2">Avg Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="aat-ranking-body">
+                            <tr><td colspan="7" class="text-center text-gray-600 p-8">Sin datos aun</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -2647,11 +2707,13 @@ async function testAutotradeConnection(){
 
 // ── Alert Trading ──
 function showAatSub(sub){
-    document.getElementById('aat-panel-config').classList.toggle('hidden',sub!=='config');
-    document.getElementById('aat-panel-history').classList.toggle('hidden',sub!=='history');
-    document.getElementById('aat-sub-config').className='px-3 py-2 text-xs font-medium border-b-2 '+(sub==='config'?'border-purple-500 text-purple-400':'border-transparent text-gray-500');
-    document.getElementById('aat-sub-history').className='px-3 py-2 text-xs font-medium border-b-2 '+(sub==='history'?'border-purple-500 text-purple-400':'border-transparent text-gray-500');
+    ['config','history','chart','ranking'].forEach(s=>{
+        document.getElementById('aat-panel-'+s).classList.toggle('hidden',sub!==s);
+        document.getElementById('aat-sub-'+s).className='px-3 py-2 text-xs font-medium border-b-2 '+(sub===s?'border-purple-500 text-purple-400':'border-transparent text-gray-500');
+    });
     if(sub==='history')loadAatHistory();
+    if(sub==='chart')loadAatPnlChart();
+    if(sub==='ranking')loadAatWalletRanking();
 }
 
 async function loadAatConfig(){
@@ -2856,6 +2918,86 @@ async function loadAatHistory(){
             <td class="p-3 text-center">${resultBadge}</td>
             <td class="p-3 text-right font-mono ${pnlColor}">${t.resolved?'$'+pnl.toFixed(2):'-'}</td>
             <td class="p-3 text-right text-gray-500">${date}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ── P&L Chart ──
+let _aatPnlChart=null;
+async function loadAatPnlChart(){
+    const days=parseInt(document.getElementById('aat-chart-days').value)||30;
+    const data=await fetchJson('/api/alert-trading/pnl-history?days='+days);
+    if(!data||!data.history)return;
+    const h=data.history;
+    if(h.length===0){
+        document.getElementById('aat-chart-trades').textContent='0';
+        document.getElementById('aat-chart-wins').textContent='0';
+        document.getElementById('aat-chart-losses').textContent='0';
+        document.getElementById('aat-chart-cumulative').textContent='$0';
+        return;
+    }
+    const labels=h.map(d=>d.date);
+    const dailyPnl=h.map(d=>d.daily_pnl);
+    const cumPnl=h.map(d=>d.cumulative_pnl);
+    const totalTrades=h.reduce((s,d)=>s+d.trades,0);
+    const totalWins=h.reduce((s,d)=>s+d.wins,0);
+    const totalLosses=h.reduce((s,d)=>s+d.losses,0);
+    const lastCum=h[h.length-1].cumulative_pnl;
+    document.getElementById('aat-chart-trades').textContent=totalTrades;
+    document.getElementById('aat-chart-wins').textContent=totalWins;
+    document.getElementById('aat-chart-losses').textContent=totalLosses;
+    const cumEl=document.getElementById('aat-chart-cumulative');
+    cumEl.textContent='$'+lastCum.toFixed(2);
+    cumEl.className='text-sm font-bold '+(lastCum>=0?'text-green-400':'text-red-400');
+    const ctx=document.getElementById('aat-pnl-canvas').getContext('2d');
+    if(_aatPnlChart){_aatPnlChart.destroy();}
+    _aatPnlChart=new Chart(ctx,{
+        type:'line',
+        data:{
+            labels:labels,
+            datasets:[
+                {label:'PnL Acumulado',data:cumPnl,borderColor:'#a78bfa',backgroundColor:'rgba(167,139,250,0.1)',fill:true,tension:0.3,pointRadius:3},
+                {label:'PnL Diario',data:dailyPnl,type:'bar',backgroundColor:dailyPnl.map(v=>v>=0?'rgba(34,197,94,0.6)':'rgba(239,68,68,0.6)'),borderWidth:0}
+            ]
+        },
+        options:{
+            responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{labels:{color:'#9ca3af',font:{size:10}}}},
+            scales:{
+                x:{ticks:{color:'#6b7280',font:{size:9}},grid:{color:'rgba(75,85,99,0.2)'}},
+                y:{ticks:{color:'#6b7280',font:{size:9},callback:v=>'$'+v},grid:{color:'rgba(75,85,99,0.2)'}}
+            }
+        }
+    });
+}
+
+// ── Wallet Ranking ──
+async function loadAatWalletRanking(){
+    const data=await fetchJson('/api/alert-trading/wallet-ranking?limit=20');
+    if(!data||!data.ranking)return;
+    const tbody=document.getElementById('aat-ranking-body');
+    if(data.ranking.length===0){
+        tbody.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-8">Sin datos aun (necesita 2+ trades resueltos por wallet)</td></tr>';
+        return;
+    }
+    tbody.innerHTML=data.ranking.map((w,i)=>{
+        const addr=w.wallet_address||'';
+        const short=addr.slice(0,6)+'...'+addr.slice(-4);
+        const pnl=w.total_pnl||0;
+        const pnlColor=pnl>=0?'text-green-400':'text-red-400';
+        const total=w.total_trades||0;
+        const wins=w.wins||0;
+        const losses=w.losses||0;
+        const wr=total>0?((wins/total)*100).toFixed(0)+'%':'-';
+        const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="p-2">${medal}</td>
+            <td class="p-2 font-mono text-purple-300 cursor-pointer" onclick="openWalletModal('${addr}')">${short}</td>
+            <td class="p-2 text-center">${total}</td>
+            <td class="p-2 text-center"><span class="text-green-400">${wins}W</span>/<span class="text-red-400">${losses}L</span></td>
+            <td class="p-2 text-center">${wr}</td>
+            <td class="p-2 text-right font-mono ${pnlColor}">$${pnl.toFixed(2)}</td>
+            <td class="p-2 text-center">${(w.avg_score||0).toFixed(1)}</td>
         </tr>`;
     }).join('');
 }
