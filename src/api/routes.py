@@ -1,6 +1,6 @@
 """FastAPI routes para el dashboard y API."""
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -111,7 +111,7 @@ async def delete_alerts(request: Request, older_than_hours: int = 24):
     db = request.app.state.db
     try:
         from datetime import timedelta
-        cutoff = datetime.now() - timedelta(hours=older_than_hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
         async with db._pool.acquire() as conn:
             result = await conn.execute(
                 "DELETE FROM alerts WHERE created_at < $1", cutoff
@@ -492,7 +492,7 @@ async def delete_crypto_signals(request: Request, older_than_hours: int = 24):
     db = request.app.state.db
     try:
         from datetime import timedelta
-        cutoff = datetime.now() - timedelta(hours=older_than_hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
         async with db._pool.acquire() as conn:
             result = await conn.execute(
                 "DELETE FROM crypto_signals WHERE created_at < $1", cutoff
