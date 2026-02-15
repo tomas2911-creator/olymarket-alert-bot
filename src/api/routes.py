@@ -503,6 +503,21 @@ async def delete_crypto_signals(request: Request, older_than_hours: int = 24):
         return {"status": "error", "error": str(e)}
 
 
+@router.delete("/api/reset-all")
+async def reset_all_data(request: Request):
+    """Borrar TODOS los datos: wallets, trades, baselines, markets, alertas."""
+    db = request.app.state.db
+    try:
+        async with db._pool.acquire() as conn:
+            counts = {}
+            for table in ["trades", "wallets", "wallet_links", "market_baselines", "markets_tracked", "alerts"]:
+                result = await conn.execute(f"DELETE FROM {table}")
+                counts[table] = int(result.split(" ")[-1]) if result else 0
+        return {"status": "ok", "deleted": counts}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @router.get("/api/crypto-arb/live")
 async def crypto_arb_live(request: Request):
     """Señales en vivo y mercados activos del detector."""
