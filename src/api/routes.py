@@ -508,6 +508,8 @@ async def delete_crypto_signals(request: Request, older_than_hours: int = 24):
         async with db._pool.acquire() as conn:
             if older_than_hours <= 0:
                 result = await conn.execute("DELETE FROM crypto_signals")
+                # También borrar autotrades del crypto arb para resetear PNL/stats
+                await conn.execute("DELETE FROM autotrades")
             else:
                 cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
                 result = await conn.execute(

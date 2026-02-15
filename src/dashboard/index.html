@@ -2173,6 +2173,7 @@ async function cleanSignals(){
         if(data.status==='ok'){
             alert(`${data.deleted} señales eliminadas`);
             loadCryptoHistory();
+            loadCryptoStats();
         }else{
             alert('Error: '+(data.error||'desconocido'));
         }
