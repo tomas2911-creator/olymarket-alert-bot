@@ -364,6 +364,12 @@ def restore_from_db(saved: dict):
     cfg.CRYPTO_ARB_MIN_DISTANCE_ATR = _float("crypto_min_distance_atr", cfg.CRYPTO_ARB_MIN_DISTANCE_ATR)
     cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY = _float("crypto_min_trend_consistency", cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY)
 
+    # === Telegram (desde DB) ===
+    if "telegram_bot_token" in saved and saved["telegram_bot_token"]:
+        cfg.TELEGRAM_BOT_TOKEN = saved["telegram_bot_token"]
+    if "telegram_chat_ids" in saved and saved["telegram_chat_ids"]:
+        cfg.TELEGRAM_CHAT_IDS = saved["telegram_chat_ids"]
+
     # === Features v8.0 ===
     # FEATURE_CORRELATION_FILTER = siempre True (no toggle)
     cfg.CORRELATION_MIN_OVERLAP = _int("correlation_min_overlap", cfg.CORRELATION_MIN_OVERLAP)

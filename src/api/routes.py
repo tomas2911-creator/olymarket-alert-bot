@@ -1569,3 +1569,66 @@ async def get_mm_orders(request: Request, limit: int = 50):
     mm = getattr(request.app.state, 'market_maker', None)
     stats = mm.get_stats() if mm else {"running": False}
     return {"orders": orders, "stats": stats}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# ── Telegram Config ───────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+
+@router.get("/api/telegram/config")
+async def get_telegram_config(request: Request):
+    db = request.app.state.db
+    saved = await db.get_config()
+    token = saved.get("telegram_bot_token", "")
+    chat_ids = saved.get("telegram_chat_ids", "")
+    # Enmascarar token para seguridad (mostrar solo últimos 8 chars)
+    masked = ""
+    if token and len(token) > 8:
+        masked = "*" * (len(token) - 8) + token[-8:]
+    return {"bot_token": masked, "chat_ids": chat_ids, "configured": bool(token and chat_ids)}
+
+@router.post("/api/telegram/config")
+async def save_telegram_config(request: Request):
+    db = request.app.state.db
+    body = await request.json()
+    token = body.get("bot_token", "").strip()
+    chat_ids = body.get("chat_ids", "").strip()
+    # Si el token viene enmascarado (****...), no sobreescribir
+    save_data = {}
+    if token and not token.startswith("*"):
+        save_data["telegram_bot_token"] = token
+        config.TELEGRAM_BOT_TOKEN = token
+    if chat_ids:
+        save_data["telegram_chat_ids"] = chat_ids
+        config.TELEGRAM_CHAT_IDS = chat_ids
+    if save_data:
+        await db.set_config(save_data)
+    # Recargar el notifier con las nuevas credenciales
+    bot = getattr(request.app.state, 'bot', None)
+    if bot and bot.notifier:
+        bot.notifier._token = config.TELEGRAM_BOT_TOKEN
+        bot.notifier._chat_ids = [c.strip() for c in config.TELEGRAM_CHAT_IDS.split(",") if c.strip()]
+    return {"status": "ok"}
+
+@router.post("/api/telegram/test")
+async def test_telegram(request: Request):
+    import httpx
+    # Leer token real de config (no el enmascarado)
+    token = config.TELEGRAM_BOT_TOKEN
+    chat_ids_str = config.TELEGRAM_CHAT_IDS
+    if not token:
+        return {"status": "error", "error": "No hay Bot Token configurado"}
+    if not chat_ids_str:
+        return {"status": "error", "error": "No hay Chat ID configurado"}
+    chat_ids = [c.strip() for c in chat_ids_str.split(",") if c.strip()]
+    try:
+        async with httpx.AsyncClient() as client:
+            for cid in chat_ids:
+                await client.post(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={"chat_id": cid, "text": "Polymarket Alert Bot - Test de conexion exitoso!", "parse_mode": "HTML"},
+                    timeout=10,
+                )
+        return {"status": "ok"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
