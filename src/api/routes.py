@@ -1150,6 +1150,87 @@ async def save_alert_trading_config(request: Request):
     return {"status": "ok"}
 
 
+@router.get("/api/alert-trading/backtest")
+async def alert_backtest(request: Request, days: int = 30, min_score: int = 5, bet_size: float = 10):
+    """Backtesting simulado: qué habría pasado si operábamos con alertas históricas."""
+    db = request.app.state.db
+    try:
+        alerts = await db.get_backtest_data(days, min_score)
+        if not alerts:
+            return {"status": "ok", "alerts": [], "summary": {}}
+
+        total_invested = 0
+        total_pnl = 0
+        wins = 0
+        losses = 0
+        open_count = 0
+        by_score = {}
+
+        for a in alerts:
+            sim_res = a["sim_result"]
+            entry = a["entry_price"]
+            if entry <= 0:
+                continue
+
+            shares = bet_size / entry
+            if sim_res == "win":
+                pnl = (1.0 - entry) * shares
+                wins += 1
+                total_invested += bet_size
+                total_pnl += pnl
+                a["sim_pnl_usd"] = round(pnl, 2)
+            elif sim_res == "loss":
+                pnl = -bet_size
+                losses += 1
+                total_invested += bet_size
+                total_pnl += pnl
+                a["sim_pnl_usd"] = round(pnl, 2)
+            else:
+                exit_p = a.get("exit_price")
+                if exit_p is not None:
+                    pnl = (exit_p - entry) * shares
+                    a["sim_pnl_usd"] = round(pnl, 2)
+                    total_invested += bet_size
+                    total_pnl += pnl
+                else:
+                    a["sim_pnl_usd"] = 0
+                open_count += 1
+
+            # Agrupar por score
+            s = a["score"]
+            if s not in by_score:
+                by_score[s] = {"wins": 0, "losses": 0, "pnl": 0, "count": 0}
+            by_score[s]["count"] += 1
+            by_score[s]["pnl"] += a.get("sim_pnl_usd", 0)
+            if sim_res == "win":
+                by_score[s]["wins"] += 1
+            elif sim_res == "loss":
+                by_score[s]["losses"] += 1
+
+        resolved = wins + losses
+        win_rate = round((wins / resolved) * 100, 1) if resolved > 0 else 0
+        roi = round((total_pnl / total_invested) * 100, 1) if total_invested > 0 else 0
+
+        summary = {
+            "total_alerts": len(alerts),
+            "resolved": resolved,
+            "open": open_count,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": win_rate,
+            "total_invested": round(total_invested, 2),
+            "total_pnl": round(total_pnl, 2),
+            "roi": roi,
+            "bet_size": bet_size,
+            "days": days,
+            "min_score": min_score,
+            "by_score": [{"score": k, **v, "pnl": round(v["pnl"], 2)} for k, v in sorted(by_score.items())],
+        }
+        return {"status": "ok", "alerts": alerts[:200], "summary": summary}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @router.get("/api/alert-trading/pnl-history")
 async def get_alert_pnl_history(request: Request, days: int = 30):
     """Historial de PnL diario para gráfico de evolución."""

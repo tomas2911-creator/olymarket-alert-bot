@@ -1066,6 +1066,7 @@
                 <button onclick="showAatSub('history')" id="aat-sub-history" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500">Historial</button>
                 <button onclick="showAatSub('chart')" id="aat-sub-chart" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500">P&L Chart</button>
                 <button onclick="showAatSub('ranking')" id="aat-sub-ranking" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500">Ranking</button>
+                <button onclick="showAatSub('backtest')" id="aat-sub-backtest" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-500">Backtest</button>
             </div>
 
             <!-- Config Sub-panel -->
@@ -1403,6 +1404,93 @@
                         </thead>
                         <tbody id="aat-ranking-body">
                             <tr><td colspan="7" class="text-center text-gray-600 p-8">Sin datos aun</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Backtest Sub-panel -->
+            <div id="aat-panel-backtest" class="hidden p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h4 class="text-sm font-medium">Backtesting Simulado</h4>
+                        <p class="text-[10px] text-gray-600">Simula que habria pasado si copiaras todas las alertas con los parametros indicados.</p>
+                    </div>
+                </div>
+                <div class="flex gap-3 mb-4 flex-wrap">
+                    <div>
+                        <label class="text-[10px] text-gray-500 block">Dias</label>
+                        <select id="bt-days" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300">
+                            <option value="7">7</option>
+                            <option value="14">14</option>
+                            <option value="30" selected>30</option>
+                            <option value="60">60</option>
+                            <option value="90">90</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-gray-500 block">Min Score</label>
+                        <select id="bt-score" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300">
+                            <option value="3">3+</option>
+                            <option value="5" selected>5+</option>
+                            <option value="7">7+</option>
+                            <option value="9">9+</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-gray-500 block">Bet Size ($)</label>
+                        <input type="number" id="bt-bet" value="10" min="1" max="500" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 w-16">
+                    </div>
+                    <div class="self-end">
+                        <button onclick="runBacktest()" class="px-4 py-1.5 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition">Simular</button>
+                    </div>
+                </div>
+                <!-- Summary -->
+                <div id="bt-summary" class="hidden mb-4">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Alertas</div>
+                            <div class="text-sm font-bold" id="bt-total">-</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Win Rate</div>
+                            <div class="text-sm font-bold text-green-400" id="bt-winrate">-</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">PnL Total</div>
+                            <div class="text-sm font-bold" id="bt-pnl">-</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">ROI</div>
+                            <div class="text-sm font-bold" id="bt-roi">-</div>
+                        </div>
+                    </div>
+                    <!-- By Score breakdown -->
+                    <h5 class="text-[10px] text-gray-500 uppercase mb-1">Desglose por Score</h5>
+                    <div class="overflow-x-auto mb-3">
+                        <table class="w-full text-[10px]">
+                            <thead><tr class="text-gray-600 border-b border-gray-800/30">
+                                <th class="p-1 text-left">Score</th><th class="p-1 text-center">Alertas</th><th class="p-1 text-center">W/L</th><th class="p-1 text-right">PnL</th>
+                            </tr></thead>
+                            <tbody id="bt-score-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- Trades table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead>
+                            <tr class="text-gray-500 border-b border-gray-800/50">
+                                <th class="text-left p-2">Mercado</th>
+                                <th class="text-center p-2">Score</th>
+                                <th class="text-right p-2">Entry</th>
+                                <th class="text-right p-2">Exit</th>
+                                <th class="text-center p-2">Resultado</th>
+                                <th class="text-right p-2">PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bt-trades-body">
+                            <tr><td colspan="6" class="text-center text-gray-600 p-6">Configura parametros y haz click en "Simular"</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -2765,7 +2853,7 @@ async function testAutotradeConnection(){
 
 // ── Alert Trading ──
 function showAatSub(sub){
-    ['config','history','chart','ranking'].forEach(s=>{
+    ['config','history','chart','ranking','backtest'].forEach(s=>{
         document.getElementById('aat-panel-'+s).classList.toggle('hidden',sub!==s);
         document.getElementById('aat-sub-'+s).className='px-3 py-2 text-xs font-medium border-b-2 '+(sub===s?'border-purple-500 text-purple-400':'border-transparent text-gray-500');
     });
@@ -3056,6 +3144,59 @@ async function loadAatWalletRanking(){
             <td class="p-2 text-center">${wr}</td>
             <td class="p-2 text-right font-mono ${pnlColor}">$${pnl.toFixed(2)}</td>
             <td class="p-2 text-center">${(w.avg_score||0).toFixed(1)}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ── Backtest ──
+async function runBacktest(){
+    const days=parseInt(document.getElementById('bt-days').value)||30;
+    const score=parseInt(document.getElementById('bt-score').value)||5;
+    const bet=parseFloat(document.getElementById('bt-bet').value)||10;
+    const data=await fetchJson(`/api/alert-trading/backtest?days=${days}&min_score=${score}&bet_size=${bet}`);
+    if(!data||data.status==='error'){
+        document.getElementById('bt-trades-body').innerHTML='<tr><td colspan="6" class="text-center text-red-400 p-6">Error: '+(data?.error||'sin datos')+'</td></tr>';
+        return;
+    }
+    const s=data.summary||{};
+    document.getElementById('bt-summary').classList.remove('hidden');
+    document.getElementById('bt-total').textContent=`${s.resolved||0} resueltas / ${s.total_alerts||0} total`;
+    document.getElementById('bt-winrate').textContent=(s.win_rate||0)+'%';
+    const pnlEl=document.getElementById('bt-pnl');
+    pnlEl.textContent='$'+(s.total_pnl||0).toFixed(2);
+    pnlEl.className='text-sm font-bold '+((s.total_pnl||0)>=0?'text-green-400':'text-red-400');
+    const roiEl=document.getElementById('bt-roi');
+    roiEl.textContent=(s.roi||0)+'%';
+    roiEl.className='text-sm font-bold '+((s.roi||0)>=0?'text-green-400':'text-red-400');
+    // By score
+    const bsBody=document.getElementById('bt-score-body');
+    bsBody.innerHTML=(s.by_score||[]).map(b=>{
+        const wr=b.count>0?((b.wins/(b.wins+b.losses||1))*100).toFixed(0)+'%':'-';
+        const pc=b.pnl>=0?'text-green-400':'text-red-400';
+        return`<tr class="border-b border-gray-800/20"><td class="p-1">${b.score}</td><td class="p-1 text-center">${b.count}</td><td class="p-1 text-center">${b.wins}W/${b.losses}L (${wr})</td><td class="p-1 text-right font-mono ${pc}">$${b.pnl.toFixed(2)}</td></tr>`;
+    }).join('');
+    // Trades
+    const alerts=data.alerts||[];
+    const tbody=document.getElementById('bt-trades-body');
+    if(alerts.length===0){
+        tbody.innerHTML='<tr><td colspan="6" class="text-center text-gray-600 p-6">Sin alertas en este periodo</td></tr>';
+        return;
+    }
+    tbody.innerHTML=alerts.slice(0,100).map(a=>{
+        const q=a.market_question||'';
+        const short=q.length>45?q.slice(0,42)+'...':q;
+        const resBadge=a.sim_result==='win'?'<span class="bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded text-[10px]">WIN</span>'
+            :a.sim_result==='loss'?'<span class="bg-red-900/40 text-red-400 px-1.5 py-0.5 rounded text-[10px]">LOSS</span>'
+            :'<span class="bg-yellow-900/40 text-yellow-400 px-1.5 py-0.5 rounded text-[10px]">Abierto</span>';
+        const pnl=a.sim_pnl_usd||0;
+        const pnlC=pnl>=0?'text-green-400':'text-red-400';
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="p-2">${short}</td>
+            <td class="p-2 text-center"><span class="bg-purple-900/40 text-purple-300 px-1.5 py-0.5 rounded text-[10px]">${a.score}</span></td>
+            <td class="p-2 text-right font-mono">${a.entry_price}</td>
+            <td class="p-2 text-right font-mono">${a.exit_price!=null?a.exit_price:'-'}</td>
+            <td class="p-2 text-center">${resBadge}</td>
+            <td class="p-2 text-right font-mono ${pnlC}">$${pnl.toFixed(2)}</td>
         </tr>`;
     }).join('');
 }

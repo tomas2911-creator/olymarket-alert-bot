@@ -1594,6 +1594,69 @@ class Database:
             """, limit)
             return [dict(r) for r in rows]
 
+    async def get_backtest_data(self, days: int = 30, min_score: int = 5) -> list[dict]:
+        """Obtener alertas históricas con price impact para backtesting simulado."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT a.id, a.market_id, a.market_slug, a.market_question,
+                       a.wallet_address, a.outcome, a.side, a.size as trade_size,
+                       a.price as entry_price, a.score, a.triggers,
+                       a.created_at, a.category,
+                       a.price_1h, a.price_6h, a.price_24h, a.price_latest,
+                       a.resolution, a.resolved_at,
+                       w.hit_rate, w.smart_money_score
+                FROM alerts a
+                LEFT JOIN wallets w ON a.wallet_address = w.address
+                WHERE a.created_at > NOW() - INTERVAL '1 day' * $1
+                  AND a.score >= $2
+                ORDER BY a.created_at DESC
+            """, days, min_score)
+            result = []
+            for r in rows:
+                entry = float(r["entry_price"] or 0)
+                if entry <= 0:
+                    continue
+                # Calcular PnL simulado con price_latest o resolution
+                sim_pnl = 0
+                sim_result = "open"
+                exit_price = None
+                if r["resolution"]:
+                    # Mercado resuelto
+                    resolved_outcome = r["resolution"]
+                    alerted_outcome = r["outcome"] or "Yes"
+                    if resolved_outcome.lower() == alerted_outcome.lower():
+                        exit_price = 1.0
+                        sim_result = "win"
+                    else:
+                        exit_price = 0.0
+                        sim_result = "loss"
+                elif r["price_latest"] and float(r["price_latest"]) > 0:
+                    exit_price = float(r["price_latest"])
+                    sim_result = "unrealized"
+
+                if exit_price is not None:
+                    sim_pnl = (exit_price - entry) / entry * 100  # % return
+
+                result.append({
+                    "id": r["id"],
+                    "market_slug": r["market_slug"] or "",
+                    "market_question": (r["market_question"] or "")[:80],
+                    "outcome": r["outcome"] or "",
+                    "entry_price": round(entry, 3),
+                    "exit_price": round(exit_price, 3) if exit_price is not None else None,
+                    "score": r["score"] or 0,
+                    "category": r["category"] or "",
+                    "hit_rate": round(float(r["hit_rate"] or 0), 1),
+                    "smart_money": round(float(r["smart_money_score"] or 0), 1),
+                    "sim_result": sim_result,
+                    "sim_pnl_pct": round(sim_pnl, 2),
+                    "price_1h": round(float(r["price_1h"] or 0), 3) if r["price_1h"] else None,
+                    "price_6h": round(float(r["price_6h"] or 0), 3) if r["price_6h"] else None,
+                    "price_24h": round(float(r["price_24h"] or 0), 3) if r["price_24h"] else None,
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else "",
+                })
+            return result
+
     async def get_alert_autotrade_stats(self) -> dict:
         """Estadísticas de alert autotrading."""
         async with self._pool.acquire() as conn:
