@@ -115,6 +115,8 @@ crypto_arb:
       binance_pair: "ethusdt"
     - symbol: "SOL"
       binance_pair: "solusdt"
+    - symbol: "XRP"
+      binance_pair: "xrpusdt"
   # Parámetros de señal
   min_price_move_pct: 0.15        # Movimiento mínimo en spot para señal
   max_poly_odds: 0.65             # Odds máximo en Polymarket para entrar
