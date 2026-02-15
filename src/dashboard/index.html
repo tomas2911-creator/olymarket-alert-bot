@@ -696,8 +696,9 @@
                         <h4 class="text-xs text-gray-500 uppercase tracking-wider">Wallet & API</h4>
                         <!-- Estado actual de credenciales -->
                         <div id="at-creds-status" class="hidden bg-green-900/30 border border-green-700/50 rounded p-3">
-                            <div class="flex items-center gap-2 mb-1">
+                            <div class="flex items-center justify-between mb-1">
                                 <span class="text-green-400 text-sm font-medium">Wallet conectada</span>
+                                <button onclick="disconnectWallet()" class="text-[10px] text-red-400 hover:text-red-300 border border-red-800 hover:border-red-600 rounded px-2 py-0.5 transition-colors">Desconectar</button>
                             </div>
                             <div class="text-xs text-gray-400 space-y-0.5">
                                 <div>Wallet: <span id="at-wallet-addr" class="text-purple-300 font-mono">—</span></div>
@@ -2133,6 +2134,16 @@ async function saveCryptoConfig(){
 }
 
 // ── Autotrading ──
+async function disconnectWallet(){
+    if(!confirm('¿Desconectar wallet? Se borrarán las 4 credenciales (Private Key, API Key, Secret, Passphrase). Podrás conectar otra wallet después.'))return;
+    try{
+        await fetch('/api/crypto-arb/autotrade-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:'',api_secret:'',private_key:'',passphrase:'',enabled:false})});
+        await loadAutotradeConfig();
+        document.getElementById('at-gen-msg').textContent='Wallet desconectada. Pega una nueva Private Key para conectar otra.';
+        document.getElementById('at-gen-msg').className='text-[10px] text-yellow-400 mt-1';
+    }catch(e){alert('Error desconectando: '+e.message);}
+}
+
 async function generateApiKeys(){
     const pk=document.getElementById('at-private-key').value.trim();
     if(!pk||pk==='••••••••'){alert('Pega tu Private Key primero.');return;}
