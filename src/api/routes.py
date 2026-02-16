@@ -1200,27 +1200,58 @@ async def test_autotrade_connection(request: Request):
         except Exception as e:
             debug["rpc_global_error"] = str(e)
 
-    # 3. CLOB balance (Polymarket internal)
+    # 3. CLOB balance (Polymarket internal) — usar autotrader o crear cliente temporal
+    import asyncio
+    clob_client = None
     autotrader = getattr(request.app.state, 'autotrader', None)
     if autotrader and autotrader._client:
+        clob_client = autotrader._client
+        debug["autotrader_active"] = True
+    else:
+        debug["autotrader_active"] = False
+        # Crear cliente CLOB temporal con las credenciales guardadas
         try:
-            import asyncio
+            full_raw = await db.get_config_bulk([
+                "at_api_key", "at_api_secret", "at_passphrase", "at_private_key"
+            ], user_id=uid)
+            pk = full_raw.get("at_private_key", "")
+            ak = full_raw.get("at_api_key", "")
+            ase = full_raw.get("at_api_secret", "")
+            pp = full_raw.get("at_passphrase", "")
+            if pk and ak and ase:
+                from py_clob_client.client import ClobClient
+                from py_clob_client.clob_types import ApiCreds
+                creds = ApiCreds(api_key=ak, api_secret=ase, api_passphrase=pp)
+                clob_client = ClobClient(
+                    "https://clob.polymarket.com",
+                    key=pk if pk.startswith("0x") else "0x" + pk,
+                    chain_id=137,
+                    signature_type=2,
+                    creds=creds,
+                )
+                debug["temp_client"] = True
+        except Exception as e:
+            debug["temp_client_error"] = str(e)
+
+    if clob_client:
+        try:
             from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
             loop = asyncio.get_running_loop()
             params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
-            ba = await loop.run_in_executor(None, autotrader._client.get_balance_allowance, params)
+            ba = await loop.run_in_executor(None, clob_client.get_balance_allowance, params)
             debug["clob_balance_raw"] = str(ba)
+            poly_bal = 0.0
             if ba and hasattr(ba, "balance"):
                 raw_bal = float(ba.balance)
                 poly_bal = raw_bal / 1e6 if raw_bal > 1_000 else raw_bal
+            elif isinstance(ba, dict) and "balance" in ba:
+                raw_bal = float(ba["balance"])
+                poly_bal = raw_bal / 1e6 if raw_bal > 1_000 else raw_bal
+            if poly_bal > 0:
                 total_balance += poly_bal
-                debug["polymarket_balance"] = round(poly_bal, 2)
-            elif isinstance(ba, dict):
-                debug["clob_balance_dict"] = ba
+            debug["polymarket_balance"] = round(poly_bal, 2)
         except Exception as e:
             debug["clob_balance_error"] = str(e)
-    else:
-        debug["autotrader_active"] = False
 
     balance = round(total_balance, 2)
     return {
