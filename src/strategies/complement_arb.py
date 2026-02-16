@@ -93,6 +93,9 @@ class ComplementArbScanner:
                         continue
 
                     try:
+                        # Rate limiting: evitar ban de API
+                        if checked > 0 and checked % 5 == 0:
+                            await asyncio.sleep(0.5)
                         # Obtener orderbook del CLOB
                         clob_resp = await client.get(f"{CLOB_HOST}/markets/{cid}")
                         if clob_resp.status_code != 200:
