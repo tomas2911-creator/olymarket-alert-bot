@@ -282,6 +282,9 @@ class PolymarketAlertBot:
                     active = [s for s in signals if s.get("time_remaining_sec", 0) > 0]
                     if active:
                         await self.autotrader.process_signals(active)
+                # Risk management cada ciclo (5s) — necesario para TP en mercados cortos
+                await self.autotrader.check_risk_management()
+                await self.autotrader.resolve_trades()
             except Exception as e:
                 print(f"[CryptoAutotrader] Error en loop rápido: {e}", flush=True)
             await asyncio.sleep(5)

@@ -65,6 +65,7 @@ class AutoTrader:
                 "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
                 "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
                 "at_slippage_max_pct",
+                "at_ee_take_profit_enabled", "at_ee_take_profit_pct",
             ], user_id=self._user_id)
             self._config = {
                 "enabled": raw.get("at_enabled") == "true",
@@ -95,6 +96,8 @@ class AutoTrader:
                 "use_score_strategy": raw.get("at_use_score_strategy", "true") == "true",
                 "use_early_entry": raw.get("at_use_early_entry", "false") == "true",
                 "early_entry_bet_size": float(raw.get("at_early_entry_bet_size", config.EARLY_ENTRY_BET_SIZE)),
+                "ee_take_profit_enabled": raw.get("at_ee_take_profit_enabled") == "true",
+                "ee_take_profit_pct": float(raw.get("at_ee_take_profit_pct", 40)),
             }
             self._enabled = self._config["enabled"]
 
@@ -689,7 +692,9 @@ class AutoTrader:
         para todas las posiciones abiertas. Vende si se alcanza algún umbral.
         """
         cfg = self._config
-        if not cfg.get("stop_loss_enabled") or not self._open_positions or not self._client:
+        # Correr si hay al menos una feature de riesgo activa
+        has_risk = cfg.get("stop_loss_enabled") or cfg.get("ee_take_profit_enabled")
+        if not has_risk or not self._open_positions or not self._client:
             return
 
         try:
@@ -735,14 +740,20 @@ class AutoTrader:
                         self._trailing_highs[cid] = max(self._trailing_highs[cid], current_price)
 
                         sell_reason = None
+                        strategy = trade.get("strategy", "score")
 
                         # 1. Stop-Loss: vender si pérdida > X%
                         if cfg["stop_loss_pct"] > 0 and pnl_pct <= -cfg["stop_loss_pct"]:
                             sell_reason = f"STOP-LOSS ({pnl_pct:.1f}% <= -{cfg['stop_loss_pct']}%)"
 
                         # 2. Take-Profit: vender si ganancia > X%
-                        if not sell_reason and cfg["take_profit_pct"] > 0 and pnl_pct >= cfg["take_profit_pct"]:
-                            sell_reason = f"TAKE-PROFIT ({pnl_pct:.1f}% >= +{cfg['take_profit_pct']}%)"
+                        # Early Entry tiene su propio TP (entrada a ~0.50 = más margen)
+                        if not sell_reason:
+                            if strategy == "early_entry" and cfg.get("ee_take_profit_enabled") and cfg.get("ee_take_profit_pct", 0) > 0:
+                                if pnl_pct >= cfg["ee_take_profit_pct"]:
+                                    sell_reason = f"TP-EARLY-ENTRY ({pnl_pct:.1f}% >= +{cfg['ee_take_profit_pct']}%)"
+                            elif cfg["take_profit_pct"] > 0 and pnl_pct >= cfg["take_profit_pct"]:
+                                sell_reason = f"TAKE-PROFIT ({pnl_pct:.1f}% >= +{cfg['take_profit_pct']}%)"
 
                         # 3. Max Holding Time: vender si pasó demasiado tiempo
                         if not sell_reason and cfg["max_holding_sec"] > 0 and trade_age_sec >= cfg["max_holding_sec"]:

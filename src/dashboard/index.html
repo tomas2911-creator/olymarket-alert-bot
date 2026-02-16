@@ -1065,6 +1065,20 @@
                                 <input type="number" id="at-trail-pct" value="15" step="1" min="3" max="50" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-orange-300">
                             </div>
                         </div>
+                        <!-- TP específico Early Entry -->
+                        <div class="border-t border-yellow-700/20 pt-3 mt-2">
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                <div class="flex items-center gap-2 self-end pb-2">
+                                    <input type="checkbox" id="at-ee-tp-enabled" class="accent-yellow-500 w-3.5 h-3.5">
+                                    <span class="text-xs text-yellow-300">TP Early Entry</span>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">TP Early Entry (%)</label>
+                                    <input type="number" id="at-ee-tp-pct" value="40" step="5" min="10" max="300" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-gray-500 mt-1">Early Entry compra a ~$0.50. Con TP 40%, vende cuando el token suba a ~$0.70, asegurando ganancia antes de que el mercado cierre.</p>
+                        </div>
                         <p class="text-[10px] text-gray-600">SL: vende si pierde >X% | TP: vende si gana >X% | Max Hold: fuerza salida | Trailing: vende si cae X% desde máximo</p>
                     </div>
 
@@ -3678,6 +3692,9 @@ async function loadAutotradeConfig(){
     document.getElementById('at-max-hold').value=c.max_holding_sec||1800;
     document.getElementById('at-trailing').checked=!!c.trailing_stop_enabled;
     document.getElementById('at-trail-pct').value=c.trailing_stop_pct||15;
+    // TP Early Entry
+    document.getElementById('at-ee-tp-enabled').checked=!!c.ee_take_profit_enabled;
+    document.getElementById('at-ee-tp-pct').value=c.ee_take_profit_pct||40;
     document.getElementById('at-coin-btc').checked=c.coins?.includes('BTC')!==false;
     document.getElementById('at-coin-eth').checked=c.coins?.includes('ETH')!==false;
     document.getElementById('at-coin-sol').checked=c.coins?.includes('SOL')!==false;
@@ -3738,6 +3755,9 @@ async function saveAutotradeConfig(){
         max_holding_sec:parseInt(document.getElementById('at-max-hold').value)||1800,
         trailing_stop_enabled:document.getElementById('at-trailing').checked,
         trailing_stop_pct:parseFloat(document.getElementById('at-trail-pct').value)||15,
+        // TP Early Entry
+        ee_take_profit_enabled:document.getElementById('at-ee-tp-enabled').checked,
+        ee_take_profit_pct:parseFloat(document.getElementById('at-ee-tp-pct').value)||40,
     };
     try{
         const data=await postJson('/api/crypto-arb/autotrade-config',body);
