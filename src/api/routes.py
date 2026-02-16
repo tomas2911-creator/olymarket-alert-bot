@@ -1,12 +1,20 @@
 """FastAPI routes para el dashboard y API."""
 import asyncio
+import json
+import time as _time
+from collections import defaultdict
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from pathlib import Path
 
 from src import config
+
+# Rate limiting simple para auth endpoints
+_auth_attempts: dict[str, list[float]] = defaultdict(list)
+_AUTH_MAX_ATTEMPTS = 10  # max intentos
+_AUTH_WINDOW_SEC = 300   # ventana de 5 minutos
 
 router = APIRouter()
 
@@ -50,8 +58,21 @@ async def dashboard():
 
 # ── Auth ─────────────────────────────────────────────────────────────
 
+def _check_rate_limit(ip: str) -> bool:
+    """Retorna True si el IP excedió el límite de intentos."""
+    now = _time.time()
+    _auth_attempts[ip] = [t for t in _auth_attempts[ip] if now - t < _AUTH_WINDOW_SEC]
+    if len(_auth_attempts[ip]) >= _AUTH_MAX_ATTEMPTS:
+        return True
+    _auth_attempts[ip].append(now)
+    return False
+
+
 @router.post("/api/auth/register")
 async def register(request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if _check_rate_limit(client_ip):
+        return JSONResponse({"status": "error", "error": "Demasiados intentos. Espera 5 minutos."}, status_code=429)
     db = request.app.state.db
     body = await request.json()
     username = body.get("username", "").strip()
@@ -71,6 +92,9 @@ async def register(request: Request):
 
 @router.post("/api/auth/login")
 async def login(request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if _check_rate_limit(client_ip):
+        return JSONResponse({"status": "error", "error": "Demasiados intentos. Espera 5 minutos."}, status_code=429)
     db = request.app.state.db
     body = await request.json()
     username = body.get("username", "").strip()
@@ -636,14 +660,16 @@ async def crypto_price_sum_arb(request: Request):
 
 @router.delete("/api/crypto-arb/signals")
 async def delete_crypto_signals(request: Request, older_than_hours: int = 24):
-    """Borrar señales crypto más viejas que N horas."""
+    """Borrar señales crypto más viejas que N horas (solo admin)."""
     db = request.app.state.db
+    uid = await get_user_id(request)
+    if uid != 1:
+        return {"status": "error", "error": "Solo el admin puede borrar señales"}
     try:
         from datetime import timedelta
         async with db._pool.acquire() as conn:
             if older_than_hours <= 0:
                 result = await conn.execute("DELETE FROM crypto_signals")
-                # También borrar autotrades del crypto arb para resetear PNL/stats
                 await conn.execute("DELETE FROM autotrades")
             else:
                 cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
@@ -1578,9 +1604,10 @@ async def get_heatmap(request: Request):
     uid = await get_user_id(request)
     if uid != 1:
         # Solo mostrar heatmap si el usuario tiene alertas propias
-        alert_count = await db._pool.fetchval(
-            "SELECT COUNT(*) FROM alerts WHERE user_id = $1", uid
-        )
+        async with db._pool.acquire() as conn:
+            alert_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM alerts WHERE user_id = $1", uid
+            )
         if not alert_count:
             return []
     data = await db.get_heatmap_data(user_id=uid)
@@ -1828,7 +1855,7 @@ async def get_kalshi_arb(request: Request):
             kalshi_events = []
             try:
                 resp = await client.get(
-                    "https://api.elections.kalshi.com/trade-api/v2/events",
+                    "https://trading-api.kalshi.com/trade-api/v2/events",
                     params={"status": "open", "limit": 50},
                 )
                 if resp.status_code == 200:
@@ -1838,7 +1865,7 @@ async def get_kalshi_arb(request: Request):
                 # Kalshi API puede requerir auth o cambiar — fallback a mercados
                 try:
                     resp = await client.get(
-                        "https://api.elections.kalshi.com/trade-api/v2/markets",
+                        "https://trading-api.kalshi.com/trade-api/v2/markets",
                         params={"status": "open", "limit": 100},
                     )
                     if resp.status_code == 200:
@@ -1897,7 +1924,6 @@ async def get_kalshi_arb(request: Request):
                     if op:
                         try:
                             if isinstance(op, str):
-                                import json
                                 prices = json.loads(op)
                             else:
                                 prices = op

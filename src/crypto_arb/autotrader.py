@@ -136,7 +136,7 @@ class AutoTrader:
             self._trades_today = []
             self._trades_today_date = today
         try:
-            trades = await self.db.get_autotrades(hours=24)
+            trades = await self.db.get_autotrades(hours=24, user_id=1)
             self._trades_today = trades or []
         except Exception:
             self._trades_today = []
@@ -144,7 +144,7 @@ class AutoTrader:
     async def _load_open_positions(self):
         """Cargar posiciones abiertas (trades sin resolver)."""
         try:
-            open_trades = await self.db.get_open_autotrades()
+            open_trades = await self.db.get_open_autotrades(user_id=1)
             self._open_positions = {t["condition_id"]: t for t in (open_trades or [])}
         except Exception:
             self._open_positions = {}
@@ -263,7 +263,7 @@ class AutoTrader:
 
             order_type = OrderType.FOK if trade_info["order_type"] == "market" else OrderType.GTC
             # py-clob-client es síncrono — ejecutar en executor para no bloquear event loop
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
             resp = await loop.run_in_executor(None, self._client.post_order, signed_order, order_type)
 
@@ -494,7 +494,7 @@ class AutoTrader:
                 token_id=token_id,
             )
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
             resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.FOK)
 
@@ -642,7 +642,7 @@ class AutoTrader:
 
             # Intentar obtener API keys (valida credenciales) — síncrono, usar executor
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 api_keys = await loop.run_in_executor(None, self._client.get_api_keys)
                 return {
                     "connected": True,

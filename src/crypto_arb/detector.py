@@ -525,24 +525,21 @@ class CryptoArbDetector:
                 continue
 
             # v9.0: RSI — confirmar dirección con RSI
+            # RSI < 30 = oversold = probable rebote UP (confirma direction "up")
+            # RSI > 70 = overbought = probable caída DOWN (confirma direction "down")
             rsi_aligned = False
             if config.FEATURE_RSI:
                 rsi_data = self.feed.get_rsi(pair, config.RSI_PERIOD, config.RSI_CANDLE_SEC)
                 if rsi_data:
                     rsi_val = rsi_data["rsi"]
-                    # RSI > 70 + direction up = momentum alcista confirmado
-                    # RSI < 30 + direction down = momentum bajista confirmado
-                    if (direction == "up" and rsi_val > config.RSI_OVERBOUGHT) or \
-                       (direction == "down" and rsi_val < config.RSI_OVERSOLD):
+                    if (direction == "up" and rsi_val < config.RSI_OVERSOLD) or \
+                       (direction == "down" and rsi_val > config.RSI_OVERBOUGHT):
                         rsi_aligned = True
                         score *= (1.0 + config.RSI_BOOST_PCT / 100.0)
                     # RSI contradice dirección → penalizar
-                    elif (direction == "up" and rsi_val < config.RSI_OVERSOLD) or \
-                         (direction == "down" and rsi_val > config.RSI_OVERBOUGHT):
+                    elif (direction == "up" and rsi_val > config.RSI_OVERBOUGHT) or \
+                         (direction == "down" and rsi_val < config.RSI_OVERSOLD):
                         score *= 0.85  # -15% penalización
-                    if "score_details" not in dir():
-                        pass  # score_details se crea después
-                    # Se agrega al score_details más abajo
 
             # v9.0: MACD — confirmar tendencia con cruce MACD
             macd_aligned = False
