@@ -407,9 +407,11 @@ class AutoTrader:
             success = False
             order_id = ""
             error_msg = ""
+            resp_status = ""
 
             if isinstance(resp, dict):
                 order_id = resp.get("orderID", resp.get("order_id", "")) or ""
+                resp_status = resp.get("status", "")
                 # Success solo si hay orderID no-vacío
                 success = bool(order_id) and resp.get("success", True)
                 if not success:
@@ -417,10 +419,49 @@ class AutoTrader:
             elif hasattr(resp, "success"):
                 success = resp.success
                 order_id = getattr(resp, "orderID", "") or ""
+                resp_status = getattr(resp, "status", "")
                 error_msg = getattr(resp, "errorMsg", "")
             else:
                 order_id = str(resp) if resp else ""
                 success = bool(order_id)
+
+            # ── GTC 'live': la orden está en el orderbook pero NO llenada aún ──
+            # Hacer polling para verificar si se llena, y cancelar si no.
+            if success and resp_status == "live" and order_id:
+                print(f"[AutoTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill...", flush=True)
+                filled = False
+                for attempt in range(5):  # 5 intentos × 3s = 15s máximo
+                    await asyncio.sleep(3)
+                    try:
+                        order_info = await loop.run_in_executor(
+                            None, self._client.get_order, order_id
+                        )
+                        current_status = ""
+                        if isinstance(order_info, dict):
+                            current_status = order_info.get("status", "")
+                        elif hasattr(order_info, "status"):
+                            current_status = getattr(order_info, "status", "")
+                        print(f"[AutoTrader]   polling {attempt+1}/5: status={current_status}", flush=True)
+                        if current_status == "matched":
+                            filled = True
+                            break
+                        elif current_status in ("cancelled", "expired", ""):
+                            break  # Ya no está activa
+                    except Exception as poll_err:
+                        print(f"[AutoTrader]   polling error: {poll_err}", flush=True)
+                        break
+
+                if not filled:
+                    # Intentar cancelar la orden huérfana
+                    try:
+                        await loop.run_in_executor(None, self._client.cancel, order_id)
+                        print(f"[AutoTrader] ❌ Orden GTC no llenada, CANCELADA: {order_id[:16]}...", flush=True)
+                    except Exception as cancel_err:
+                        print(f"[AutoTrader] ⚠️ Error cancelando orden GTC: {cancel_err}", flush=True)
+                    success = False
+                    error_msg = "GTC order not filled within timeout, cancelled"
+                else:
+                    print(f"[AutoTrader] ✅ Orden GTC llenada (matched)!", flush=True)
 
             if success:
                 self._last_trade_time = time.time()
