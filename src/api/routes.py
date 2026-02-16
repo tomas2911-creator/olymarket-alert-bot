@@ -862,6 +862,7 @@ async def get_autotrade_config(request: Request):
         "at_max_odds", "at_max_positions", "at_order_type",
         "at_max_daily_loss", "at_max_daily_trades", "at_cooldown_sec",
         "at_coins", "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
+        "at_funder_address",
         "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
         "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
         "at_slippage_max_pct",
@@ -911,6 +912,8 @@ async def get_autotrade_config(request: Request):
         "trailing_stop_enabled": raw.get("at_trailing_stop_enabled") == "true",
         "trailing_stop_pct": float(raw.get("at_trailing_stop_pct", 15)),
         "slippage_max_pct": float(raw.get("at_slippage_max_pct", 3.0)),
+        "funder_address": raw.get("at_funder_address", ""),
+        "funder_address_set": bool(raw.get("at_funder_address")),
     }
 
 
@@ -951,6 +954,8 @@ async def save_autotrade_config(request: Request):
         data["at_private_key"] = body["private_key"]
     if "passphrase" in body:
         data["at_passphrase"] = body["passphrase"]
+    if "funder_address" in body:
+        data["at_funder_address"] = body["funder_address"]
     # Stop-Loss / Take-Profit / Risk Management
     if "stop_loss_enabled" in body:
         data["at_stop_loss_enabled"] = "true" if body["stop_loss_enabled"] else "false"
@@ -1077,31 +1082,106 @@ async def generate_api_keys(request: Request):
         if not api_creds:
             return {"status": "error", "error": error_msg or "No se pudieron generar las API keys."}
 
+        # Log full response para debug
+        print(f"[GenerateKeys] CLOB response keys: {list(api_creds.keys())}", flush=True)
+
         # Guardar las 4 credenciales en DB
         api_key = api_creds.get("apiKey", "")
         api_secret = api_creds.get("secret", "")
         passphrase = api_creds.get("passphrase", "")
 
-        await db.set_config_bulk({
+        # Intentar detectar proxy wallet address (funder) automáticamente
+        funder_address = ""
+        try:
+            # Método 1: usar py-clob-client create_or_derive_api_creds que puede dar más info
+            from py_clob_client.client import ClobClient as _ClobClient
+            from py_clob_client.clob_types import ApiCreds as _ApiCreds
+            _creds = _ApiCreds(api_key=api_key, api_secret=api_secret, api_passphrase=passphrase)
+            _temp_client = _ClobClient(
+                "https://clob.polymarket.com",
+                key=private_key,
+                chain_id=137,
+                signature_type=2,
+                creds=_creds,
+            )
+            # Intentar get_api_keys() que puede devolver info del proxy
+            try:
+                api_keys_resp = _temp_client.get_api_keys()
+                print(f"[GenerateKeys] get_api_keys response: {api_keys_resp}", flush=True)
+                # Buscar proxyAddress o funder en la respuesta
+                if isinstance(api_keys_resp, list):
+                    for k in api_keys_resp:
+                        if isinstance(k, dict):
+                            for field in ["proxyAddress", "funder", "proxy_address", "makerAddress", "maker"]:
+                                if k.get(field):
+                                    funder_address = k[field]
+                                    print(f"[GenerateKeys] Proxy wallet detectada: {funder_address}", flush=True)
+                                    break
+                        if funder_address:
+                            break
+                elif isinstance(api_keys_resp, dict):
+                    for field in ["proxyAddress", "funder", "proxy_address", "makerAddress", "maker"]:
+                        if api_keys_resp.get(field):
+                            funder_address = api_keys_resp[field]
+                            print(f"[GenerateKeys] Proxy wallet detectada: {funder_address}", flush=True)
+                            break
+            except Exception as e2:
+                print(f"[GenerateKeys] get_api_keys falló: {e2}", flush=True)
+        except Exception as e1:
+            print(f"[GenerateKeys] Detección de proxy falló: {e1}", flush=True)
+
+        # Método 2: si no se detectó, intentar via Gamma API
+        if not funder_address:
+            try:
+                async with _httpx.AsyncClient(timeout=10) as gamma_client:
+                    gamma_resp = await gamma_client.get(
+                        f"https://gamma-api.polymarket.com/nonce",
+                        params={"address": wallet_address}
+                    )
+                    if gamma_resp.status_code == 200:
+                        gamma_data = gamma_resp.json()
+                        print(f"[GenerateKeys] Gamma nonce response: {gamma_data}", flush=True)
+                        for field in ["proxyAddress", "proxy_address", "polyAddress", "address"]:
+                            val = gamma_data.get(field, "")
+                            if val and val.lower() != wallet_address.lower():
+                                funder_address = val
+                                print(f"[GenerateKeys] Proxy via Gamma: {funder_address}", flush=True)
+                                break
+            except Exception as e3:
+                print(f"[GenerateKeys] Gamma API falló: {e3}", flush=True)
+
+        config_to_save = {
             "at_private_key": pk_clean,
             "at_api_key": api_key,
             "at_api_secret": api_secret,
             "at_passphrase": passphrase,
-        }, user_id=uid)
+        }
+        if funder_address:
+            config_to_save["at_funder_address"] = funder_address
+
+        await db.set_config_bulk(config_to_save, user_id=uid)
 
         # Recargar config en autotrader
         autotrader = getattr(request.app.state, 'autotrader', None)
         if autotrader:
             try:
-                await autotrader.reload_config()
+                await autotrader.reload_config(user_id=uid)
             except Exception:
                 pass
+
+        msg = "API Keys generadas y guardadas."
+        if funder_address:
+            msg += f" Proxy wallet detectada: {funder_address[:10]}..."
+        else:
+            msg += " ⚠️ Proxy wallet NO detectada. Ve a polymarket.com/settings, copia tu Proxy Wallet Address y guárdala en Config."
 
         return {
             "status": "ok",
             "wallet": wallet_address,
             "api_key_preview": api_key[:12] + "..." if api_key else "",
-            "message": "API Keys generadas y guardadas. Listo para trading.",
+            "funder_address": funder_address,
+            "funder_detected": bool(funder_address),
+            "message": msg,
         }
 
     except ImportError:

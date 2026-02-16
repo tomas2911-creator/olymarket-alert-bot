@@ -54,6 +54,7 @@ class AutoTrader:
                 "at_max_odds", "at_max_positions", "at_order_type",
                 "at_max_daily_loss", "at_max_daily_trades", "at_cooldown_sec",
                 "at_coins", "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
+                "at_funder_address",
                 # Stop-Loss / Take-Profit / Risk Management
                 "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
                 "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
@@ -75,6 +76,7 @@ class AutoTrader:
                 "api_secret": raw.get("at_api_secret", ""),
                 "private_key": raw.get("at_private_key", ""),
                 "passphrase": raw.get("at_passphrase", ""),
+                "funder_address": raw.get("at_funder_address", ""),
                 # Stop-Loss / Take-Profit / Risk Management
                 "stop_loss_enabled": raw.get("at_stop_loss_enabled") == "true",
                 "stop_loss_pct": float(raw.get("at_stop_loss_pct", config.AT_STOP_LOSS_PCT)),
@@ -122,14 +124,18 @@ class AutoTrader:
             pk = self._config["private_key"]
             if pk and not pk.startswith("0x"):
                 pk = "0x" + pk
+            funder = self._config.get("funder_address", "") or None
             self._client = ClobClient(
                 CLOB_HOST,
                 key=pk,
                 chain_id=CHAIN_ID,
-                signature_type=1,  # POLY_PROXY (proxy wallet de Polymarket)
+                signature_type=2,  # Browser wallet proxy (Rabby/MetaMask via Polymarket)
+                funder=funder,
                 creds=creds,
             )
-            print("[AutoTrader] Cliente CLOB inicializado OK", flush=True)
+            print(f"[AutoTrader] Cliente CLOB inicializado OK (funder={'set: '+funder[:10]+'...' if funder else 'NOT SET - orders will fail!'})", flush=True)
+            if not funder:
+                print("[AutoTrader] ⚠️ FUNDER ADDRESS no configurada. Ve a polymarket.com/settings, copia tu Proxy Wallet Address, y pégala en el dashboard.", flush=True)
         except ImportError:
             print("[AutoTrader] ERROR: py-clob-client no instalado. pip install py-clob-client", flush=True)
             self._client = None

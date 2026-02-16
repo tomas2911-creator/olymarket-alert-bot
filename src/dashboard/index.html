@@ -937,6 +937,12 @@
                         <input type="hidden" id="at-api-secret" value="">
                         <input type="hidden" id="at-passphrase" value="">
                         <p class="text-[10px] text-gray-600">Las credenciales se guardan en el servidor (DB privada Railway). Nunca se exponen en el frontend.</p>
+                        <!-- Funder / Proxy Wallet Address -->
+                        <div class="mt-2">
+                            <label class="text-xs text-gray-400 block mb-1">Proxy Wallet Address (funder) — <a href="https://polymarket.com/settings" target="_blank" class="text-purple-400 underline">polymarket.com/settings</a></label>
+                            <input type="text" id="at-funder-address" placeholder="0x... (dirección de tu proxy wallet en Polymarket)" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            <p class="text-[10px] text-gray-500 mt-1">Se detecta automáticamente al generar API Keys. Si no, cópiala de polymarket.com/settings.</p>
+                        </div>
                     </div>
 
                     <!-- Trading Parameters -->
@@ -3436,7 +3442,7 @@ async function saveCryptoConfig(){
 async function disconnectWallet(){
     if(!confirm('¿Desconectar wallet? Se borrarán las 4 credenciales (Private Key, API Key, Secret, Passphrase). Podrás conectar otra wallet después.'))return;
     try{
-        await postJson('/api/crypto-arb/autotrade-config',{api_key:'',api_secret:'',private_key:'',passphrase:'',enabled:false});
+        await postJson('/api/crypto-arb/autotrade-config',{api_key:'',api_secret:'',private_key:'',passphrase:'',funder_address:'',enabled:false});
         await loadAutotradeConfig();
         document.getElementById('at-gen-msg').textContent='Wallet desconectada. Pega una nueva Private Key para conectar otra.';
         document.getElementById('at-gen-msg').className='text-[10px] text-yellow-400 mt-1';
@@ -3453,8 +3459,15 @@ async function generateApiKeys(){
     try{
         const data=await postJson('/api/crypto-arb/generate-keys',{private_key:pk});
         if(data&&data.status==='ok'){
-            msg.textContent=`API Keys generadas para ${data.wallet}. Listo para trading.`;
-            msg.className='text-[10px] text-green-400 mt-1';
+            let genMsg=`API Keys generadas para ${data.wallet}.`;
+            if(data.funder_detected){
+                genMsg+=` Proxy wallet: ${data.funder_address.slice(0,10)}...`;
+                document.getElementById('at-funder-address').value=data.funder_address;
+            }else{
+                genMsg+=' ⚠️ Proxy wallet no detectada. Cópiala de polymarket.com/settings y pégala abajo.';
+            }
+            msg.textContent=genMsg;
+            msg.className='text-[10px] '+(data.funder_detected?'text-green-400':'text-yellow-400')+' mt-1';
             document.getElementById('at-private-key').value='••••••••';
             await loadAutotradeConfig();
         }else{
@@ -3492,6 +3505,7 @@ async function loadAutotradeConfig(){
     document.getElementById('at-max-daily-loss').value=c.max_daily_loss||50;
     document.getElementById('at-max-daily-trades').value=c.max_daily_trades||20;
     document.getElementById('at-cooldown').value=c.cooldown_sec||30;
+    document.getElementById('at-funder-address').value=c.funder_address||'';
     document.getElementById('at-coin-btc').checked=c.coins?.includes('BTC')!==false;
     document.getElementById('at-coin-eth').checked=c.coins?.includes('ETH')!==false;
     document.getElementById('at-coin-sol').checked=c.coins?.includes('SOL')!==false;
@@ -3539,6 +3553,7 @@ async function saveAutotradeConfig(){
         max_daily_trades:parseInt(document.getElementById('at-max-daily-trades').value)||20,
         cooldown_sec:parseInt(document.getElementById('at-cooldown').value)||30,
         coins:coins,
+        funder_address:(document.getElementById('at-funder-address').value||'').trim(),
     };
     try{
         const data=await postJson('/api/crypto-arb/autotrade-config',body);
