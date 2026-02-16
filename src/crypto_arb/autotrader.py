@@ -315,8 +315,30 @@ class AutoTrader:
             if not token_id:
                 return {"success": False, "error": f"No se encontró token_id para {direction}"}
 
-            # Calcular cantidad de shares: size / price
-            shares = round(bet_size / price, 2)
+            # Redondear precio a 2 decimales (Polymarket usa centavos)
+            price = round(price, 2)
+            if price <= 0 or price >= 1:
+                return {"success": False, "error": f"Precio inválido: {price}"}
+
+            # Calcular shares con precisión correcta para CLOB:
+            # - maker_amount (USDC = shares * price) → max 2 decimales
+            # - taker_amount (shares) → max 4 decimales
+            import math
+            raw_shares = bet_size / price
+            # Probar precisiones de 4 a 0 decimales hasta que maker_amount tenga <= 2 decimales
+            shares = 0
+            for decimals in [4, 3, 2, 1, 0]:
+                factor = 10 ** decimals
+                candidate = math.floor(raw_shares * factor) / factor
+                maker = candidate * price
+                # Verificar que maker tiene <= 2 decimales (tolerancia floating point)
+                if abs(maker - round(maker, 2)) < 1e-9:
+                    shares = candidate
+                    break
+            if shares <= 0:
+                return {"success": False, "error": f"No se pudo calcular shares válidas para price={price} bet={bet_size}"}
+
+            print(f"[AutoTrader] Order: price={price} shares={shares} usdc={round(shares*price,2)} type={trade_info['order_type']}", flush=True)
 
             # Crear y enviar orden
             from py_clob_client.clob_types import OrderArgs, OrderType
@@ -334,24 +356,27 @@ class AutoTrader:
             signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
             resp = await loop.run_in_executor(None, self._client.post_order, signed_order, order_type)
 
+            # Log respuesta completa para debugging
+            print(f"[AutoTrader] post_order response: {resp}", flush=True)
+
             # Parsear respuesta
             success = False
             order_id = ""
             error_msg = ""
 
             if isinstance(resp, dict):
-                success = resp.get("success", False) or resp.get("orderID") is not None
-                order_id = resp.get("orderID", resp.get("order_id", ""))
+                order_id = resp.get("orderID", resp.get("order_id", "")) or ""
+                # Success solo si hay orderID no-vacío
+                success = bool(order_id) and resp.get("success", True)
                 if not success:
                     error_msg = resp.get("errorMsg", resp.get("error", str(resp)))
             elif hasattr(resp, "success"):
                 success = resp.success
-                order_id = getattr(resp, "orderID", "")
+                order_id = getattr(resp, "orderID", "") or ""
                 error_msg = getattr(resp, "errorMsg", "")
             else:
-                # Respuesta inesperada
-                success = bool(resp)
                 order_id = str(resp) if resp else ""
+                success = bool(order_id)
 
             if success:
                 self._last_trade_time = time.time()
