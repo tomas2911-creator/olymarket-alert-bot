@@ -7,6 +7,7 @@ cuando los odds todavía están en ~0.50.
 Strategy: "early_entry"
 """
 import asyncio
+import math
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -345,7 +346,13 @@ class EarlyEntryDetector:
         change_pct = abs(momentum["change_pct"])
         direction = momentum["direction"]
 
-        if change_pct < self.min_momentum_pct:
+        # Escalar min_momentum según intervalo del mercado
+        # Base = min_momentum_pct para 5m (300s)
+        # Para 15m: se multiplica por sqrt(interval/300) ≈ 1.73x
+        scale_factor = math.sqrt(wm.interval / 300)
+        scaled_min_momentum = self.min_momentum_pct * scale_factor
+
+        if change_pct < scaled_min_momentum:
             return None
 
         # Consistencia de tendencia

@@ -1043,9 +1043,9 @@
                                 <p class="text-[10px] text-gray-500 mt-0.5">Independiente del bet size Score</p>
                             </div>
                             <div>
-                                <label class="text-xs text-gray-400 block mb-1">Min Momentum (%)</label>
-                                <input type="number" id="at-early-min-momentum" value="0.10" min="0.01" max="1.0" step="0.01" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
-                                <p class="text-[10px] text-gray-500 mt-0.5">Cambio % mínimo pre-apertura</p>
+                                <label class="text-xs text-gray-400 block mb-1">Min Momentum (%) <span class="text-yellow-600">base 5m</span></label>
+                                <input type="number" id="at-early-min-momentum" value="0.03" min="0.01" max="1.0" step="0.01" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">5m: <span id="ee-thresh-5m" class="text-yellow-400">0.03%</span> &nbsp;|&nbsp; 15m: <span id="ee-thresh-15m" class="text-yellow-400">0.052%</span> <span class="text-gray-600">(auto-escalado)</span></p>
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400 block mb-1">Entry Window (seg)</label>
@@ -3690,9 +3690,17 @@ async function loadAutotradeConfig(){
     document.getElementById('at-use-score').checked=c.use_score_strategy===true;
     document.getElementById('at-use-early').checked=c.use_early_entry===true;
     document.getElementById('at-early-bet-size').value=c.early_entry_bet_size||3;
-    document.getElementById('at-early-min-momentum').value=c.early_entry_min_momentum||0.10;
+    document.getElementById('at-early-min-momentum').value=c.early_entry_min_momentum||0.03;
     document.getElementById('at-early-window').value=c.early_entry_window||15;
     document.getElementById('at-early-pre-monitor').value=c.early_entry_pre_monitor||120;
+    // Actualizar umbrales escalados por intervalo
+    function updateEEThresholds(){
+        const base=parseFloat(document.getElementById('at-early-min-momentum').value)||0.03;
+        document.getElementById('ee-thresh-5m').textContent=base.toFixed(3)+'%';
+        document.getElementById('ee-thresh-15m').textContent=(base*Math.sqrt(3)).toFixed(3)+'%';
+    }
+    updateEEThresholds();
+    document.getElementById('at-early-min-momentum').oninput=updateEEThresholds;
     // Mostrar/ocultar params early entry
     document.getElementById('early-entry-params').style.display=c.use_early_entry?'block':'none';
     document.getElementById('at-use-early').onchange=function(){document.getElementById('early-entry-params').style.display=this.checked?'block':'none';};
