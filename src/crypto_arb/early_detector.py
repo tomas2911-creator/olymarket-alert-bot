@@ -7,7 +7,6 @@ cuando los odds todavía están en ~0.50.
 Strategy: "early_entry"
 """
 import asyncio
-import math
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -64,7 +63,8 @@ class EarlyEntryDetector:
         # Config (sobreescribible desde DB/dashboard)
         self.pre_monitor_sec = 120
         self.entry_window_sec = 15
-        self.min_momentum_pct = 0.10
+        self.min_momentum_pct_5m = 0.03
+        self.min_momentum_pct_15m = 0.05
         self.enabled = False
 
     def configure(self, cfg: dict):
@@ -72,7 +72,9 @@ class EarlyEntryDetector:
         self.enabled = cfg.get("early_entry_enabled", False)
         self.pre_monitor_sec = int(cfg.get("early_entry_pre_monitor", 120))
         self.entry_window_sec = int(cfg.get("early_entry_window", 15))
-        self.min_momentum_pct = float(cfg.get("early_entry_min_momentum", 0.10))
+        self.min_momentum_pct_5m = float(cfg.get("early_entry_min_momentum_5m",
+            cfg.get("early_entry_min_momentum", 0.03)))
+        self.min_momentum_pct_15m = float(cfg.get("early_entry_min_momentum_15m", 0.05))
 
     async def start(self):
         """Loop principal."""
@@ -346,13 +348,13 @@ class EarlyEntryDetector:
         change_pct = abs(momentum["change_pct"])
         direction = momentum["direction"]
 
-        # Escalar min_momentum según intervalo del mercado
-        # Base = min_momentum_pct para 5m (300s)
-        # Para 15m: se multiplica por sqrt(interval/300) ≈ 1.73x
-        scale_factor = math.sqrt(wm.interval / 300)
-        scaled_min_momentum = self.min_momentum_pct * scale_factor
+        # Usar umbral de momentum según intervalo del mercado
+        if wm.interval <= 300:
+            min_mom = self.min_momentum_pct_5m
+        else:
+            min_mom = self.min_momentum_pct_15m
 
-        if change_pct < scaled_min_momentum:
+        if change_pct < min_mom:
             return None
 
         # Consistencia de tendencia

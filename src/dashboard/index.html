@@ -974,26 +974,38 @@
                         </div>
                     </div>
 
-                    <!-- Trading Parameters -->
+                    <!-- Estrategias Activas + Bet Sizes -->
                     <div class="space-y-3">
-                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Parámetros de Trading</h4>
-                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">Bet Size ($)</label>
-                                <input type="number" id="at-bet-size" value="5" min="1" max="1000" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Estrategias Activas</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="bg-gray-800/40 rounded-lg p-3 border border-purple-700/30">
+                                <label class="flex items-center gap-2 cursor-pointer mb-2">
+                                    <input type="checkbox" id="at-use-score" checked class="accent-purple-500 w-4 h-4">
+                                    <span class="text-sm font-medium text-purple-300">📊 Score</span>
+                                </label>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Bet Size ($)</label>
+                                    <input type="number" id="at-bet-size" value="5" min="1" max="1000" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                                </div>
                             </div>
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">Min Edge (%)</label>
-                                <input type="number" id="at-min-edge" value="15" min="5" max="50" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            <div class="bg-gray-800/40 rounded-lg p-3 border border-yellow-700/30">
+                                <label class="flex items-center gap-2 cursor-pointer mb-2">
+                                    <input type="checkbox" id="at-use-early" class="accent-yellow-500 w-4 h-4">
+                                    <span class="text-sm font-medium text-yellow-300">⚡ Early Entry</span>
+                                </label>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Bet Size Early ($)</label>
+                                    <input type="number" id="at-early-bet-size" value="3" min="1" max="500" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                </div>
                             </div>
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">Min Confianza (%)</label>
-                                <input type="number" id="at-min-conf" value="75" min="50" max="95" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                            </div>
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">Max Odds</label>
-                                <input type="number" id="at-max-odds" value="0.55" min="0.3" max="0.85" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                            </div>
+                        </div>
+                        <p class="text-[10px] text-gray-600">Los parámetros de cada estrategia se configuran en la pestaña Estrategia.</p>
+                    </div>
+
+                    <!-- Ejecución -->
+                    <div class="space-y-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Ejecución</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div>
                                 <label class="text-xs text-gray-400 block mb-1">Max Posiciones</label>
                                 <input type="number" id="at-max-positions" value="3" min="1" max="20" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
@@ -1010,59 +1022,15 @@
                                 <input type="number" id="at-slippage" value="3" min="1" max="15" step="0.5" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
                             </div>
                             <div>
-                                <label class="text-xs text-gray-400 block mb-1">Min Score</label>
-                                <input type="number" id="at-min-score" value="0" min="0" max="20" step="0.1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                                <p class="text-[10px] text-gray-500 mt-0.5">0 = sin filtro. Recomendado: 0.5-1.0</p>
+                                <label class="text-xs text-gray-400 block mb-1">Cooldown (seg)</label>
+                                <input type="number" id="at-cooldown" value="30" min="0" max="300" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
                             </div>
                         </div>
                     </div>
 
-                    <!-- Strategy Selection -->
-                    <div class="space-y-3">
-                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Estrategia de Señales</h4>
-                        <div class="flex gap-4">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" id="at-use-score" checked class="accent-purple-500 w-4 h-4">
-                                <span class="text-sm text-gray-300">📊 Score (sistema actual)</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" id="at-use-early" class="accent-yellow-500 w-4 h-4">
-                                <span class="text-sm text-gray-300">⚡ Early Entry (entrada rápida)</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Early Entry Parameters -->
-                    <div id="early-entry-params" class="space-y-3 border border-yellow-700/30 rounded-lg p-4 bg-yellow-900/10">
-                        <h4 class="text-xs text-yellow-400 uppercase tracking-wider font-semibold">Parámetros Early Entry</h4>
-                        <p class="text-[10px] text-gray-500">Compra al segundo 0 cuando detecta momentum fuerte pre-apertura. Odds ~0.50 = máximo profit potencial.</p>
-                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">Bet Size Early ($)</label>
-                                <input type="number" id="at-early-bet-size" value="3" min="1" max="500" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
-                                <p class="text-[10px] text-gray-500 mt-0.5">Independiente del bet size Score</p>
-                            </div>
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">Min Momentum (%) <span class="text-yellow-600">base 5m</span></label>
-                                <input type="number" id="at-early-min-momentum" value="0.03" min="0.01" max="1.0" step="0.01" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
-                                <p class="text-[10px] text-gray-500 mt-0.5">5m: <span id="ee-thresh-5m" class="text-yellow-400">0.03%</span> &nbsp;|&nbsp; 15m: <span id="ee-thresh-15m" class="text-yellow-400">0.052%</span> <span class="text-gray-600">(auto-escalado)</span></p>
-                            </div>
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">Entry Window (seg)</label>
-                                <input type="number" id="at-early-window" value="15" min="5" max="60" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
-                                <p class="text-[10px] text-gray-500 mt-0.5">Máx segundos post-apertura</p>
-                            </div>
-                            <div>
-                                <label class="text-xs text-gray-400 block mb-1">Pre-Monitor (seg)</label>
-                                <input type="number" id="at-early-pre-monitor" value="120" min="30" max="600" step="10" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
-                                <p class="text-[10px] text-gray-500 mt-0.5">Anticipación antes de apertura</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Risk Management -->
-                    <div class="space-y-3">
-                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Gestión de Riesgo</h4>
+                    <!-- Gestión de Riesgo (todo junto) -->
+                    <div class="space-y-3 border border-red-500/20 rounded-lg p-4 bg-red-900/5">
+                        <h4 class="text-xs text-red-400 uppercase tracking-wider font-semibold">Gestión de Riesgo</h4>
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             <div>
                                 <label class="text-xs text-gray-400 block mb-1">Max Pérdida Diaria ($)</label>
@@ -1072,11 +1040,32 @@
                                 <label class="text-xs text-gray-400 block mb-1">Max Trades/Día</label>
                                 <input type="number" id="at-max-daily-trades" value="20" min="1" max="200" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
                             </div>
+                            <div class="flex items-center gap-2 self-end pb-2">
+                                <input type="checkbox" id="at-sl-enabled" class="accent-red-500 w-3.5 h-3.5">
+                                <span class="text-xs text-gray-300">Stop-Loss / Take-Profit</span>
+                            </div>
                             <div>
-                                <label class="text-xs text-gray-400 block mb-1">Cooldown (seg)</label>
-                                <input type="number" id="at-cooldown" value="30" min="0" max="300" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                                <label class="text-xs text-gray-400 block mb-1">Stop-Loss (%)</label>
+                                <input type="number" id="at-sl-pct" value="25" step="1" min="5" max="80" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-red-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Take-Profit (%)</label>
+                                <input type="number" id="at-tp-pct" value="30" step="1" min="5" max="200" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Holding (seg)</label>
+                                <input type="number" id="at-max-hold" value="1800" step="60" min="60" max="7200" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                            </div>
+                            <div class="flex items-center gap-2 self-end pb-2">
+                                <input type="checkbox" id="at-trailing" class="accent-orange-500 w-3.5 h-3.5">
+                                <span class="text-xs text-gray-300">Trailing Stop</span>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Trailing Stop (%)</label>
+                                <input type="number" id="at-trail-pct" value="15" step="1" min="3" max="50" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-orange-300">
                             </div>
                         </div>
+                        <p class="text-[10px] text-gray-600">SL: vende si pierde >X% | TP: vende si gana >X% | Max Hold: fuerza salida | Trailing: vende si cae X% desde máximo</p>
                     </div>
 
                     <!-- Monedas habilitadas -->
@@ -1255,6 +1244,85 @@
                         </div>
                     </div>
 
+                    <!-- Filtros de Señales Score -->
+                    <div class="space-y-3 border border-purple-500/20 rounded-lg p-4 bg-purple-900/5">
+                        <h4 class="text-xs text-purple-400 uppercase tracking-wider font-semibold">Filtros de Señales Score</h4>
+                        <p class="text-[10px] text-gray-500">Umbrales que debe cumplir una señal Score para ser generada y enviada al autotrader.</p>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Edge (%)</label>
+                                <input type="number" id="at-min-edge" value="15" min="5" max="50" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Confianza (%)</label>
+                                <input type="number" id="at-min-conf" value="75" min="50" max="95" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Poly Odds</label>
+                                <input type="number" id="at-max-odds" value="0.55" min="0.3" max="0.85" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Score</label>
+                                <input type="number" id="at-min-score" value="0" min="0" max="20" step="0.1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">0 = sin filtro. Recomendado: 0.5-1.0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Early Entry Strategy -->
+                    <div class="space-y-3 border border-yellow-700/30 rounded-lg p-4 bg-yellow-900/10">
+                        <h4 class="text-xs text-yellow-400 uppercase tracking-wider font-semibold">Parámetros Early Entry</h4>
+                        <p class="text-[10px] text-gray-500">Compra al segundo 0 cuando detecta momentum fuerte pre-apertura. Odds ~0.50 = máximo profit potencial.</p>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Momentum 5m (%)</label>
+                                <input type="number" id="at-early-min-momentum-5m" value="0.03" min="0.01" max="1.0" step="0.01" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">Mercados BTC 5 min</p>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Momentum 15m (%)</label>
+                                <input type="number" id="at-early-min-momentum-15m" value="0.05" min="0.01" max="1.0" step="0.01" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">Mercados BTC/ETH/SOL/XRP 15 min</p>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Entry Window (seg)</label>
+                                <input type="number" id="at-early-window" value="15" min="5" max="60" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">Máx segundos post-apertura</p>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Pre-Monitor (seg)</label>
+                                <input type="number" id="at-early-pre-monitor" value="120" min="30" max="600" step="10" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">Anticipación antes de apertura</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Parámetros Generales de Detección -->
+                    <div class="space-y-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Parámetros Generales de Detección</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Mov. Spot (%)</label>
+                                <input type="number" id="cc-min-move" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Paper Bet ($)</label>
+                                <input type="number" id="cc-bet-size" step="10" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Max Señales/Día</label>
+                                <input type="number" id="cc-max-daily" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Alertas Telegram</label>
+                                <select id="cc-telegram" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm text-purple-300">
+                                    <option value="true">Activadas</option>
+                                    <option value="false">Desactivadas</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Botón guardar -->
                     <div class="flex gap-3">
                         <button onclick="saveStrategyConfig()" class="px-4 py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">💾 Guardar Estrategia</button>
@@ -1325,85 +1393,7 @@
                         </div>
                     </div>
 
-                    <!-- v9.0: Risk Management — Stop-Loss / Take-Profit -->
-                    <div class="border border-red-500/20 rounded-lg p-3 bg-gray-900/40">
-                        <div class="flex items-center justify-between mb-2">
-                            <h4 class="text-xs text-red-400 uppercase tracking-wider font-semibold">Risk Management — Crypto AutoTrader</h4>
-                            <button onclick="saveRiskConfig()" class="px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-[10px] font-medium transition">Guardar</button>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition">
-                                <input type="checkbox" id="risk-sl-enabled" class="accent-red-500 w-3.5 h-3.5">
-                                <div>
-                                    <span class="text-xs text-white font-medium">Stop-Loss / Take-Profit</span>
-                                    <p class="text-[10px] text-gray-500">Activar gestión automática de riesgo en posiciones abiertas.</p>
-                                </div>
-                            </label>
-                            <label class="flex items-center gap-2 bg-gray-800/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/70 transition">
-                                <input type="checkbox" id="risk-trailing" class="accent-red-500 w-3.5 h-3.5">
-                                <div>
-                                    <span class="text-xs text-white font-medium">Trailing Stop</span>
-                                    <p class="text-[10px] text-gray-500">Vender si el precio cae X% desde el máximo alcanzado.</p>
-                                </div>
-                            </label>
-                        </div>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                            <div>
-                                <label class="text-[10px] text-gray-400 block mb-1">Stop-Loss (%)</label>
-                                <input type="number" id="risk-sl-pct" step="1" value="25" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-red-300">
-                            </div>
-                            <div>
-                                <label class="text-[10px] text-gray-400 block mb-1">Take-Profit (%)</label>
-                                <input type="number" id="risk-tp-pct" step="1" value="30" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-green-300">
-                            </div>
-                            <div>
-                                <label class="text-[10px] text-gray-400 block mb-1">Max Holding (seg)</label>
-                                <input type="number" id="risk-max-hold" step="60" value="1800" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-yellow-300">
-                            </div>
-                            <div>
-                                <label class="text-[10px] text-gray-400 block mb-1">Trailing Stop (%)</label>
-                                <input type="number" id="risk-trail-pct" step="1" value="15" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-orange-300">
-                            </div>
-                        </div>
-                        <p class="text-[10px] text-gray-600 mt-2">SL: vende si pierde >X% | TP: vende si gana >X% | Max Hold: fuerza salida después de N seg | Trailing: vende si cae X% desde máximo</p>
-                        <span id="risk-status" class="text-xs text-green-400 hidden mt-1">Guardado!</span>
-                    </div>
-
-                    <!-- Parámetros de detección -->
-                    <h4 class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Parámetros de Detección</h4>
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        <div>
-                            <label class="text-xs text-gray-400 block mb-1">Min Mov. Spot (%)</label>
-                            <input type="number" id="cc-min-move" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                        </div>
-                        <div>
-                            <label class="text-xs text-gray-400 block mb-1">Max Poly Odds</label>
-                            <input type="number" id="cc-max-odds" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                        </div>
-                        <div>
-                            <label class="text-xs text-gray-400 block mb-1">Min Confianza (%)</label>
-                            <input type="number" id="cc-min-conf" step="5" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                        </div>
-                        <div>
-                            <label class="text-xs text-gray-400 block mb-1">Paper Bet ($)</label>
-                            <input type="number" id="cc-bet-size" step="10" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                        </div>
-                        <div>
-                            <label class="text-xs text-gray-400 block mb-1">Max Señales/Día</label>
-                            <input type="number" id="cc-max-daily" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
-                        </div>
-                        <div>
-                            <label class="text-xs text-gray-400 block mb-1">Alertas Telegram</label>
-                            <select id="cc-telegram" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm text-purple-300">
-                                <option value="true">Activadas</option>
-                                <option value="false">Desactivadas</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex gap-3">
-                        <button onclick="saveCryptoConfig()" class="px-4 py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">Guardar</button>
-                        <span id="cc-status" class="text-xs text-green-400 self-center hidden">Guardado!</span>
-                    </div>
+                    <p class="text-[10px] text-gray-600">Risk Management y Parámetros de Detección se configuran en las pestañas Autotrading y Estrategia respectivamente.</p>
                 </div>
             </div>
 
@@ -2575,34 +2565,10 @@ async function saveFeaturesV8(){
     }
 }
 
-// ── v9.0: Risk Management Save/Load ──
-async function loadRiskConfig(){
-    const data=await fetchJson('/api/crypto-arb/autotrade-config');
-    if(!data)return;
-    const el=id=>document.getElementById(id);
-    if(el('risk-sl-enabled'))el('risk-sl-enabled').checked=!!data.stop_loss_enabled;
-    if(el('risk-trailing'))el('risk-trailing').checked=!!data.trailing_stop_enabled;
-    if(el('risk-sl-pct'))el('risk-sl-pct').value=data.stop_loss_pct||25;
-    if(el('risk-tp-pct'))el('risk-tp-pct').value=data.take_profit_pct||30;
-    if(el('risk-max-hold'))el('risk-max-hold').value=data.max_holding_sec||1800;
-    if(el('risk-trail-pct'))el('risk-trail-pct').value=data.trailing_stop_pct||15;
-}
-async function saveRiskConfig(){
-    const body={
-        stop_loss_enabled:document.getElementById('risk-sl-enabled').checked,
-        stop_loss_pct:parseFloat(document.getElementById('risk-sl-pct').value)||25,
-        take_profit_pct:parseFloat(document.getElementById('risk-tp-pct').value)||30,
-        max_holding_sec:parseInt(document.getElementById('risk-max-hold').value)||1800,
-        trailing_stop_enabled:document.getElementById('risk-trailing').checked,
-        trailing_stop_pct:parseFloat(document.getElementById('risk-trail-pct').value)||15,
-    };
-    try{
-        await postJson('/api/crypto-arb/autotrade-config',body);
-        const st=document.getElementById('risk-status');
-        if(st){st.textContent='Guardado!';st.classList.remove('hidden');}
-        setTimeout(()=>{if(st)st.classList.add('hidden');},3000);
-    }catch(e){alert('Error guardando risk config');}
-}
+// ── v9.0: Risk Management — ahora integrado en Autotrading tab ──
+// Aliases de retrocompatibilidad (ya no se llaman directamente)
+async function loadRiskConfig(){ /* integrado en loadAutotradeConfig */ }
+async function saveRiskConfig(){ /* integrado en saveAutotradeConfig */ }
 
 async function saveConfig(){
     const checks=document.querySelectorAll('.cat-check');
@@ -3197,8 +3163,8 @@ function showCryptoSub(sub){
     });
     if(sub==='history')loadCryptoHistory();
     if(sub==='autotrade')loadAutotradeConfig();
-    if(sub==='strategy')loadStrategyConfig();
-    if(sub==='cconfig'){loadCryptoConfig();loadFeaturesV8();loadRiskConfig();}
+    if(sub==='strategy')loadStrategyFullConfig();
+    if(sub==='cconfig'){loadFeaturesV8();}
     if(sub==='pricesum')loadPriceSumArb();
 }
 
@@ -3506,17 +3472,7 @@ function renderHistSummary(data){
 // ── Estrategia ──
 let _currentStrategy='score';
 
-async function loadStrategyConfig(){
-    const c=await fetchJson('/api/crypto-arb/config');
-    if(!c)return;
-    _currentStrategy=c.strategy||'score';
-    updateStrategyCards(_currentStrategy);
-    document.getElementById('st-min-score').value=c.min_score||0.40;
-    document.getElementById('st-entry-time').value=c.entry_max_time_sec||180;
-    document.getElementById('st-min-dist').value=c.min_distance_atr||0.3;
-    document.getElementById('st-min-trend').value=c.min_trend_consistency||0.55;
-    document.getElementById('strat-score-params').style.display=_currentStrategy==='score'?'block':'none';
-}
+async function loadStrategyConfig(){ await loadStrategyFullConfig(); }
 
 function selectStrategy(strat){
     _currentStrategy=strat;
@@ -3551,29 +3507,70 @@ function applyPreset(preset){
 }
 
 async function saveStrategyConfig(){
-    const body={
+    // 1) Guardar params Score strategy + detección general → /api/crypto-arb/config
+    const cryptoBody={
         strategy:_currentStrategy,
         min_score:parseFloat(document.getElementById('st-min-score').value),
         entry_max_time_sec:parseInt(document.getElementById('st-entry-time').value),
         min_distance_atr:parseFloat(document.getElementById('st-min-dist').value),
         min_trend_consistency:parseFloat(document.getElementById('st-min-trend').value),
+        min_price_move_pct:parseFloat(document.getElementById('cc-min-move').value),
+        paper_bet_size:parseFloat(document.getElementById('cc-bet-size').value),
+        max_daily_signals:parseInt(document.getElementById('cc-max-daily').value),
+        telegram_alerts:document.getElementById('cc-telegram').value==='true',
     };
-    await postJson('/api/crypto-arb/config',body);
+    await postJson('/api/crypto-arb/config',cryptoBody);
+    // 2) Guardar filtros señales + early entry params → /api/crypto-arb/autotrade-config
+    const atBody={
+        min_edge:parseFloat(document.getElementById('at-min-edge').value)||15,
+        min_confidence:parseFloat(document.getElementById('at-min-conf').value)||75,
+        max_odds:parseFloat(document.getElementById('at-max-odds').value)||0.55,
+        min_score:parseFloat(document.getElementById('at-min-score').value)||0,
+        early_entry_min_momentum_5m:parseFloat(document.getElementById('at-early-min-momentum-5m').value)||0.03,
+        early_entry_min_momentum_15m:parseFloat(document.getElementById('at-early-min-momentum-15m').value)||0.05,
+        early_entry_window:parseInt(document.getElementById('at-early-window').value)||15,
+        early_entry_pre_monitor:parseInt(document.getElementById('at-early-pre-monitor').value)||120,
+    };
+    await postJson('/api/crypto-arb/autotrade-config',atBody);
     const st=document.getElementById('strat-status');
+    st.textContent='Guardado!';st.className='text-xs text-green-400 self-center';
     st.classList.remove('hidden');
     setTimeout(()=>st.classList.add('hidden'),2000);
 }
 
-async function loadCryptoConfig(){
+async function loadStrategyFullConfig(){
+    // Cargar config crypto (estrategia + detección general)
     const c=await fetchJson('/api/crypto-arb/config');
-    if(!c)return;
-    document.getElementById('cc-min-move').value=c.min_price_move_pct;
-    document.getElementById('cc-max-odds').value=c.max_poly_odds;
-    document.getElementById('cc-min-conf').value=c.min_confidence_pct;
-    document.getElementById('cc-bet-size').value=c.paper_bet_size;
-    document.getElementById('cc-max-daily').value=c.max_daily_signals;
-    document.getElementById('cc-telegram').value=c.telegram_alerts?'true':'false';
+    if(c){
+        document.getElementById('cc-min-move').value=c.min_price_move_pct;
+        document.getElementById('cc-bet-size').value=c.paper_bet_size;
+        document.getElementById('cc-max-daily').value=c.max_daily_signals;
+        document.getElementById('cc-telegram').value=c.telegram_alerts?'true':'false';
+        // Score strategy params
+        _currentStrategy=c.strategy||'score';
+        updateStrategyCards(_currentStrategy);
+        document.getElementById('strat-score-params').style.display=_currentStrategy==='score'?'block':'none';
+        document.getElementById('st-min-score').value=c.min_score||0.40;
+        document.getElementById('st-entry-time').value=c.entry_max_time_sec||180;
+        document.getElementById('st-min-dist').value=c.min_distance_atr||0.3;
+        document.getElementById('st-min-trend').value=c.min_trend_consistency||0.55;
+    }
+    // Cargar filtros de señales + early entry params desde autotrade-config
+    const a=await fetchJson('/api/crypto-arb/autotrade-config');
+    if(a){
+        document.getElementById('at-min-edge').value=a.min_edge||15;
+        document.getElementById('at-min-conf').value=a.min_confidence||75;
+        document.getElementById('at-max-odds').value=a.max_odds||0.55;
+        document.getElementById('at-min-score').value=a.min_score||0;
+        document.getElementById('at-early-min-momentum-5m').value=a.early_entry_min_momentum_5m||0.03;
+        document.getElementById('at-early-min-momentum-15m').value=a.early_entry_min_momentum_15m||0.05;
+        document.getElementById('at-early-window').value=a.early_entry_window||15;
+        document.getElementById('at-early-pre-monitor').value=a.early_entry_pre_monitor||120;
+    }
 }
+
+// Alias de retrocompatibilidad
+async function loadCryptoConfig(){ await loadStrategyFullConfig(); }
 
 async function loadPriceSumArb(){
     const data=await fetchJson('/api/crypto-arb/price-sum-arb');
@@ -3601,20 +3598,8 @@ async function loadPriceSumArb(){
     }).join('');
 }
 
-async function saveCryptoConfig(){
-    const body={
-        min_price_move_pct:parseFloat(document.getElementById('cc-min-move').value),
-        max_poly_odds:parseFloat(document.getElementById('cc-max-odds').value),
-        min_confidence_pct:parseFloat(document.getElementById('cc-min-conf').value),
-        paper_bet_size:parseFloat(document.getElementById('cc-bet-size').value),
-        max_daily_signals:parseInt(document.getElementById('cc-max-daily').value),
-        telegram_alerts:document.getElementById('cc-telegram').value==='true',
-    };
-    await postJson('/api/crypto-arb/config',body);
-    const st=document.getElementById('cc-status');
-    st.classList.remove('hidden');
-    setTimeout(()=>st.classList.add('hidden'),2000);
-}
+// saveCryptoConfig ya no se usa — los campos se movieron a Estrategia
+async function saveCryptoConfig(){ await saveStrategyConfig(); }
 
 // ── Autotrading ──
 async function disconnectWallet(){
@@ -3675,35 +3660,24 @@ async function loadAutotradeConfig(){
         document.getElementById('at-private-key').value='';
     }
     document.getElementById('at-bet-size').value=c.bet_size||5;
-    document.getElementById('at-min-edge').value=c.min_edge||15;
-    document.getElementById('at-min-conf').value=c.min_confidence||75;
-    document.getElementById('at-max-odds').value=c.max_odds||0.55;
     document.getElementById('at-max-positions').value=c.max_positions||3;
     document.getElementById('at-order-type').value=c.order_type||'limit';
-    document.getElementById('at-max-daily-loss').value=c.max_daily_loss||50;
-    document.getElementById('at-max-daily-trades').value=c.max_daily_trades||20;
-    document.getElementById('at-cooldown').value=c.cooldown_sec||30;
     document.getElementById('at-slippage').value=c.slippage_max_pct||3;
-    document.getElementById('at-min-score').value=c.min_score||0;
+    document.getElementById('at-cooldown').value=c.cooldown_sec||30;
     document.getElementById('at-funder-address').value=c.funder_address||'';
-    // Early Entry config
+    // Estrategias activas + bet sizes
     document.getElementById('at-use-score').checked=c.use_score_strategy===true;
     document.getElementById('at-use-early').checked=c.use_early_entry===true;
     document.getElementById('at-early-bet-size').value=c.early_entry_bet_size||3;
-    document.getElementById('at-early-min-momentum').value=c.early_entry_min_momentum||0.03;
-    document.getElementById('at-early-window').value=c.early_entry_window||15;
-    document.getElementById('at-early-pre-monitor').value=c.early_entry_pre_monitor||120;
-    // Actualizar umbrales escalados por intervalo
-    function updateEEThresholds(){
-        const base=parseFloat(document.getElementById('at-early-min-momentum').value)||0.03;
-        document.getElementById('ee-thresh-5m').textContent=base.toFixed(3)+'%';
-        document.getElementById('ee-thresh-15m').textContent=(base*Math.sqrt(3)).toFixed(3)+'%';
-    }
-    updateEEThresholds();
-    document.getElementById('at-early-min-momentum').oninput=updateEEThresholds;
-    // Mostrar/ocultar params early entry
-    document.getElementById('early-entry-params').style.display=c.use_early_entry?'block':'none';
-    document.getElementById('at-use-early').onchange=function(){document.getElementById('early-entry-params').style.display=this.checked?'block':'none';};
+    // Risk Management (todo junto)
+    document.getElementById('at-max-daily-loss').value=c.max_daily_loss||50;
+    document.getElementById('at-max-daily-trades').value=c.max_daily_trades||20;
+    document.getElementById('at-sl-enabled').checked=!!c.stop_loss_enabled;
+    document.getElementById('at-sl-pct').value=c.stop_loss_pct||25;
+    document.getElementById('at-tp-pct').value=c.take_profit_pct||30;
+    document.getElementById('at-max-hold').value=c.max_holding_sec||1800;
+    document.getElementById('at-trailing').checked=!!c.trailing_stop_enabled;
+    document.getElementById('at-trail-pct').value=c.trailing_stop_pct||15;
     document.getElementById('at-coin-btc').checked=c.coins?.includes('BTC')!==false;
     document.getElementById('at-coin-eth').checked=c.coins?.includes('ETH')!==false;
     document.getElementById('at-coin-sol').checked=c.coins?.includes('SOL')!==false;
@@ -3741,26 +3715,29 @@ async function saveAutotradeConfig(){
     if(document.getElementById('at-coin-xrp').checked)coins.push('XRP');
     const body={
         enabled:document.getElementById('at-enabled').checked,
+        // Bet sizes por estrategia
         bet_size:parseFloat(document.getElementById('at-bet-size').value)||5,
-        min_edge:parseFloat(document.getElementById('at-min-edge').value)||15,
-        min_confidence:parseFloat(document.getElementById('at-min-conf').value)||75,
-        max_odds:parseFloat(document.getElementById('at-max-odds').value)||0.55,
-        max_positions:parseInt(document.getElementById('at-max-positions').value)||3,
-        order_type:document.getElementById('at-order-type').value,
-        max_daily_loss:parseFloat(document.getElementById('at-max-daily-loss').value)||50,
-        max_daily_trades:parseInt(document.getElementById('at-max-daily-trades').value)||20,
-        cooldown_sec:parseInt(document.getElementById('at-cooldown').value)||30,
-        slippage_max_pct:parseFloat(document.getElementById('at-slippage').value)||3,
-        min_score:parseFloat(document.getElementById('at-min-score').value)||0,
-        coins:coins,
-        funder_address:(document.getElementById('at-funder-address').value||'').trim(),
+        early_entry_bet_size:parseFloat(document.getElementById('at-early-bet-size').value)||3,
+        // Estrategias activas
         use_score_strategy:document.getElementById('at-use-score').checked,
         use_early_entry:document.getElementById('at-use-early').checked,
         early_entry_enabled:document.getElementById('at-use-early').checked,
-        early_entry_bet_size:parseFloat(document.getElementById('at-early-bet-size').value)||3,
-        early_entry_min_momentum:parseFloat(document.getElementById('at-early-min-momentum').value)||0.10,
-        early_entry_window:parseInt(document.getElementById('at-early-window').value)||15,
-        early_entry_pre_monitor:parseInt(document.getElementById('at-early-pre-monitor').value)||120,
+        // Ejecución
+        max_positions:parseInt(document.getElementById('at-max-positions').value)||3,
+        order_type:document.getElementById('at-order-type').value,
+        slippage_max_pct:parseFloat(document.getElementById('at-slippage').value)||3,
+        cooldown_sec:parseInt(document.getElementById('at-cooldown').value)||30,
+        coins:coins,
+        funder_address:(document.getElementById('at-funder-address').value||'').trim(),
+        // Risk Management (todo junto)
+        max_daily_loss:parseFloat(document.getElementById('at-max-daily-loss').value)||50,
+        max_daily_trades:parseInt(document.getElementById('at-max-daily-trades').value)||20,
+        stop_loss_enabled:document.getElementById('at-sl-enabled').checked,
+        stop_loss_pct:parseFloat(document.getElementById('at-sl-pct').value)||25,
+        take_profit_pct:parseFloat(document.getElementById('at-tp-pct').value)||30,
+        max_holding_sec:parseInt(document.getElementById('at-max-hold').value)||1800,
+        trailing_stop_enabled:document.getElementById('at-trailing').checked,
+        trailing_stop_pct:parseFloat(document.getElementById('at-trail-pct').value)||15,
     };
     try{
         const data=await postJson('/api/crypto-arb/autotrade-config',body);

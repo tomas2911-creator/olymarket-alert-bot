@@ -922,6 +922,7 @@ async def get_autotrade_config(request: Request):
         "at_use_score_strategy", "at_use_early_entry", "at_early_entry_bet_size",
         "at_early_entry_enabled", "at_early_entry_pre_monitor",
         "at_early_entry_window", "at_early_entry_min_momentum",
+        "at_early_entry_min_momentum_5m", "at_early_entry_min_momentum_15m",
         "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
         "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
         "at_slippage_max_pct",
@@ -981,6 +982,8 @@ async def get_autotrade_config(request: Request):
         "early_entry_pre_monitor": int(raw.get("at_early_entry_pre_monitor", 120)),
         "early_entry_window": int(raw.get("at_early_entry_window", 15)),
         "early_entry_min_momentum": float(raw.get("at_early_entry_min_momentum", 0.03)),
+        "early_entry_min_momentum_5m": float(raw.get("at_early_entry_min_momentum_5m", raw.get("at_early_entry_min_momentum", 0.03))),
+        "early_entry_min_momentum_15m": float(raw.get("at_early_entry_min_momentum_15m", 0.05)),
     }
 
 
@@ -1056,6 +1059,10 @@ async def save_autotrade_config(request: Request):
         data["at_early_entry_window"] = str(body["early_entry_window"])
     if "early_entry_min_momentum" in body:
         data["at_early_entry_min_momentum"] = str(body["early_entry_min_momentum"])
+    if "early_entry_min_momentum_5m" in body:
+        data["at_early_entry_min_momentum_5m"] = str(body["early_entry_min_momentum_5m"])
+    if "early_entry_min_momentum_15m" in body:
+        data["at_early_entry_min_momentum_15m"] = str(body["early_entry_min_momentum_15m"])
     if data:
         await db.set_config_bulk(data, user_id=uid)
     # Recargar config en el autotrader

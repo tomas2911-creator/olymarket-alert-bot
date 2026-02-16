@@ -238,6 +238,7 @@ class PolymarketAlertBot:
             raw = await self.db.get_config_bulk([
                 "at_early_entry_enabled", "at_early_entry_pre_monitor",
                 "at_early_entry_window", "at_early_entry_min_momentum",
+                "at_early_entry_min_momentum_5m", "at_early_entry_min_momentum_15m",
                 "at_early_entry_bet_size",
             ], user_id=1)
             self.early_detector.configure({
@@ -245,6 +246,9 @@ class PolymarketAlertBot:
                 "early_entry_pre_monitor": int(raw.get("at_early_entry_pre_monitor", config.EARLY_ENTRY_PRE_MONITOR_SEC)),
                 "early_entry_window": int(raw.get("at_early_entry_window", config.EARLY_ENTRY_WINDOW_SEC)),
                 "early_entry_min_momentum": float(raw.get("at_early_entry_min_momentum", config.EARLY_ENTRY_MIN_MOMENTUM_PCT)),
+                "early_entry_min_momentum_5m": float(raw.get("at_early_entry_min_momentum_5m",
+                    raw.get("at_early_entry_min_momentum", config.EARLY_ENTRY_MIN_MOMENTUM_PCT))),
+                "early_entry_min_momentum_15m": float(raw.get("at_early_entry_min_momentum_15m", 0.05)),
             })
         except Exception as e:
             print(f"[EarlyEntry] Error cargando config: {e}", flush=True)
