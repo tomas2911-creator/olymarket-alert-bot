@@ -42,9 +42,12 @@ class AutoTrader:
         self._open_positions: dict[str, dict] = {}  # condition_id -> trade_info
         self._trailing_highs: dict[str, float] = {}  # cid -> max_price visto
         self._initialized = False
+        self._user_id = 1  # user_id para cargar config
 
-    async def initialize(self):
+    async def initialize(self, user_id: int = None):
         """Cargar config y crear cliente CLOB si hay credenciales."""
+        if user_id is not None:
+            self._user_id = user_id
         try:
             raw = await self.db.get_config_bulk([
                 "at_enabled", "at_bet_size", "at_min_edge", "at_min_confidence",
@@ -55,7 +58,7 @@ class AutoTrader:
                 "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
                 "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
                 "at_slippage_max_pct",
-            ])
+            ], user_id=self._user_id)
             self._config = {
                 "enabled": raw.get("at_enabled") == "true",
                 "bet_size": float(raw.get("at_bet_size", 5)),
@@ -131,9 +134,9 @@ class AutoTrader:
             print(f"[AutoTrader] Error creando cliente CLOB: {e}", flush=True)
             self._client = None
 
-    async def reload_config(self):
+    async def reload_config(self, user_id: int = None):
         """Recargar config desde DB (llamado cuando se guarda config desde dashboard)."""
-        await self.initialize()
+        await self.initialize(user_id=user_id)
 
     async def _load_today_trades(self):
         """Cargar trades ejecutados hoy desde DB."""

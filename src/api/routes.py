@@ -968,14 +968,13 @@ async def save_autotrade_config(request: Request):
         data["at_slippage_max_pct"] = str(body["slippage_max_pct"])
     if data:
         await db.set_config_bulk(data, user_id=uid)
-    # Recargar config en el autotrader si existe (solo user 1 retrocompat)
-    if uid == 1:
-        autotrader = getattr(request.app.state, 'autotrader', None)
-        if autotrader:
-            try:
-                await autotrader.reload_config()
-            except Exception:
-                pass
+    # Recargar config en el autotrader
+    autotrader = getattr(request.app.state, 'autotrader', None)
+    if autotrader:
+        try:
+            await autotrader.reload_config(user_id=uid)
+        except Exception:
+            pass
     return {"status": "ok"}
 
 
