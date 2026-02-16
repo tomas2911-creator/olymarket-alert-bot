@@ -320,9 +320,11 @@ class AutoTrader:
 
         try:
             # Obtener token_id del outcome correcto
-            token_id = await self._get_token_id(cid, direction)
-            if not token_id:
+            token_result = await self._get_token_id(cid, direction)
+            if not token_result:
                 return {"success": False, "error": f"No se encontró token_id para {direction}"}
+            token_id, selected_outcome = token_result
+            print(f"[AutoTrader] Token seleccionado: direction={direction} → outcome='{selected_outcome}' token={token_id[:16]}...", flush=True)
 
             # Redondear precio a 2 decimales (Polymarket usa centavos)
             price = round(price, 2)
@@ -373,10 +375,30 @@ class AutoTrader:
             # py-clob-client es síncrono — ejecutar en executor para no bloquear event loop
             loop = asyncio.get_running_loop()
             signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
-            resp = await loop.run_in_executor(None, self._client.post_order, signed_order, order_type)
+
+            # Intentar enviar orden; si FOK falla por liquidez, reintentar como GTC
+            used_order_type = order_type
+            try:
+                resp = await loop.run_in_executor(None, self._client.post_order, signed_order, order_type)
+            except Exception as fok_err:
+                fok_msg = str(fok_err).lower()
+                if order_type == OrderType.FOK and "fully filled" in fok_msg:
+                    print(f"[AutoTrader] FOK sin liquidez, reintentando como GTC limit...", flush=True)
+                    # Crear nueva orden con el mismo precio (limit order se queda en el book)
+                    gtc_args = OrderArgs(
+                        price=order_price,
+                        size=shares,
+                        side="BUY",
+                        token_id=token_id,
+                    )
+                    signed_order = await loop.run_in_executor(None, self._client.create_order, gtc_args)
+                    resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
+                    used_order_type = OrderType.GTC
+                else:
+                    raise  # Re-lanzar si es otro error
 
             # Log respuesta completa para debugging
-            print(f"[AutoTrader] post_order response: {resp}", flush=True)
+            print(f"[AutoTrader] post_order response ({used_order_type}): {resp}", flush=True)
 
             # Parsear respuesta
             success = False
@@ -453,30 +475,62 @@ class AutoTrader:
             print(f"[AutoTrader] ❌ Error ejecutando trade: {error}", flush=True)
             return {"success": False, "error": error}
 
-    async def _get_token_id(self, condition_id: str, direction: str) -> Optional[str]:
-        """Obtener token_id del outcome correcto (Up/Down) via CLOB API."""
+    async def _get_token_id(self, condition_id: str, direction: str) -> Optional[tuple]:
+        """Obtener (token_id, outcome_label) del outcome correcto via CLOB API.
+        Retorna tupla (token_id, outcome) o None si no se encuentra.
+        """
         try:
             import httpx
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(f"{CLOB_HOST}/markets/{condition_id}")
                 if resp.status_code != 200:
+                    print(f"[AutoTrader] _get_token_id: CLOB status={resp.status_code}", flush=True)
                     return None
                 data = resp.json()
                 tokens = data.get("tokens", [])
-                # Buscar token que matchee la dirección
+                question = data.get("question", "")
+
+                # Log diagnóstico: ver todos los tokens disponibles
+                print(f"[AutoTrader] _get_token_id: direction={direction} question='{question[:80]}'", flush=True)
+                for i, tok in enumerate(tokens):
+                    print(f"[AutoTrader]   token[{i}]: outcome='{tok.get('outcome','')}' "
+                          f"price={tok.get('price','?')} token_id={tok.get('token_id','')[:16]}...", flush=True)
+
                 target = "Up" if direction == "up" else "Down"
+
+                # Paso 1: Buscar match exacto "Up" o "Down"
                 for token in tokens:
                     outcome = token.get("outcome", "")
-                    if outcome.lower() == target.lower() or \
-                       (direction == "up" and outcome == "Yes") or \
-                       (direction == "down" and outcome == "No"):
-                        return token.get("token_id", "")
-                # Fallback: Yes=Up, No=Down (convención estándar)
-                if tokens:
-                    if direction == "up":
-                        return tokens[0].get("token_id", "")
-                    elif len(tokens) > 1:
-                        return tokens[1].get("token_id", "")
+                    if outcome.lower() == target.lower():
+                        print(f"[AutoTrader]   → SELECCIONADO: '{outcome}' (match directo)", flush=True)
+                        return (token.get("token_id", ""), outcome)
+
+                # Paso 2: Mercados Yes/No — depende del contexto de la pregunta
+                # Si la pregunta contiene "up or down", Yes=Up y No=Down
+                # Si la pregunta es solo "up", Yes=Up, No=NOT-Up
+                # Si la pregunta es solo "down", Yes=Down, No=NOT-Down
+                q_lower = question.lower()
+                for token in tokens:
+                    outcome = token.get("outcome", "")
+                    if outcome not in ("Yes", "No"):
+                        continue
+                    # Mercado "Up or Down": Yes = primer outcome listado
+                    if "up or down" in q_lower or "up/down" in q_lower:
+                        # En estos mercados, tokens son Up/Down no Yes/No
+                        # Si llegamos aquí, es un caso raro
+                        continue
+                    # Mercado "Will X go up?": Yes=Up, No=Down
+                    if direction == "up" and outcome == "Yes":
+                        print(f"[AutoTrader]   → SELECCIONADO: 'Yes' (up→Yes)", flush=True)
+                        return (token.get("token_id", ""), outcome)
+                    if direction == "down" and outcome == "Yes" and "down" in q_lower:
+                        print(f"[AutoTrader]   → SELECCIONADO: 'Yes' (down question→Yes)", flush=True)
+                        return (token.get("token_id", ""), outcome)
+                    if direction == "down" and outcome == "No" and "up" in q_lower and "down" not in q_lower:
+                        print(f"[AutoTrader]   → SELECCIONADO: 'No' (up question→No=down)", flush=True)
+                        return (token.get("token_id", ""), outcome)
+
+                print(f"[AutoTrader]   → NO MATCH para direction={direction}", flush=True)
         except Exception as e:
             print(f"[AutoTrader] Error obteniendo token_id: {e}", flush=True)
         return None
@@ -536,8 +590,8 @@ class AutoTrader:
                         current_price = None
                         for tok in tokens:
                             outcome = tok.get("outcome", "").lower()
-                            if (direction == "up" and outcome in ("up", "yes")) or \
-                               (direction == "down" and outcome in ("down", "no")):
+                            if (direction == "up" and outcome == "up") or \
+                               (direction == "down" and outcome == "down"):
                                 current_price = float(tok.get("price", 0))
                                 break
 
@@ -673,8 +727,9 @@ class AutoTrader:
 
                         # Determinar si ganamos
                         direction = trade.get("direction", "")
-                        won = (direction == "up" and winning_outcome.lower() in ("up", "yes")) or \
-                              (direction == "down" and winning_outcome.lower() in ("down", "no"))
+                        won = (direction == "up" and winning_outcome.lower() == "up") or \
+                              (direction == "down" and winning_outcome.lower() == "down")
+                        print(f"[AutoTrader] Resolve: direction={direction} winner='{winning_outcome}' → {'WIN' if won else 'LOSS'}", flush=True)
 
                         price = trade.get("price", 0)
                         size_usd = trade.get("size_usd", 0)
