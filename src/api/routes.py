@@ -86,7 +86,14 @@ async def register(request: Request):
     result = await db.create_user(username, password, email, display_name)
     if "error" in result:
         return {"status": "error", "error": result["error"]}
-    token = await db.create_session(result["id"])
+    # Copiar alertas existentes del admin para que el usuario nuevo vea data histórica
+    new_uid = result["id"]
+    if new_uid != 1:
+        try:
+            await db.copy_alerts_to_new_user(new_uid)
+        except Exception:
+            pass
+    token = await db.create_session(new_uid)
     return {"status": "ok", "user": result, "token": token}
 
 
@@ -140,15 +147,9 @@ async def get_stats(request: Request):
         hours = int(uptime.total_seconds() // 3600)
         minutes = int((uptime.total_seconds() % 3600) // 60)
         stats["uptime"] = f"{hours}h {minutes}m"
-        # Solo mostrar stats globales del bot al admin (user 1)
-        if uid == 1:
-            stats["trades_this_session"] = bot.trades_processed
-            stats["alerts_this_session"] = bot.alerts_sent
-            stats["watchlist_count"] = len(bot._watchlist)
-        else:
-            stats["trades_this_session"] = 0
-            stats["alerts_this_session"] = 0
-            stats["watchlist_count"] = 0
+        stats["trades_this_session"] = bot.trades_processed
+        stats["alerts_this_session"] = bot.alerts_sent
+        stats["watchlist_count"] = len(bot._watchlist)
     return stats
 
 
@@ -265,9 +266,6 @@ async def get_wallet_detail(request: Request, address: str):
 @router.get("/api/markets")
 async def get_markets(request: Request, limit: int = 50):
     db = request.app.state.db
-    uid = await get_user_id(request)
-    if uid != 1:
-        return []
     return await db.get_tracked_markets(limit=limit)
 
 
@@ -276,9 +274,6 @@ async def get_markets(request: Request, limit: int = 50):
 @router.get("/api/categories")
 async def get_categories(request: Request):
     db = request.app.state.db
-    uid = await get_user_id(request)
-    if uid != 1:
-        return []
     return await db.get_category_distribution()
 
 
@@ -286,9 +281,7 @@ async def get_categories(request: Request):
 async def category_alerts(request: Request):
     db = request.app.state.db
     uid = await get_user_id(request)
-    if uid != 1:
-        return []
-    return await db.get_alert_category_distribution()
+    return await db.get_alert_category_distribution(user_id=uid)
 
 
 # ── Trades Feed ──────────────────────────────────────────────────────
@@ -296,9 +289,6 @@ async def category_alerts(request: Request):
 @router.get("/api/trades/recent")
 async def recent_trades(request: Request, limit: int = 100):
     db = request.app.state.db
-    uid = await get_user_id(request)
-    if uid != 1:
-        return []
     return await db.get_recent_trades_feed(limit=limit)
 
 
@@ -526,9 +516,6 @@ async def get_leaderboard(request: Request, limit: int = 30, sort: str = "pnl"):
 @router.get("/api/coordination")
 async def get_coordination(request: Request, limit: int = 30):
     db = request.app.state.db
-    uid = await get_user_id(request)
-    if uid != 1:
-        return []
     return await db.get_all_coordination(limit=limit)
 
 
@@ -610,11 +597,6 @@ async def update_features(request: Request, body: FeaturesUpdate):
 @router.get("/api/crypto-arb/stats")
 async def crypto_arb_stats(request: Request):
     db = request.app.state.db
-    uid = await get_user_id(request)
-    if uid != 1:
-        return {"total_signals": 0, "resolved": 0, "wins": 0, "win_rate": 0,
-                "total_pnl": 0, "signals_24h": 0, "pnl_24h": 0, "by_coin": [],
-                "live": {}, "feed": {}}
     try:
         db_stats = await db.get_crypto_arb_stats()
     except Exception:
@@ -633,9 +615,6 @@ async def crypto_arb_stats(request: Request):
 @router.get("/api/crypto-arb/signals")
 async def crypto_arb_signals(request: Request, limit: int = 100, coin: str = None):
     db = request.app.state.db
-    uid = await get_user_id(request)
-    if uid != 1:
-        return []
     try:
         return await db.get_crypto_signals_history(limit=limit, coin=coin)
     except Exception:
@@ -645,9 +624,6 @@ async def crypto_arb_signals(request: Request, limit: int = 100, coin: str = Non
 @router.get("/api/crypto-arb/price-sum-arb")
 async def crypto_price_sum_arb(request: Request):
     """Detectar oportunidades de Price-Sum Arbitrage (YES+NO != $1)."""
-    uid = await get_user_id(request)
-    if uid != 1:
-        return {"status": "ok", "opportunities": []}
     detector = getattr(request.app.state, 'crypto_detector', None)
     if not detector:
         return {"status": "error", "error": "Crypto detector no activo"}
@@ -707,9 +683,6 @@ async def reset_all_data(request: Request):
 @router.get("/api/crypto-arb/live")
 async def crypto_arb_live(request: Request):
     """Señales en vivo y mercados activos del detector."""
-    uid = await get_user_id(request)
-    if uid != 1:
-        return {"signals": [], "markets": [], "enabled": False}
     bot = request.app.state.bot
     if not bot or not hasattr(bot, "crypto_detector") or not bot.crypto_detector:
         return {"signals": [], "markets": [], "enabled": False}
@@ -723,9 +696,6 @@ async def crypto_arb_live(request: Request):
 @router.get("/api/crypto-arb/prices")
 async def crypto_arb_prices(request: Request):
     """Precios spot actuales de Binance."""
-    uid = await get_user_id(request)
-    if uid != 1:
-        return {"prices": {}, "connected": False}
     bot = request.app.state.bot
     if not bot or not hasattr(bot, "binance_feed") or not bot.binance_feed:
         return {"prices": {}, "connected": False}
@@ -1602,14 +1572,6 @@ async def get_alert_trades(request: Request, hours: int = 168, limit: int = 50):
 async def get_heatmap(request: Request):
     db = request.app.state.db
     uid = await get_user_id(request)
-    if uid != 1:
-        # Solo mostrar heatmap si el usuario tiene alertas propias
-        async with db._pool.acquire() as conn:
-            alert_count = await conn.fetchval(
-                "SELECT COUNT(*) FROM alerts WHERE user_id = $1", uid
-            )
-        if not alert_count:
-            return []
     data = await db.get_heatmap_data(user_id=uid)
     return data
 
@@ -1639,10 +1601,6 @@ async def get_bankroll(request: Request, days: int = 30):
     db = request.app.state.db
     uid = await get_user_id(request)
     history = await db.get_bankroll_history(days=days, user_id=uid)
-    if uid != 1:
-        return {"stats": {"enabled": False, "balance": 0, "roi_pct": 0, "daily_pnl": 0,
-                          "max_drawdown_pct": 0, "peak_balance": 0, "win_rate_pct": 0,
-                          "trades_total": 0, "max_bet": 0}, "history": []}
     bankroll = getattr(request.app.state, 'bankroll', None)
     stats = bankroll.get_stats() if bankroll else {"enabled": False}
     return {"stats": stats, "history": history}
@@ -1666,9 +1624,6 @@ async def mark_read(request: Request):
 @router.get("/api/strategies/stats")
 async def get_strategies_stats(request: Request):
     """Stats de todos los bots/estrategias adicionales."""
-    uid = await get_user_id(request)
-    if uid != 1:
-        return {n: {"enabled": False} for n in ['market_maker', 'spike_detector', 'event_driven', 'cross_platform']}
     result = {}
     for name in ['market_maker', 'spike_detector', 'event_driven', 'cross_platform']:
         bot = getattr(request.app.state, name, None)
@@ -1681,9 +1636,6 @@ async def get_strategies_stats(request: Request):
 @router.get("/api/infra/stats")
 async def get_infra_stats(request: Request):
     """Stats de módulos de infraestructura."""
-    uid = await get_user_id(request)
-    if uid != 1:
-        return {n: {"enabled": False} for n in ['rate_limiter', 'queue', 'websocket', 'bankroll', 'news_catalyst', 'ml_scorer']}
     result = {}
     for name in ['rate_limiter', 'queue', 'websocket', 'bankroll', 'news_catalyst', 'ml_scorer']:
         mod = getattr(request.app.state, name, None)

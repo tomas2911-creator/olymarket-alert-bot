@@ -577,7 +577,8 @@ class PolymarketAlertBot:
 
         if success:
             self.alerts_sent += 1
-            await self.db.record_alert_with_price(
+            # Registrar alerta para TODOS los usuarios (no solo admin)
+            await self.db.record_alert_for_all_users(
                 wallet=trade.wallet_address,
                 market_id=trade.market_id,
                 market_question=trade.market_question,
@@ -600,16 +601,21 @@ class PolymarketAlertBot:
                         score=candidate.score,
                         copy_trade=is_copy)
 
-            # v8.0: Push Notifications — guardar en DB para dashboard
+            # v8.0: Push Notifications — guardar para TODOS los usuarios
             if config.FEATURE_PUSH_NOTIFICATIONS and candidate.score >= config.PUSH_MIN_SCORE:
                 try:
                     level = "critical" if candidate.score >= 12 else "high" if candidate.score >= 8 else "medium"
-                    await self.db.create_notification(
-                        user_id=1,
-                        ntype=level,
-                        title=f"Alerta Score {candidate.score}",
-                        body=f"{trade.market_question[:80]} | ${trade.size:,.0f} | {', '.join(candidate.triggers[:3])}",
-                    )
+                    notif_title = f"Alerta Score {candidate.score}"
+                    notif_body = f"{trade.market_question[:80]} | ${trade.size:,.0f} | {', '.join(candidate.triggers[:3])}"
+                    # Notificar a todos los usuarios
+                    all_users = await self.db.get_all_active_users()
+                    for u in (all_users or [{"id": 1}]):
+                        await self.db.create_notification(
+                            user_id=u["id"],
+                            ntype=level,
+                            title=notif_title,
+                            body=notif_body,
+                        )
                 except Exception:
                     pass
 

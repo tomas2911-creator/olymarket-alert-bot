@@ -702,6 +702,29 @@ class Database:
             )
             return row["id"] if row else 0
 
+    async def copy_alerts_to_new_user(self, new_user_id: int):
+        """Copiar todas las alertas del admin (user_id=1) al nuevo usuario.
+        Esto le da data histórica inmediata al registrarse.
+        """
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO alerts
+                (wallet_address, market_id, market_question, market_slug,
+                 side, outcome, size, price, score, triggers,
+                 cluster_wallets, days_to_close, wallet_hit_rate, user_id,
+                 created_at, price_at_alert, is_copy_trade, result, pnl)
+                SELECT wallet_address, market_id, market_question, market_slug,
+                       side, outcome, size, price, score, triggers,
+                       cluster_wallets, days_to_close, wallet_hit_rate, $1,
+                       created_at, price_at_alert, is_copy_trade, result, pnl
+                FROM alerts WHERE user_id = 1
+            """, new_user_id)
+            copied = await conn.fetchval(
+                "SELECT COUNT(*) FROM alerts WHERE user_id = $1", new_user_id
+            )
+            if copied:
+                logger.info(f"alerts_copied new_user={new_user_id} count={copied}")
+
     # ── Market Tracking & Resolution ──────────────────────────────────
 
     async def track_market(self, market_id: str, question: str, slug: str,
@@ -989,15 +1012,23 @@ class Database:
 
     # ── Config Persistente ─────────────────────────────────────────────
 
+    # Keys sensibles que NUNCA deben heredarse del admin a otros usuarios
+    _SENSITIVE_KEYS = {
+        "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
+        "aat_api_key", "aat_api_secret", "aat_private_key", "aat_passphrase",
+        "telegram_bot_token", "telegram_chat_ids",
+    }
+
     async def get_config(self, user_id: int = 1) -> dict:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("SELECT key, value FROM bot_config WHERE user_id = $1", user_id)
             result = {r["key"]: r["value"] for r in rows}
             # Fallback a config global (user_id=1) para keys faltantes
+            # PERO excluir credenciales sensibles — cada usuario debe tener las suyas
             if user_id != 1:
                 rows2 = await conn.fetch("SELECT key, value FROM bot_config WHERE user_id = 1")
                 for r in rows2:
-                    if r["key"] not in result:
+                    if r["key"] not in result and r["key"] not in self._SENSITIVE_KEYS:
                         result[r["key"]] = r["value"]
             return result
 
@@ -1109,7 +1140,7 @@ class Database:
             """)
             return [dict(r) for r in rows]
 
-    async def get_alert_category_distribution(self) -> list[dict]:
+    async def get_alert_category_distribution(self, user_id: int = 1) -> list[dict]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT COALESCE(t.market_category, 'unknown') as category,
@@ -1121,9 +1152,10 @@ class Database:
                     WHERE market_id = a.market_id AND wallet_address = a.wallet_address
                     LIMIT 1
                 )
+                WHERE a.user_id = $1
                 GROUP BY t.market_category
                 ORDER BY alert_count DESC
-            """)
+            """, user_id)
             return [{"category": r["category"], "alert_count": r["alert_count"],
                      "avg_score": round(float(r["avg_score"] or 0), 1)} for r in rows]
 
@@ -1295,6 +1327,34 @@ class Database:
                     UPDATE alerts SET price_at_alert = $1, is_copy_trade = $2 WHERE id = $3
                 """, price_at_alert, is_copy_trade, alert_id)
         return alert_id
+
+    async def record_alert_for_all_users(self, **kwargs) -> int:
+        """Registrar la misma alerta para TODOS los usuarios registrados.
+        Retorna el alert_id del admin (user_id=1).
+        """
+        price_at_alert = kwargs.pop("price_at_alert", None)
+        is_copy_trade = kwargs.pop("is_copy_trade", False)
+
+        # Obtener todos los user_ids
+        async with self._pool.acquire() as conn:
+            user_ids = [r["id"] for r in await conn.fetch("SELECT id FROM users ORDER BY id")]
+
+        if not user_ids:
+            user_ids = [1]
+
+        admin_alert_id = 0
+        for uid in user_ids:
+            kwargs["user_id"] = uid
+            alert_id = await self.record_alert(**kwargs)
+            if uid == 1:
+                admin_alert_id = alert_id
+            if alert_id and (price_at_alert is not None or is_copy_trade):
+                async with self._pool.acquire() as conn:
+                    await conn.execute("""
+                        UPDATE alerts SET price_at_alert = $1, is_copy_trade = $2 WHERE id = $3
+                    """, price_at_alert, is_copy_trade, alert_id)
+
+        return admin_alert_id
 
     # ── Coordination Detection ────────────────────────────────────────
 
