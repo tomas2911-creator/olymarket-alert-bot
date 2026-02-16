@@ -189,9 +189,10 @@ class PolymarketAlertBot:
             # Inicializar autotrader
             self.autotrader = AutoTrader(self.db)
             await self.autotrader.initialize()
-            # Lanzar feed y detector como tasks
+            # Lanzar feed, detector y autotrader como tasks independientes
             asyncio.create_task(self._run_binance_feed())
             asyncio.create_task(self._run_crypto_detector())
+            asyncio.create_task(self._run_crypto_autotrader())
             print(f"Crypto Arb iniciado: {len(pairs)} pares, modo={config.CRYPTO_ARB_MODE}", flush=True)
         except Exception as e:
             print(f"Error iniciando Crypto Arb: {e}", flush=True)
@@ -213,6 +214,23 @@ class PolymarketAlertBot:
             await self.crypto_detector.start()
         except Exception as e:
             print(f"Crypto detector error: {e}", flush=True)
+
+    async def _run_crypto_autotrader(self):
+        """Loop rápido: evaluar señales crypto cada 5s, independiente del polling.
+        Esto evita que señales de SOL/ETH/XRP expiren mientras poll_cycle() tarda.
+        """
+        await asyncio.sleep(8)  # Esperar a que detector genere primeras señales
+        while self._running and self.autotrader and self.crypto_detector:
+            try:
+                signals = self.crypto_detector.get_recent_signals(200)
+                if signals:
+                    # Solo pasar señales con tiempo restante > 0 (no expiradas)
+                    active = [s for s in signals if s.get("time_remaining_sec", 0) > 0]
+                    if active:
+                        await self.autotrader.process_signals(active)
+            except Exception as e:
+                print(f"[CryptoAutotrader] Error en loop rápido: {e}", flush=True)
+            await asyncio.sleep(5)
 
     async def stop(self):
         self._running = False
@@ -851,12 +869,8 @@ class PolymarketAlertBot:
             if saved:
                 print(f"Crypto signals guardadas: {saved}", flush=True)
 
-            # Pasar señales al autotrader para ejecución real
-            if self.autotrader and signals:
-                try:
-                    await self.autotrader.process_signals(signals)
-                except Exception as e:
-                    print(f"Error en autotrader.process_signals: {e}", flush=True)
+            # Nota: el autotrader evalúa señales en su propio loop rápido
+            # (_run_crypto_autotrader cada 5s) para no perder señales de corta vida
         except Exception as e:
             print(f"Error procesando crypto signals: {e}", flush=True)
 

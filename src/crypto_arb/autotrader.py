@@ -46,6 +46,7 @@ class AutoTrader:
         self._user_id = 1  # user_id para cargar config
         self._poly_web3_service = None  # PolyWeb3Service para auto-claim
         self._last_claim_time = 0.0  # timestamp del último intento de claim
+        self._processing_signals = False  # Lock para evitar evaluación concurrente
 
     async def initialize(self, user_id: int = None):
         """Cargar config y crear cliente CLOB si hay credenciales."""
@@ -582,11 +583,19 @@ class AutoTrader:
     # ── Proceso de señales (llamado desde main.py) ────────────────────
 
     async def process_signals(self, signals: list[dict]):
-        """Evaluar y ejecutar señales. Llamado periódicamente desde main loop."""
+        """Evaluar y ejecutar señales. Llamado cada 5s desde loop rápido."""
         if not self._enabled or not self._client or not self._initialized:
-            if signals:
-                print(f"[AT] process_signals: {len(signals)} signals IGNORED (enabled={self._enabled} client={self._client is not None} init={self._initialized})", flush=True)
             return
+        # Evitar evaluación concurrente (el loop rápido puede llamar mientras execute_trade espera)
+        if self._processing_signals:
+            return
+        self._processing_signals = True
+        try:
+            await self._process_signals_inner(signals)
+        finally:
+            self._processing_signals = False
+
+    async def _process_signals_inner(self, signals: list[dict]):
         if signals:
             print(f"[AT] process_signals: evaluando {len(signals)} señales...", flush=True)
 
