@@ -336,6 +336,9 @@ class PolymarketAlertBot:
                     # Resolver autotrades abiertos (mercados cerrados)
                     if self.autotrader:
                         await self.autotrader.resolve_trades()
+                    # Auto-claim: reclamar ganancias automáticamente
+                    if self.autotrader:
+                        await self.autotrader.auto_claim()
                 except Exception as e:
                     print(f"Error en crypto arb: {e}", flush=True)
 

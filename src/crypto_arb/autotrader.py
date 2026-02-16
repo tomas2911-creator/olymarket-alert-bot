@@ -8,6 +8,7 @@ Flujo:
 5. Monitorea resultado
 """
 import asyncio
+import os
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -43,6 +44,8 @@ class AutoTrader:
         self._trailing_highs: dict[str, float] = {}  # cid -> max_price visto
         self._initialized = False
         self._user_id = 1  # user_id para cargar config
+        self._poly_web3_service = None  # PolyWeb3Service para auto-claim
+        self._last_claim_time = 0.0  # timestamp del último intento de claim
 
     async def initialize(self, user_id: int = None):
         """Cargar config y crear cliente CLOB si hay credenciales."""
@@ -913,3 +916,97 @@ class AutoTrader:
                 }
         except Exception as e:
             return {"connected": False, "error": str(e)}
+
+    # ── Auto-Claim (Builder Relayer) ──────────────────────────────────
+
+    def _init_redeem_service(self):
+        """Inicializar PolyWeb3Service para redeem automático."""
+        try:
+            from py_builder_relayer_client.client import RelayClient
+            from py_builder_signing_sdk.config import BuilderConfig
+            from py_builder_signing_sdk.sdk_types import BuilderApiKeyCreds
+            from poly_web3 import RELAYER_URL, PolyWeb3Service
+
+            pk = self._config.get("private_key", "")
+            if pk and not pk.startswith("0x"):
+                pk = "0x" + pk
+
+            builder_key = config.BUILDER_KEY
+            builder_secret = config.BUILDER_SECRET
+            builder_passphrase = config.BUILDER_PASSPHRASE
+
+            if not all([builder_key, builder_secret, builder_passphrase]):
+                print("[AutoTrader] Auto-claim: Builder keys no configuradas", flush=True)
+                return
+
+            relayer_client = RelayClient(
+                RELAYER_URL,
+                CHAIN_ID,
+                pk,
+                BuilderConfig(
+                    local_builder_creds=BuilderApiKeyCreds(
+                        key=builder_key,
+                        secret=builder_secret,
+                        passphrase=builder_passphrase,
+                    )
+                ),
+            )
+
+            self._poly_web3_service = PolyWeb3Service(
+                clob_client=self._client,
+                relayer_client=relayer_client,
+                rpc_url="https://polygon-bor-rpc.publicnode.com",
+            )
+            print("[AutoTrader] ✅ Auto-claim inicializado (Builder Relayer)", flush=True)
+
+        except ImportError as e:
+            print(f"[AutoTrader] Auto-claim no disponible (instalar poly-web3): {e}", flush=True)
+            self._poly_web3_service = None
+        except Exception as e:
+            print(f"[AutoTrader] Error inicializando auto-claim: {e}", flush=True)
+            self._poly_web3_service = None
+
+    async def auto_claim(self):
+        """Auto-claim posiciones ganadoras resueltas via Builder Relayer.
+        Se ejecuta cada 2 minutos máximo para no saturar el relayer.
+        """
+        now = time.time()
+        # No intentar claim más de cada 120 segundos
+        if now - self._last_claim_time < 120:
+            return
+
+        # Verificar que hay Builder keys configuradas
+        if not all([config.BUILDER_KEY, config.BUILDER_SECRET, config.BUILDER_PASSPHRASE]):
+            return
+
+        if not self._client:
+            return
+
+        try:
+            # Lazy init del servicio de redeem
+            if not self._poly_web3_service:
+                self._init_redeem_service()
+            if not self._poly_web3_service:
+                return
+
+            self._last_claim_time = now
+
+            # redeem_all es síncrono — ejecutar en executor
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, self._poly_web3_service.redeem_all, 10
+            )
+
+            if result:
+                claimed = [r for r in result if r is not None]
+                failed = [r for r in result if r is None]
+                if claimed:
+                    print(f"[AutoTrader] 💰 AUTO-CLAIM: {len(claimed)} posiciones reclamadas exitosamente", flush=True)
+                    for c in claimed:
+                        print(f"[AutoTrader]   → Claim: {c}", flush=True)
+                if failed:
+                    print(f"[AutoTrader] ⚠️ AUTO-CLAIM: {len(failed)} fallaron, se reintentarán", flush=True)
+            # Si result es vacío o None, no hay nada que reclamar (normal)
+
+        except Exception as e:
+            print(f"[AutoTrader] Auto-claim error: {e}", flush=True)

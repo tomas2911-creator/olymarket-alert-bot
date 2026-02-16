@@ -88,6 +88,11 @@ SMART_WALLET_MIN_WINRATE = 0.55  # Win rate mínimo para contar como "smart wall
 # === Polygonscan (opcional) ===
 POLYGONSCAN_API_KEY = os.getenv("POLYGONSCAN_API_KEY", "")
 
+# === Builder API (para auto-claim de posiciones ganadoras) ===
+BUILDER_KEY = os.getenv("BUILDER_KEY", "")
+BUILDER_SECRET = os.getenv("BUILDER_SECRET", "")
+BUILDER_PASSPHRASE = os.getenv("BUILDER_PASSPHRASE", "")
+
 # === Feature Flags ===
 _features = _yaml.get("features", {})
 FEATURE_ORDERBOOK_DEPTH = _features.get("orderbook_depth", False)

@@ -13,6 +13,9 @@ asyncpg>=0.29.0
 # WebSocket client for Polymarket CLOB
 websockets>=12.0
 # Polymarket CLOB client para autotrading
-py-clob-client>=0.17.0
+py-clob-client>=0.25.0
+# Auto-claim: redeem posiciones ganadoras via Builder Relayer
+poly-web3
+py-builder-relayer-client>=0.0.1
 # EIP-712 signing para generar API keys de CLOB
 eth-account>=0.13.0
