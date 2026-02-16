@@ -241,6 +241,9 @@ async def get_wallet_detail(request: Request, address: str):
 @router.get("/api/markets")
 async def get_markets(request: Request, limit: int = 50):
     db = request.app.state.db
+    uid = await get_user_id(request)
+    if uid != 1:
+        return []
     return await db.get_tracked_markets(limit=limit)
 
 
@@ -249,12 +252,18 @@ async def get_markets(request: Request, limit: int = 50):
 @router.get("/api/categories")
 async def get_categories(request: Request):
     db = request.app.state.db
+    uid = await get_user_id(request)
+    if uid != 1:
+        return []
     return await db.get_category_distribution()
 
 
 @router.get("/api/charts/category-alerts")
 async def category_alerts(request: Request):
     db = request.app.state.db
+    uid = await get_user_id(request)
+    if uid != 1:
+        return []
     return await db.get_alert_category_distribution()
 
 
@@ -263,6 +272,9 @@ async def category_alerts(request: Request):
 @router.get("/api/trades/recent")
 async def recent_trades(request: Request, limit: int = 100):
     db = request.app.state.db
+    uid = await get_user_id(request)
+    if uid != 1:
+        return []
     return await db.get_recent_trades_feed(limit=limit)
 
 
@@ -490,6 +502,9 @@ async def get_leaderboard(request: Request, limit: int = 30, sort: str = "pnl"):
 @router.get("/api/coordination")
 async def get_coordination(request: Request, limit: int = 30):
     db = request.app.state.db
+    uid = await get_user_id(request)
+    if uid != 1:
+        return []
     return await db.get_all_coordination(limit=limit)
 
 
@@ -571,6 +586,11 @@ async def update_features(request: Request, body: FeaturesUpdate):
 @router.get("/api/crypto-arb/stats")
 async def crypto_arb_stats(request: Request):
     db = request.app.state.db
+    uid = await get_user_id(request)
+    if uid != 1:
+        return {"total_signals": 0, "resolved": 0, "wins": 0, "win_rate": 0,
+                "total_pnl": 0, "signals_24h": 0, "pnl_24h": 0, "by_coin": [],
+                "live": {}, "feed": {}}
     try:
         db_stats = await db.get_crypto_arb_stats()
     except Exception:
@@ -589,6 +609,9 @@ async def crypto_arb_stats(request: Request):
 @router.get("/api/crypto-arb/signals")
 async def crypto_arb_signals(request: Request, limit: int = 100, coin: str = None):
     db = request.app.state.db
+    uid = await get_user_id(request)
+    if uid != 1:
+        return []
     try:
         return await db.get_crypto_signals_history(limit=limit, coin=coin)
     except Exception:
@@ -598,6 +621,9 @@ async def crypto_arb_signals(request: Request, limit: int = 100, coin: str = Non
 @router.get("/api/crypto-arb/price-sum-arb")
 async def crypto_price_sum_arb(request: Request):
     """Detectar oportunidades de Price-Sum Arbitrage (YES+NO != $1)."""
+    uid = await get_user_id(request)
+    if uid != 1:
+        return {"status": "ok", "opportunities": []}
     detector = getattr(request.app.state, 'crypto_detector', None)
     if not detector:
         return {"status": "error", "error": "Crypto detector no activo"}
@@ -655,6 +681,9 @@ async def reset_all_data(request: Request):
 @router.get("/api/crypto-arb/live")
 async def crypto_arb_live(request: Request):
     """Señales en vivo y mercados activos del detector."""
+    uid = await get_user_id(request)
+    if uid != 1:
+        return {"signals": [], "markets": [], "enabled": False}
     bot = request.app.state.bot
     if not bot or not hasattr(bot, "crypto_detector") or not bot.crypto_detector:
         return {"signals": [], "markets": [], "enabled": False}
@@ -668,6 +697,9 @@ async def crypto_arb_live(request: Request):
 @router.get("/api/crypto-arb/prices")
 async def crypto_arb_prices(request: Request):
     """Precios spot actuales de Binance."""
+    uid = await get_user_id(request)
+    if uid != 1:
+        return {"prices": {}, "connected": False}
     bot = request.app.state.bot
     if not bot or not hasattr(bot, "binance_feed") or not bot.binance_feed:
         return {"prices": {}, "connected": False}
@@ -1544,6 +1576,13 @@ async def get_alert_trades(request: Request, hours: int = 168, limit: int = 50):
 async def get_heatmap(request: Request):
     db = request.app.state.db
     uid = await get_user_id(request)
+    if uid != 1:
+        # Solo mostrar heatmap si el usuario tiene alertas propias
+        alert_count = await db._pool.fetchval(
+            "SELECT COUNT(*) FROM alerts WHERE user_id = $1", uid
+        )
+        if not alert_count:
+            return []
     data = await db.get_heatmap_data(user_id=uid)
     return data
 
@@ -1573,6 +1612,10 @@ async def get_bankroll(request: Request, days: int = 30):
     db = request.app.state.db
     uid = await get_user_id(request)
     history = await db.get_bankroll_history(days=days, user_id=uid)
+    if uid != 1:
+        return {"stats": {"enabled": False, "balance": 0, "roi_pct": 0, "daily_pnl": 0,
+                          "max_drawdown_pct": 0, "peak_balance": 0, "win_rate_pct": 0,
+                          "trades_total": 0, "max_bet": 0}, "history": []}
     bankroll = getattr(request.app.state, 'bankroll', None)
     stats = bankroll.get_stats() if bankroll else {"enabled": False}
     return {"stats": stats, "history": history}
@@ -1596,6 +1639,9 @@ async def mark_read(request: Request):
 @router.get("/api/strategies/stats")
 async def get_strategies_stats(request: Request):
     """Stats de todos los bots/estrategias adicionales."""
+    uid = await get_user_id(request)
+    if uid != 1:
+        return {n: {"enabled": False} for n in ['market_maker', 'spike_detector', 'event_driven', 'cross_platform']}
     result = {}
     for name in ['market_maker', 'spike_detector', 'event_driven', 'cross_platform']:
         bot = getattr(request.app.state, name, None)
@@ -1608,6 +1654,9 @@ async def get_strategies_stats(request: Request):
 @router.get("/api/infra/stats")
 async def get_infra_stats(request: Request):
     """Stats de módulos de infraestructura."""
+    uid = await get_user_id(request)
+    if uid != 1:
+        return {n: {"enabled": False} for n in ['rate_limiter', 'queue', 'websocket', 'bankroll', 'news_catalyst', 'ml_scorer']}
     result = {}
     for name in ['rate_limiter', 'queue', 'websocket', 'bankroll', 'news_catalyst', 'ml_scorer']:
         mod = getattr(request.app.state, name, None)
