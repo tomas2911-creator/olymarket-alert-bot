@@ -47,6 +47,7 @@ class AutoTrader:
         self._poly_web3_service = None  # PolyWeb3Service para auto-claim
         self._last_claim_time = 0.0  # timestamp del último intento de claim
         self._processing_signals = False  # Lock para evitar evaluación concurrente
+        self._failed_cids: dict[str, float] = {}  # cid -> timestamp: blacklist señales fallidas (evita retry loop)
 
     async def initialize(self, user_id: int = None):
         """Cargar config y crear cliente CLOB si hay credenciales."""
@@ -190,6 +191,7 @@ class AutoTrader:
         self._trades_today_date = ""
         self._last_trade_time = 0.0
         self._trailing_highs = {}
+        self._failed_cids = {}
         print("[AutoTrader] Estado reseteado: posiciones=0, trades_today=0", flush=True)
 
     async def _load_today_trades(self):
@@ -284,6 +286,15 @@ class AutoTrader:
                     print(f"{tag} SKIP: already in position for market {event_slug} (lado opuesto)", flush=True)
                     return None
 
+        # Filtro: señal que falló recientemente (evitar retry loop infinito)
+        if cid in self._failed_cids:
+            fail_age = time.time() - self._failed_cids[cid]
+            if fail_age < 120:  # Blacklist por 2 minutos
+                print(f"{tag} SKIP: señal fallida hace {int(fail_age)}s (blacklist 120s)", flush=True)
+                return None
+            else:
+                del self._failed_cids[cid]
+
         # Filtro: tiempo restante mínimo (no entrar si queda muy poco)
         remaining = signal.get("time_remaining_sec", 0)
         if remaining < 30:
@@ -353,21 +364,36 @@ class AutoTrader:
                 order_price = price
 
             # Calcular shares con precisión correcta para CLOB:
-            # - maker_amount (USDC = shares * order_price) → max 2 decimales
+            # - maker_amount (USDC = shares * price) → max 2 decimales
             # - taker_amount (shares) → max 4 decimales
+            # Usa Decimal para evitar errores de floating-point que el CLOB rechaza
             import math
-            raw_shares = bet_size / order_price
+            from decimal import Decimal, ROUND_DOWN
+
+            MIN_CLOB_SHARES = Decimal('5')  # Mínimo requerido por Polymarket CLOB
+
+            d_price = Decimal(str(order_price))
+            d_raw = Decimal(str(bet_size)) / d_price
+
             # Probar precisiones de 4 a 0 decimales hasta que maker_amount tenga <= 2 decimales
-            shares = 0
+            d_shares = Decimal('0')
             for decimals in [4, 3, 2, 1, 0]:
-                factor = 10 ** decimals
-                candidate = math.floor(raw_shares * factor) / factor
-                maker = candidate * order_price
-                # Verificar que maker tiene <= 2 decimales (tolerancia floating point)
-                if abs(maker - round(maker, 2)) < 1e-9:
-                    shares = candidate
+                q = Decimal(10) ** -decimals
+                d_candidate = d_raw.quantize(q, rounding=ROUND_DOWN)
+                d_maker = d_candidate * d_price
+                if d_maker == d_maker.quantize(Decimal('0.01')):
+                    d_shares = d_candidate
                     break
+
+            # Enforce mínimo de shares del CLOB (5 shares)
+            if d_shares < MIN_CLOB_SHARES:
+                d_shares = MIN_CLOB_SHARES
+                bet_size = float((d_shares * d_price).quantize(Decimal('0.01')))
+                print(f"[AutoTrader] ⚠️ Shares ajustadas al mínimo CLOB: {d_shares} (bet=${bet_size:.2f})", flush=True)
+
+            shares = float(d_shares)
             if shares <= 0:
+                self._failed_cids[cid] = time.time()
                 return {"success": False, "error": f"No se pudo calcular shares válidas para price={order_price} bet={bet_size}"}
 
             print(f"[AutoTrader] Order: price={order_price} shares={shares} usdc={round(shares*order_price,2)} type={trade_info['order_type']}{f' (slippage +{slippage_pct}%)' if is_fok else ''}", flush=True)
@@ -502,6 +528,7 @@ class AutoTrader:
                 return {"success": True, "order_id": order_id, "trade": trade_record}
             else:
                 print(f"[AutoTrader] ❌ Orden rechazada: {error_msg}", flush=True)
+                self._failed_cids[cid] = time.time()
                 # Guardar intento fallido
                 await self.db.record_autotrade({
                     "condition_id": cid,
@@ -525,6 +552,7 @@ class AutoTrader:
         except Exception as e:
             error = str(e)
             print(f"[AutoTrader] ❌ Error ejecutando trade: {error}", flush=True)
+            self._failed_cids[cid] = time.time()
             return {"success": False, "error": error}
 
     async def _get_token_id(self, condition_id: str, direction: str) -> Optional[tuple]:
