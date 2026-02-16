@@ -752,53 +752,127 @@ class AutoTrader:
     # ── Resolución de trades ──────────────────────────────────────────
 
     async def resolve_trades(self):
-        """Resolver trades abiertos y calcular PnL real."""
+        """Resolver trades abiertos y calcular PnL real.
+        Usa CLOB API primero; si falla, usa Gamma API como fallback.
+        Posiciones stale (>30 min) se resuelven forzadamente via Gamma.
+        """
         if not self._open_positions:
             return
 
         try:
             import httpx
             now = datetime.now(timezone.utc)
+            now_ts = time.time()
             resolved = 0
+            GAMMA_API = getattr(config, "GAMMA_API_URL", "https://gamma-api.polymarket.com")
+            STALE_THRESHOLD_SEC = 1800  # 30 minutos — cualquier mercado crypto ya cerró
 
             async with httpx.AsyncClient(timeout=10) as client:
                 for cid, trade in list(self._open_positions.items()):
                     try:
-                        resp = await client.get(f"{CLOB_HOST}/markets/{cid}")
-                        if resp.status_code != 200:
-                            continue
-                        data = resp.json()
-                        if not data.get("closed"):
-                            continue
-
-                        # Mercado cerrado — determinar resultado
-                        tokens = data.get("tokens", [])
                         winning_outcome = None
-                        for token in tokens:
-                            if token.get("winner") is True:
-                                winning_outcome = token.get("outcome", "")
-                                break
-                            if float(token.get("price", 0)) >= 0.95:
-                                winning_outcome = token.get("outcome", "")
-                                break
+                        source = ""
+
+                        # ── Intento 1: CLOB API ──
+                        try:
+                            resp = await client.get(f"{CLOB_HOST}/markets/{cid}")
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                if data.get("closed"):
+                                    tokens = data.get("tokens", [])
+                                    for token in tokens:
+                                        if token.get("winner") is True:
+                                            winning_outcome = token.get("outcome", "")
+                                            source = "CLOB"
+                                            break
+                                        if float(token.get("price", 0)) >= 0.95:
+                                            winning_outcome = token.get("outcome", "")
+                                            source = "CLOB-price"
+                                            break
+                        except Exception as clob_err:
+                            print(f"[AutoTrader] CLOB error para {cid[:16]}: {clob_err}", flush=True)
+
+                        # ── Intento 2: Gamma API (fallback por event_slug) ──
+                        if not winning_outcome:
+                            event_slug = trade.get("event_slug", "")
+                            if event_slug:
+                                try:
+                                    resp2 = await client.get(
+                                        f"{GAMMA_API}/events",
+                                        params={"slug": event_slug},
+                                    )
+                                    if resp2.status_code == 200:
+                                        events = resp2.json()
+                                        if events and len(events) > 0:
+                                            ev = events[0]
+                                            if ev.get("closed") or not ev.get("active", True):
+                                                for m in ev.get("markets", []):
+                                                    if m.get("conditionId") == cid or not cid:
+                                                        # Buscar ganador en tokens del mercado
+                                                        for tok in m.get("tokens", m.get("outcomes", [])):
+                                                            if isinstance(tok, dict):
+                                                                if tok.get("winner") is True:
+                                                                    winning_outcome = tok.get("outcome", "")
+                                                                    source = "Gamma"
+                                                                    break
+                                                                if float(tok.get("price", 0)) >= 0.95:
+                                                                    winning_outcome = tok.get("outcome", "")
+                                                                    source = "Gamma-price"
+                                                                    break
+                                                        if winning_outcome:
+                                                            break
+                                                # Fallback: si el evento cerró pero no hay tokens con winner,
+                                                # intentar deducir del título/outcome_prices
+                                                if not winning_outcome and (ev.get("closed") or not ev.get("active", True)):
+                                                    for m in ev.get("markets", []):
+                                                        op = m.get("outcomePrices")
+                                                        if op:
+                                                            try:
+                                                                # outcomePrices es string JSON: "[0.95, 0.05]"
+                                                                import json
+                                                                prices = json.loads(op) if isinstance(op, str) else op
+                                                                outcomes = m.get("outcomes", [])
+                                                                if isinstance(outcomes, str):
+                                                                    outcomes = json.loads(outcomes)
+                                                                for i, p in enumerate(prices):
+                                                                    if float(p) >= 0.90 and i < len(outcomes):
+                                                                        winning_outcome = outcomes[i]
+                                                                        source = "Gamma-outcomePrices"
+                                                                        break
+                                                            except Exception:
+                                                                pass
+                                                        if winning_outcome:
+                                                            break
+                                except Exception as gamma_err:
+                                    print(f"[AutoTrader] Gamma error para {event_slug}: {gamma_err}", flush=True)
+
+                        # ── Intento 3: posición stale — forzar resolución ──
+                        trade_age = now_ts - trade.get("created_ts", now_ts)
+                        if not winning_outcome and trade_age > STALE_THRESHOLD_SEC:
+                            print(f"[AutoTrader] ⚠️ Posición stale ({trade_age:.0f}s > {STALE_THRESHOLD_SEC}s), "
+                                  f"forzando resolución como LOSS: {trade.get('coin','')} {trade.get('direction','')}", flush=True)
+                            winning_outcome = "__STALE__"
+                            source = "stale-timeout"
 
                         if not winning_outcome:
                             continue
 
                         # Determinar si ganamos
                         direction = trade.get("direction", "")
-                        won = (direction == "up" and winning_outcome.lower() == "up") or \
-                              (direction == "down" and winning_outcome.lower() == "down")
-                        print(f"[AutoTrader] Resolve: direction={direction} winner='{winning_outcome}' → {'WIN' if won else 'LOSS'}", flush=True)
+                        if winning_outcome == "__STALE__":
+                            # Posición stale: marcar como loss (no pudimos verificar)
+                            won = False
+                        else:
+                            won = (direction == "up" and winning_outcome.lower() == "up") or \
+                                  (direction == "down" and winning_outcome.lower() == "down")
+                        print(f"[AutoTrader] Resolve ({source}): direction={direction} winner='{winning_outcome}' → {'WIN' if won else 'LOSS'}", flush=True)
 
                         price = trade.get("price", 0)
                         size_usd = trade.get("size_usd", 0)
                         if won:
-                            # Ganamos: pagamos price por share que vale $1
                             pnl = size_usd * ((1.0 / price) - 1)
                             result = "win"
                         else:
-                            # Perdemos todo lo invertido
                             pnl = -size_usd
                             result = "loss"
 
@@ -832,6 +906,7 @@ class AutoTrader:
 
             if resolved:
                 await self._load_today_trades()
+                print(f"[AutoTrader] 📊 {resolved} trades resueltos en este ciclo", flush=True)
 
         except Exception as e:
             print(f"[AutoTrader] Error en resolve_trades: {e}", flush=True)
