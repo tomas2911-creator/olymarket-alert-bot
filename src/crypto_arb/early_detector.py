@@ -76,14 +76,22 @@ class EarlyEntryDetector:
     async def start(self):
         """Loop principal."""
         self._running = True
+        self._loop_count = 0
         logger.info("early_entry_detector_started")
-        print("[EarlyEntry] Detector iniciado", flush=True)
+        print(f"[EarlyEntry] Detector iniciado (enabled={self.enabled})", flush=True)
 
         while self._running:
             try:
                 now = time.time()
+                self._loop_count += 1
 
-                # Escanear mercados futuros cada 30s
+                # Log periódico cada 60 iteraciones (~2 min)
+                if self._loop_count % 60 == 1:
+                    print(f"[EarlyEntry] Loop #{self._loop_count} enabled={self.enabled} "
+                          f"watching={len(self._watched)} "
+                          f"pre_monitor={self.pre_monitor_sec}s", flush=True)
+
+                # Escanear mercados cada 30s
                 if now - self._last_scan > 30:
                     await self._scan_upcoming_markets()
                     self._last_scan = now
@@ -100,134 +108,142 @@ class EarlyEntryDetector:
         self._running = False
 
     async def _scan_upcoming_markets(self):
-        """Buscar mercados que van a abrir pronto (dentro de pre_monitor_sec)."""
+        """Agregar mercados predichos basados en el patrón de timestamps.
+
+        Polymarket NO crea los eventos hasta que empiezan, así que no podemos
+        buscarlos en Gamma API por adelantado. En cambio, creamos entradas
+        "predichas" basadas en el patrón conocido de slugs y timestamps.
+        Solo consultamos Gamma/CLOB cuando el mercado está por abrir.
+        """
         if not self.enabled:
             return
 
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                enabled_coins = {c["symbol"] for c in config.CRYPTO_ARB_COINS}
-                now_ts = int(time.time())
+            enabled_coins = {c["symbol"] for c in config.CRYPTO_ARB_COINS}
+            now_ts = int(time.time())
 
-                slug_templates = []
-                if "BTC" in enabled_coins:
-                    slug_templates.append(("BTC", "btc-updown-5m", 300))
-                    slug_templates.append(("BTC", "btc-updown-15m", 900))
-                if "ETH" in enabled_coins:
-                    slug_templates.append(("ETH", "eth-updown-15m", 900))
-                if "SOL" in enabled_coins:
-                    slug_templates.append(("SOL", "sol-updown-15m", 900))
-                if "XRP" in enabled_coins:
-                    slug_templates.append(("XRP", "xrp-updown-15m", 900))
+            slug_templates = []
+            if "BTC" in enabled_coins:
+                slug_templates.append(("BTC", "btc-updown-5m", 300))
+                slug_templates.append(("BTC", "btc-updown-15m", 900))
+            if "ETH" in enabled_coins:
+                slug_templates.append(("ETH", "eth-updown-15m", 900))
+            if "SOL" in enabled_coins:
+                slug_templates.append(("SOL", "sol-updown-15m", 900))
+            if "XRP" in enabled_coins:
+                slug_templates.append(("XRP", "xrp-updown-15m", 900))
 
-                new_found = 0
-                for coin, prefix, interval in slug_templates:
-                    base_ts = (now_ts // interval) * interval
-                    for offset in range(0, 4):
-                        event_start_ts = base_ts + (offset * interval)
-                        slug = f"{prefix}-{event_start_ts}"
+            new_found = 0
+            for coin, prefix, interval in slug_templates:
+                base_ts = (now_ts // interval) * interval
+                # Generar slugs para el período actual y los próximos 3
+                for offset in range(0, 4):
+                    event_start_ts = base_ts + (offset * interval)
+                    slug = f"{prefix}-{event_start_ts}"
 
-                        if slug in self._watched:
-                            continue
+                    if slug in self._watched:
+                        continue
 
-                        time_until_start = event_start_ts - now_ts
-                        # Ventana de descubrimiento: al menos un intervalo completo
-                        scan_window = max(self.pre_monitor_sec, interval)
-                        if time_until_start > scan_window:
-                            continue
-                        if time_until_start < -interval:
-                            continue
+                    time_until_start = event_start_ts - now_ts
+                    # Ventana de descubrimiento: al menos un intervalo completo
+                    scan_window = max(self.pre_monitor_sec, interval)
+                    if time_until_start > scan_window:
+                        continue
+                    if time_until_start < -interval:
+                        continue
 
-                        try:
-                            resp = await client.get(
-                                f"{GAMMA_API_URL}/events",
-                                params={"slug": slug},
-                            )
-                            if resp.status_code != 200:
-                                continue
-                            events = resp.json()
-                            if not events:
-                                continue
+                    # Crear mercado PREDICHO sin consultar Gamma API
+                    # (Polymarket no crea eventos hasta que empiezan)
+                    dur_label = f"{interval // 60}m"
+                    question = f"Will {coin} go up or down in the next {dur_label}?"
 
-                            ev = events[0]
-                            if ev.get("closed"):
-                                continue
+                    wm = WatchedMarket(
+                        coin=coin,
+                        slug=slug,
+                        interval=interval,
+                        event_start_ts=event_start_ts,
+                        end_ts=event_start_ts + interval,
+                        condition_id="",  # Se llena cuando Gamma tenga el evento
+                        question=question,
+                        tokens=[],
+                        event_slug=slug,
+                    )
 
-                            for m in ev.get("markets", []):
-                                if m.get("closed"):
-                                    continue
-                                cid = m.get("conditionId", "")
-                                if not cid:
-                                    continue
+                    if time_until_start > self.pre_monitor_sec:
+                        wm.state = "upcoming"
+                    elif time_until_start > 0:
+                        wm.state = "watching"
+                    else:
+                        wm.state = "active"
 
-                                end_ts = event_start_ts + interval
-                                end_str = m.get("endDate") or ev.get("endDate")
-                                if end_str:
-                                    try:
-                                        ed = datetime.fromisoformat(
-                                            end_str.replace("Z", "+00:00"))
-                                        end_ts = int(ed.timestamp())
-                                    except Exception:
-                                        pass
+                    self._watched[slug] = wm
+                    new_found += 1
 
-                                est_str = ev.get("startTime") or m.get("eventStartTime")
-                                actual_start = event_start_ts
-                                if est_str:
-                                    try:
-                                        est = datetime.fromisoformat(
-                                            est_str.replace("Z", "+00:00"))
-                                        actual_start = int(est.timestamp())
-                                    except Exception:
-                                        pass
+            # Para mercados que están por abrir o activos, intentar obtener
+            # condition_id y tokens desde Gamma/CLOB (si aún no los tienen)
+            await self._resolve_market_ids()
 
-                                tokens = []
-                                try:
-                                    resp2 = await client.get(
-                                        f"{CLOB_API_URL}/markets/{cid}")
-                                    if resp2.status_code == 200:
-                                        tokens = resp2.json().get("tokens", [])
-                                except Exception:
-                                    pass
+            # Limpiar mercados expirados
+            expired = [s for s, wm in self._watched.items()
+                       if time.time() > wm.end_ts + 60]
+            for s in expired:
+                del self._watched[s]
 
-                                wm = WatchedMarket(
-                                    coin=coin,
-                                    slug=slug,
-                                    interval=interval,
-                                    event_start_ts=actual_start,
-                                    end_ts=end_ts,
-                                    condition_id=cid,
-                                    question=m.get("question", "") or ev.get("title", ""),
-                                    tokens=tokens,
-                                    event_slug=slug,
-                                )
-
-                                if time_until_start > 0:
-                                    wm.state = "watching"
-                                else:
-                                    wm.state = "active"
-
-                                self._watched[slug] = wm
-                                new_found += 1
-                                break
-
-                        except Exception:
-                            pass
-
-                # Limpiar mercados expirados
-                expired = [s for s, wm in self._watched.items()
-                           if time.time() > wm.end_ts + 60]
-                for s in expired:
-                    del self._watched[s]
-
-                if new_found:
-                    watching = sum(1 for wm in self._watched.values()
-                                   if wm.state == "watching")
-                    print(f"[EarlyEntry] Scan: +{new_found} nuevos, "
-                          f"{len(self._watched)} total ({watching} watching)",
-                          flush=True)
+            if new_found:
+                total = len(self._watched)
+                upcoming = sum(1 for wm in self._watched.values() if wm.state == "upcoming")
+                watching = sum(1 for wm in self._watched.values() if wm.state == "watching")
+                print(f"[EarlyEntry] Scan: +{new_found} nuevos, "
+                      f"{total} total ({upcoming} upcoming, {watching} watching)",
+                      flush=True)
 
         except Exception as e:
             print(f"[EarlyEntry] Scan error: {e}", flush=True)
+
+    async def _resolve_market_ids(self):
+        """Para mercados cerca de abrir o activos, obtener condition_id desde Gamma."""
+        now_ts = time.time()
+        to_resolve = [
+            wm for wm in self._watched.values()
+            if not wm.condition_id
+            and (wm.event_start_ts - now_ts) < 30  # Solo los que abren en <30s o ya abrieron
+            and wm.state in ("watching", "active")
+        ]
+        if not to_resolve:
+            return
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                for wm in to_resolve:
+                    try:
+                        resp = await client.get(
+                            f"{GAMMA_API_URL}/events",
+                            params={"slug": wm.slug},
+                        )
+                        if resp.status_code != 200:
+                            continue
+                        events = resp.json()
+                        if not events:
+                            continue
+
+                        ev = events[0]
+                        for m in ev.get("markets", []):
+                            cid = m.get("conditionId", "")
+                            if cid and not m.get("closed"):
+                                wm.condition_id = cid
+                                wm.question = m.get("question", "") or ev.get("title", wm.question)
+                                # Obtener tokens
+                                try:
+                                    resp2 = await client.get(f"{CLOB_API_URL}/markets/{cid}")
+                                    if resp2.status_code == 200:
+                                        wm.tokens = resp2.json().get("tokens", [])
+                                except Exception:
+                                    pass
+                                break
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[EarlyEntry] Resolve IDs error: {e}", flush=True)
 
     async def _evaluate_markets(self):
         """Evaluar todos los mercados monitoreados y generar señales."""
