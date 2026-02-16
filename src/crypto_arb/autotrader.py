@@ -119,9 +119,12 @@ class AutoTrader:
                 api_secret=self._config["api_secret"],
                 api_passphrase=self._config["passphrase"],
             )
+            pk = self._config["private_key"]
+            if pk and not pk.startswith("0x"):
+                pk = "0x" + pk
             self._client = ClobClient(
                 CLOB_HOST,
-                key=self._config["private_key"],
+                key=pk,
                 chain_id=CHAIN_ID,
                 signature_type=2,
                 creds=creds,
