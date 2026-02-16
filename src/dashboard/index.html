@@ -3601,20 +3601,34 @@ async function testAutotradeConnection(){
         const r=await fetch('/api/crypto-arb/autotrade-test',{headers:authHeaders()});
         const data=await r.json();
         if(data.connected){
-            st.textContent=`Conectado! Balance: $${(data.balance||0).toFixed(2)} USDC`;
-            st.className='text-xs text-green-400 self-center';
+            let msg=`Conectado! Balance: $${(data.balance||0).toFixed(2)} USDC`;
+            if(data.wallet)msg+=` | Wallet: ${data.wallet.slice(0,10)}...`;
+            if(data.debug){
+                const d=data.debug;
+                if(d.matic_balance!==undefined)msg+=` | MATIC: ${d.matic_balance}`;
+                if(d.checks&&d.checks.length){
+                    for(const c of d.checks){
+                        msg+=` | ${c.name}: $${(c.balance_usdc||0).toFixed(2)}`;
+                    }
+                }
+                if(d.autotrader_active===false)msg+=` | AT: off`;
+            }
+            st.textContent=msg;
+            st.className='text-xs text-green-400 self-center whitespace-normal';
             document.getElementById('at-conn-status').textContent='Conectado';
             document.getElementById('at-conn-status').className='text-sm font-bold text-green-400';
             if(data.balance)document.getElementById('at-balance').textContent=`$${data.balance.toFixed(2)}`;
+            console.log('AutoTrader test debug:',JSON.stringify(data.debug,null,2));
         }else{
             st.textContent='Error: '+(data.error||'No se pudo conectar');
             st.className='text-xs text-red-400 self-center';
+            if(data.debug)console.log('AutoTrader test debug:',JSON.stringify(data.debug,null,2));
         }
     }catch(e){
         st.textContent='Error de conexión al servidor';
         st.className='text-xs text-red-400 self-center';
     }
-    setTimeout(()=>st.classList.add('hidden'),5000);
+    setTimeout(()=>st.classList.add('hidden'),15000);
 }
 
 // ── Alert Trading ──

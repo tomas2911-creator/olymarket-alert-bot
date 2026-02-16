@@ -1115,55 +1115,121 @@ async def generate_api_keys(request: Request):
 
 @router.get("/api/crypto-arb/autotrade-test")
 async def test_autotrade_connection(request: Request):
-    """Probar conexión a Polymarket CLOB con las credenciales guardadas."""
-    autotrader = getattr(request.app.state, 'autotrader', None)
-    if autotrader:
-        result = await autotrader.test_connection()
-        return result
-    # Fallback sin autotrader
+    """Probar conexión a Polymarket CLOB + diagnóstico completo de balance."""
+    import httpx
     db = request.app.state.db
     uid = await get_user_id(request)
     raw = await db.get_config_bulk(["at_api_key", "at_api_secret", "at_private_key"], user_id=uid)
+
     if not raw.get("at_api_key") or not raw.get("at_api_secret"):
         return {"connected": False, "error": "No hay credenciales configuradas."}
+
+    wallet_addr = _derive_wallet_address(raw.get("at_private_key", ""))
+    debug = {"wallet": wallet_addr, "checks": []}
+
+    # 1. Test CLOB
     try:
-        import httpx
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get("https://clob.polymarket.com/time")
+            debug["clob_status"] = resp.status_code
             if resp.status_code != 200:
-                return {"connected": False, "error": f"CLOB respondió con status {resp.status_code}"}
-        # Consultar saldo USDC real via Polygon RPC
-        balance = None
-        wallet_addr = _derive_wallet_address(raw.get("at_private_key", ""))
-        if wallet_addr:
-            try:
-                from src.crypto_arb.autotrader import USDC_CONTRACTS
-                rpc_list = ["https://polygon-rpc.com", "https://rpc.ankr.com/polygon", "https://polygon-bor-rpc.publicnode.com"]
-                addr_padded = wallet_addr.lower().replace("0x", "").zfill(64)
-                total = 0.0
-                for rpc_url in rpc_list:
-                    try:
-                        async with httpx.AsyncClient(timeout=10) as c2:
-                            for contract in USDC_CONTRACTS:
-                                payload = {
-                                    "jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                                    "params": [{"to": contract, "data": f"0x70a08231000000000000000000000000{addr_padded}"}, "latest"]
-                                }
-                                r = await c2.post(rpc_url, json=payload)
-                                if r.status_code == 200:
-                                    res = r.json().get("result", "0x0")
-                                    if res and res != "0x":
-                                        total += int(res, 16) / 1e6
-                        if total > 0:
-                            break
-                    except Exception:
-                        continue
-                balance = round(total, 2)
-            except Exception:
-                pass
-        return {"connected": True, "balance": balance, "wallet": wallet_addr, "note": "Conexión al CLOB exitosa."}
+                return {"connected": False, "error": f"CLOB status {resp.status_code}", "debug": debug}
     except Exception as e:
-        return {"connected": False, "error": str(e)}
+        return {"connected": False, "error": f"CLOB error: {e}", "debug": debug}
+
+    # 2. Balance USDC — diagnóstico detallado por contrato y RPC
+    from src.crypto_arb.autotrader import USDC_CONTRACTS
+    contract_names = {
+        "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174": "USDC.e (bridged)",
+        "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359": "USDC (native)",
+    }
+    rpc_url = "https://polygon-rpc.com"
+    total_balance = 0.0
+    addr_padded = wallet_addr.lower().replace("0x", "").zfill(64) if wallet_addr else ""
+
+    if wallet_addr:
+        # También consultar MATIC balance para verificar que la address es correcta
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                matic_payload = {
+                    "jsonrpc": "2.0", "id": 1, "method": "eth_getBalance",
+                    "params": [wallet_addr, "latest"]
+                }
+                r = await client.post(rpc_url, json=matic_payload)
+                if r.status_code == 200:
+                    matic_raw = r.json().get("result", "0x0")
+                    matic_bal = int(matic_raw, 16) / 1e18
+                    debug["matic_balance"] = round(matic_bal, 6)
+                else:
+                    debug["matic_error"] = f"HTTP {r.status_code}"
+        except Exception as e:
+            debug["matic_error"] = str(e)
+
+        # Consultar cada contrato USDC
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                for contract in USDC_CONTRACTS:
+                    check = {"contract": contract, "name": contract_names.get(contract, "?")}
+                    try:
+                        payload = {
+                            "jsonrpc": "2.0", "id": 1, "method": "eth_call",
+                            "params": [{
+                                "to": contract,
+                                "data": f"0x70a08231000000000000000000000000{addr_padded}"
+                            }, "latest"]
+                        }
+                        r = await client.post(rpc_url, json=payload)
+                        check["rpc_status"] = r.status_code
+                        if r.status_code == 200:
+                            body = r.json()
+                            result = body.get("result", "0x0")
+                            check["raw_result"] = result
+                            if body.get("error"):
+                                check["rpc_error"] = body["error"]
+                            if result and result != "0x":
+                                bal = int(result, 16) / 1e6
+                                check["balance_usdc"] = round(bal, 6)
+                                total_balance += bal
+                            else:
+                                check["balance_usdc"] = 0
+                        else:
+                            check["response"] = r.text[:200]
+                    except Exception as e:
+                        check["error"] = str(e)
+                    debug["checks"].append(check)
+        except Exception as e:
+            debug["rpc_global_error"] = str(e)
+
+    # 3. CLOB balance (Polymarket internal)
+    autotrader = getattr(request.app.state, 'autotrader', None)
+    if autotrader and autotrader._client:
+        try:
+            import asyncio
+            from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+            loop = asyncio.get_running_loop()
+            params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+            ba = await loop.run_in_executor(None, autotrader._client.get_balance_allowance, params)
+            debug["clob_balance_raw"] = str(ba)
+            if ba and hasattr(ba, "balance"):
+                raw_bal = float(ba.balance)
+                poly_bal = raw_bal / 1e6 if raw_bal > 1_000 else raw_bal
+                total_balance += poly_bal
+                debug["polymarket_balance"] = round(poly_bal, 2)
+            elif isinstance(ba, dict):
+                debug["clob_balance_dict"] = ba
+        except Exception as e:
+            debug["clob_balance_error"] = str(e)
+    else:
+        debug["autotrader_active"] = False
+
+    balance = round(total_balance, 2)
+    return {
+        "connected": True,
+        "balance": balance,
+        "wallet": wallet_addr,
+        "note": "Conexión exitosa." if balance > 0 else "Conectado pero balance $0 — ver debug",
+        "debug": debug,
+    }
 
 
 @router.get("/api/crypto-arb/autotrades")
