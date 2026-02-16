@@ -48,15 +48,16 @@ class ComplementArbScanner:
         except Exception as e:
             print(f"[ComplementArb] Error inicializando: {e}", flush=True)
 
-    async def scan(self) -> list[dict]:
+    async def scan(self, force: bool = False) -> list[dict]:
         """Escanear mercados activos buscando YES+NO < $1.
         Retorna lista de oportunidades encontradas.
+        force=True permite scan manual desde dashboard sin importar _enabled.
         """
-        if not self._enabled:
+        if not self._enabled and not force:
             return []
 
         now = time.time()
-        if now - self._last_scan < self._scan_interval:
+        if not force and now - self._last_scan < self._scan_interval:
             return self._opportunities
 
         self._last_scan = now

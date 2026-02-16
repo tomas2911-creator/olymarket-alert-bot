@@ -2287,7 +2287,7 @@ async def trigger_complement_scan(request: Request):
     scanner = getattr(request.app.state, "complement_arb", None)
     if not scanner:
         return {"error": "Scanner no inicializado"}
-    opportunities = await scanner.scan()
+    opportunities = await scanner.scan(force=True)
     return {"opportunities": len(opportunities), "results": scanner.get_status()}
 
 

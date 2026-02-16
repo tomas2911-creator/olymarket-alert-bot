@@ -4718,10 +4718,25 @@ async function loadComplementArb(){
 async function scanComplementArb(){
     const btn=document.getElementById('carb-scan-btn');
     btn.textContent='Escaneando...';btn.disabled=true;
+    const tbody=document.getElementById('carb-body');
+    tbody.innerHTML='<tr><td colspan="7" class="text-center text-yellow-400 p-8">⏳ Escaneando mercados de Polymarket... (puede tardar 15-30s)</td></tr>';
     try{
         const data=await postJson('/api/complement-arb/scan',{});
-        if(data&&data.results)renderComplementArb(data.results);
-    }catch(e){}
+        if(data&&data.error){
+            tbody.innerHTML='<tr><td colspan="7" class="text-center text-red-400 p-8">Error: '+data.error+'</td></tr>';
+            return;
+        }
+        if(data&&data.results){
+            renderComplementArb(data.results);
+            if((data.results.top_opportunities||[]).length===0){
+                tbody.innerHTML='<tr><td colspan="7" class="text-center text-gray-500 p-8">Scan completado: 0 oportunidades. YES+NO &lt; $1 es muy raro en mercados líquidos.</td></tr>';
+            }
+        }else{
+            tbody.innerHTML='<tr><td colspan="7" class="text-center text-red-400 p-8">Sin respuesta del servidor. Revisa los logs.</td></tr>';
+        }
+    }catch(e){
+        tbody.innerHTML='<tr><td colspan="7" class="text-center text-red-400 p-8">Error de conexión: '+e.message+'</td></tr>';
+    }
     finally{btn.textContent='Escanear Ahora';btn.disabled=false;}
 }
 function renderComplementArb(data){
