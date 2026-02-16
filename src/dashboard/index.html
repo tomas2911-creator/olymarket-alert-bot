@@ -828,6 +828,7 @@
                             <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','fairodds',render_cl)">Fair Odds <span id="si-cl-fairodds" data-sg="cl" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','edge',render_cl)">Edge <span id="si-cl-edge" data-sg="cl" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','conf',render_cl)">Confianza <span id="si-cl-conf" data-sg="cl" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','score',render_cl)">Score <span id="si-cl-score" data-sg="cl" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','close',render_cl)">Cierre <span id="si-cl-close" data-sg="cl" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center">Estado</th>
                             <th class="px-4 py-2 text-center">Ver</th>
@@ -870,6 +871,7 @@
                             <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','dir',render_ch)">Dir <span id="si-ch-dir" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','edge',render_ch)">Edge <span id="si-ch-edge" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','conf',render_ch)">Confianza <span id="si-ch-conf" data-sg="ch" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','score',render_ch)">Score <span id="si-ch-score" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','result',render_ch)">Resultado <span id="si-ch-result" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','pnl',render_ch)">PnL <span id="si-ch-pnl" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center">Ver</th>
@@ -3212,6 +3214,7 @@ function render_cl(){
             case 'fairodds':return s.fair_odds||0;
             case 'edge':return s.edge_pct||0;
             case 'conf':return s.confidence||0;
+            case 'score':return(s.score_details||{}).score||0;
             case 'close':return s.time_remaining_sec||0;
             default:return 0;
         }
@@ -3246,6 +3249,10 @@ function render_cl(){
         }
         const cierreText=s.time_remaining_sec>0?`${mins}m${secs}s`:'Cerrado';
         const cierreClass=s.time_remaining_sec>0?'text-gray-400':'text-yellow-500';
+        const sd=s.score_details||{};
+        const scoreVal=(sd.score||0).toFixed(2);
+        const scoreColor=(sd.score||0)>=0.7?'text-green-400':(sd.score||0)>=0.5?'text-yellow-400':'text-orange-400';
+        const indBadges=[sd.vwap_aligned?'<span class="px-1 rounded bg-blue-900/50 text-blue-300" style="font-size:9px">VWAP</span>':'',sd.rsi_aligned?'<span class="px-1 rounded bg-purple-900/50 text-purple-300" style="font-size:9px">RSI</span>':'',sd.macd_aligned?'<span class="px-1 rounded bg-cyan-900/50 text-cyan-300" style="font-size:9px">MACD</span>':''].filter(x=>x).join(' ');
         return`<tr class="${rowClass}">
             <td class="px-4 py-2 text-xs text-gray-400">${ts.toLocaleTimeString()}</td>
             <td class="px-4 py-2 text-center font-bold">${s.coin}</td>
@@ -3255,6 +3262,7 @@ function render_cl(){
             <td class="px-4 py-2 text-right font-mono text-xs text-green-400">${s.fair_odds.toFixed(2)}</td>
             <td class="px-4 py-2 text-right font-mono text-xs text-yellow-400">${s.edge_pct.toFixed(1)}%</td>
             <td class="px-4 py-2 text-center text-xs font-mono">${bar} ${s.confidence.toFixed(0)}%</td>
+            <td class="px-4 py-2 text-center text-xs"><span class="font-mono font-bold ${scoreColor}">${scoreVal}</span>${indBadges?'<div class="flex gap-0.5 justify-center mt-0.5">'+indBadges+'</div>':''}</td>
             <td class="px-4 py-2 text-right text-xs ${cierreClass}">${cierreText}</td>
             <td class="px-4 py-2 text-center text-xs ${estadoClass}">${estado}</td>
             <td class="px-4 py-2 text-center">${s.polymarket_url?`<a href="${s.polymarket_url}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 text-xs font-medium transition">🔗 Poly</a>`:'-'}</td>
@@ -3301,6 +3309,7 @@ function render_ch(){
             case 'dir':return s.direction||'';
             case 'edge':return s.edge_pct||0;
             case 'conf':return s.confidence||0;
+            case 'score':return parseFloat((s.score_details||s.extra||{}).score||0);
             case 'result':return s.resolved?(s.paper_result==='win'?2:0):1;
             case 'pnl':return s.paper_pnl||0;
             default:return 0;
@@ -3324,6 +3333,7 @@ function render_ch(){
             <td class="px-4 py-2 text-center ${dirColor} font-bold">${dirIcon} ${s.direction.toUpperCase()}</td>
             <td class="px-4 py-2 text-right font-mono text-xs text-yellow-400">${(s.edge_pct||0).toFixed(1)}%</td>
             <td class="px-4 py-2 text-center text-xs">${(s.confidence||0).toFixed(0)}%</td>
+            <td class="px-4 py-2 text-center text-xs"><span class="font-mono font-bold ${(()=>{const sc=parseFloat((s.score_details||s.extra||{}).score||0);return sc>=0.7?'text-green-400':sc>=0.5?'text-yellow-400':'text-orange-400';})()}">${parseFloat((s.score_details||s.extra||{}).score||0).toFixed(2)}</span></td>
             <td class="px-4 py-2 text-center">${resultBadge}</td>
             <td class="px-4 py-2 text-right font-mono text-xs ${pnlColor}">${s.resolved?'$'+pnl.toFixed(2):'-'}</td>
             <td class="px-4 py-2 text-center">${s.event_slug?`<a href="https://polymarket.com/event/${s.event_slug}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 text-xs font-medium transition">🔗 Poly</a>`:'-'}</td>
