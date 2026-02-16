@@ -271,11 +271,18 @@ class AutoTrader:
             print(f"{tag} SKIP: max daily loss (pnl=${daily_pnl:.2f} <= -${cfg['max_daily_loss']})", flush=True)
             return None
 
-        # Filtro: no duplicar posición en mismo mercado
+        # Filtro: no duplicar posición en mismo mercado (por event_slug, NO por condition_id)
+        # Up y Down del mismo mercado tienen distinto condition_id pero MISMO event_slug
         cid = signal.get("condition_id", "")
+        event_slug = signal.get("event_slug", "")
         if cid in self._open_positions:
-            print(f"{tag} SKIP: already in position {cid[:12]}...", flush=True)
+            print(f"{tag} SKIP: already in position (cid) {cid[:12]}...", flush=True)
             return None
+        if event_slug:
+            for pos in self._open_positions.values():
+                if pos.get("event_slug") == event_slug:
+                    print(f"{tag} SKIP: already in position for market {event_slug} (lado opuesto)", flush=True)
+                    return None
 
         # Filtro: tiempo restante mínimo (no entrar si queda muy poco)
         remaining = signal.get("time_remaining_sec", 0)
