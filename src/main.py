@@ -25,6 +25,7 @@ from src.api.routes import router
 from src.api.polygonscan import get_wallet_onchain_info
 from src.crypto_arb.binance_feed import BinanceFeed
 from src.crypto_arb.detector import CryptoArbDetector
+from src.crypto_arb.early_detector import EarlyEntryDetector
 from src.crypto_arb.backtester import CryptoArbBacktester
 from src.crypto_arb.autotrader import AutoTrader
 from src.alerts.alert_autotrader import AlertAutoTrader
@@ -73,6 +74,7 @@ class PolymarketAlertBot:
         # Crypto Arb (inicializado solo si feature está habilitada)
         self.binance_feed = None
         self.crypto_detector = None
+        self.early_detector = None
         self.backtester = CryptoArbBacktester()
         self.autotrader = None
         self.alert_autotrader = None
@@ -186,14 +188,20 @@ class PolymarketAlertBot:
             pairs = [c["binance_pair"] for c in config.CRYPTO_ARB_COINS]
             self.binance_feed = BinanceFeed(pairs=pairs)
             self.crypto_detector = CryptoArbDetector(self.binance_feed)
+            # Inicializar early entry detector
+            self.early_detector = EarlyEntryDetector(self.binance_feed)
             # Inicializar autotrader
             self.autotrader = AutoTrader(self.db)
             await self.autotrader.initialize()
-            # Lanzar feed, detector y autotrader como tasks independientes
+            # Configurar early detector desde DB
+            await self._configure_early_detector()
+            # Lanzar feed, detector, early detector y autotrader como tasks independientes
             asyncio.create_task(self._run_binance_feed())
             asyncio.create_task(self._run_crypto_detector())
+            asyncio.create_task(self._run_early_detector())
             asyncio.create_task(self._run_crypto_autotrader())
-            print(f"Crypto Arb iniciado: {len(pairs)} pares, modo={config.CRYPTO_ARB_MODE}", flush=True)
+            early_status = "ON" if self.early_detector.enabled else "OFF"
+            print(f"Crypto Arb iniciado: {len(pairs)} pares, modo={config.CRYPTO_ARB_MODE}, early_entry={early_status}", flush=True)
         except Exception as e:
             print(f"Error iniciando Crypto Arb: {e}", flush=True)
 
@@ -208,23 +216,65 @@ class PolymarketAlertBot:
 
     async def _run_crypto_detector(self):
         """Wrapper para detector crypto con manejo de señales."""
-        # Esperar 5 segundos para que el feed se conecte
         await asyncio.sleep(5)
         try:
             await self.crypto_detector.start()
         except Exception as e:
             print(f"Crypto detector error: {e}", flush=True)
 
+    async def _run_early_detector(self):
+        """Wrapper para early entry detector."""
+        await asyncio.sleep(5)
+        try:
+            await self.early_detector.start()
+        except Exception as e:
+            print(f"Early detector error: {e}", flush=True)
+
+    async def _configure_early_detector(self):
+        """Configurar early detector desde DB."""
+        if not self.early_detector:
+            return
+        try:
+            raw = await self.db.get_config_bulk([
+                "at_early_entry_enabled", "at_early_entry_pre_monitor",
+                "at_early_entry_window", "at_early_entry_min_momentum",
+                "at_early_entry_bet_size",
+            ], user_id=1)
+            self.early_detector.configure({
+                "early_entry_enabled": raw.get("at_early_entry_enabled") == "true",
+                "early_entry_pre_monitor": int(raw.get("at_early_entry_pre_monitor", config.EARLY_ENTRY_PRE_MONITOR_SEC)),
+                "early_entry_window": int(raw.get("at_early_entry_window", config.EARLY_ENTRY_WINDOW_SEC)),
+                "early_entry_min_momentum": float(raw.get("at_early_entry_min_momentum", config.EARLY_ENTRY_MIN_MOMENTUM_PCT)),
+            })
+        except Exception as e:
+            print(f"[EarlyEntry] Error cargando config: {e}", flush=True)
+            self.early_detector.configure({
+                "early_entry_enabled": config.FEATURE_EARLY_ENTRY,
+                "early_entry_pre_monitor": config.EARLY_ENTRY_PRE_MONITOR_SEC,
+                "early_entry_window": config.EARLY_ENTRY_WINDOW_SEC,
+                "early_entry_min_momentum": config.EARLY_ENTRY_MIN_MOMENTUM_PCT,
+            })
+
     async def _run_crypto_autotrader(self):
         """Loop rápido: evaluar señales crypto cada 5s, independiente del polling.
-        Esto evita que señales de SOL/ETH/XRP expiren mientras poll_cycle() tarda.
+        Combina señales de score strategy + early entry strategy.
         """
-        await asyncio.sleep(8)  # Esperar a que detector genere primeras señales
+        await asyncio.sleep(8)
         while self._running and self.autotrader and self.crypto_detector:
             try:
+                # Señales del detector score (strategy="score")
                 signals = self.crypto_detector.get_recent_signals(200)
+                # Señales del early entry detector (strategy="early_entry")
+                if self.early_detector:
+                    early_signals = self.early_detector.get_recent_signals(100)
+                    if early_signals:
+                        # Merge evitando duplicados por condition_id
+                        existing_cids = {s["condition_id"] for s in signals}
+                        for es in early_signals:
+                            if es["condition_id"] not in existing_cids:
+                                signals.append(es)
+                                existing_cids.add(es["condition_id"])
                 if signals:
-                    # Solo pasar señales con tiempo restante > 0 (no expiradas)
                     active = [s for s in signals if s.get("time_remaining_sec", 0) > 0]
                     if active:
                         await self.autotrader.process_signals(active)
@@ -238,6 +288,8 @@ class PolymarketAlertBot:
             await self.binance_feed.stop()
         if self.crypto_detector:
             await self.crypto_detector.stop()
+        if self.early_detector:
+            await self.early_detector.stop()
         await self.db.close()
 
     # ── Polling principal ─────────────────────────────────────────────
@@ -845,6 +897,15 @@ class PolymarketAlertBot:
             return
         try:
             signals = self.crypto_detector.get_recent_signals(200)
+            # Merge señales early entry
+            if self.early_detector:
+                early = self.early_detector.get_recent_signals(100)
+                if early:
+                    existing_cids = {s["condition_id"] for s in signals}
+                    for es in early:
+                        if es["condition_id"] not in existing_cids:
+                            signals.append(es)
+                            existing_cids.add(es["condition_id"])
             if not signals:
                 return
             # Cargar condition_ids ya guardados (una sola query)
@@ -1013,6 +1074,8 @@ class PolymarketAlertBot:
 
                     if self.crypto_detector:
                         self.crypto_detector.resolve_signal(cid, paper_result, round(paper_pnl, 2))
+                    if self.early_detector:
+                        self.early_detector.resolve_signal(cid, paper_result, round(paper_pnl, 2))
 
                     print(f"[CryptoResolve] {coin} {direction} → {resolution} = {paper_result} "
                           f"(${paper_pnl:.2f})", flush=True)

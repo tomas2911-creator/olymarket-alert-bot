@@ -817,6 +817,26 @@
 
             <!-- Crypto Sub: Señales en Vivo -->
             <div id="cpanel-signals">
+                <!-- Barra de Mercados en Observación (colapsable) -->
+                <div id="watching-bar" class="border-b border-gray-700/30">
+                    <button onclick="toggleWatching()" class="w-full flex items-center justify-between px-4 py-2 text-xs text-gray-400 hover:text-purple-300 transition">
+                        <span class="flex items-center gap-2"><span class="text-purple-400">🔍</span> Mercados en Observación <span id="watching-count" class="text-[10px] bg-purple-900/40 text-purple-300 px-1.5 rounded-full">0</span></span>
+                        <span id="watching-chevron" class="transition-transform">▼</span>
+                    </button>
+                    <div id="watching-content" class="hidden px-4 pb-3">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2" id="watching-grid"></div>
+                        <div id="watching-empty" class="text-center py-3 text-gray-600 text-xs">Early Entry desactivado o sin mercados próximos</div>
+                    </div>
+                </div>
+                <!-- Filtro de estrategia -->
+                <div class="px-4 py-2 flex gap-2 items-center border-b border-gray-800/30">
+                    <span class="text-xs text-gray-500">Estrategia:</span>
+                    <select id="cl-strategy-filter" class="bg-gray-800/50 rounded px-2 py-1 text-xs text-gray-300" onchange="render_cl()">
+                        <option value="">Todas</option>
+                        <option value="score">📊 Score</option>
+                        <option value="early_entry">⚡ Early Entry</option>
+                    </select>
+                </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead><tr class="text-gray-400 text-xs uppercase border-b border-gray-700/50">
@@ -829,6 +849,7 @@
                             <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','edge',render_cl)">Edge <span id="si-cl-edge" data-sg="cl" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','conf',render_cl)">Confianza <span id="si-cl-conf" data-sg="cl" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','score',render_cl)">Score <span id="si-cl-score" data-sg="cl" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','strategy',render_cl)">Strategy <span id="si-cl-strategy" data-sg="cl" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('cl','close',render_cl)">Cierre <span id="si-cl-close" data-sg="cl" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center">Estado</th>
                             <th class="px-4 py-2 text-center">Ver</th>
@@ -851,6 +872,11 @@
                         <option value="SOL">SOL</option>
                         <option value="XRP">XRP</option>
                     </select>
+                    <select id="ch-strategy-filter" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300" onchange="render_ch()">
+                        <option value="">Todas</option>
+                        <option value="score">📊 Score</option>
+                        <option value="early_entry">⚡ Early Entry</option>
+                    </select>
                     <span id="crypto-hist-count" class="text-xs text-gray-500 ml-auto"></span>
                     <select id="clean-hours" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300">
                         <option value="0">Borrar Todo</option>
@@ -872,6 +898,7 @@
                             <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','edge',render_ch)">Edge <span id="si-ch-edge" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','conf',render_ch)">Confianza <span id="si-ch-conf" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','score',render_ch)">Score <span id="si-ch-score" data-sg="ch" class="text-purple-400 hidden"></span></th>
+                            <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','strategy',render_ch)">Strategy <span id="si-ch-strategy" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','result',render_ch)">Resultado <span id="si-ch-result" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-right cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('ch','pnl',render_ch)">PnL <span id="si-ch-pnl" data-sg="ch" class="text-purple-400 hidden"></span></th>
                             <th class="px-4 py-2 text-center">Ver</th>
@@ -986,6 +1013,49 @@
                                 <label class="text-xs text-gray-400 block mb-1">Min Score</label>
                                 <input type="number" id="at-min-score" value="0" min="0" max="20" step="0.1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
                                 <p class="text-[10px] text-gray-500 mt-0.5">0 = sin filtro. Recomendado: 0.5-1.0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Strategy Selection -->
+                    <div class="space-y-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Estrategia de Señales</h4>
+                        <div class="flex gap-4">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="at-use-score" checked class="accent-purple-500 w-4 h-4">
+                                <span class="text-sm text-gray-300">📊 Score (sistema actual)</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="at-use-early" class="accent-yellow-500 w-4 h-4">
+                                <span class="text-sm text-gray-300">⚡ Early Entry (entrada rápida)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Early Entry Parameters -->
+                    <div id="early-entry-params" class="space-y-3 border border-yellow-700/30 rounded-lg p-4 bg-yellow-900/10">
+                        <h4 class="text-xs text-yellow-400 uppercase tracking-wider font-semibold">Parámetros Early Entry</h4>
+                        <p class="text-[10px] text-gray-500">Compra al segundo 0 cuando detecta momentum fuerte pre-apertura. Odds ~0.50 = máximo profit potencial.</p>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Bet Size Early ($)</label>
+                                <input type="number" id="at-early-bet-size" value="3" min="1" max="500" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">Independiente del bet size Score</p>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Momentum (%)</label>
+                                <input type="number" id="at-early-min-momentum" value="0.10" min="0.01" max="1.0" step="0.01" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">Cambio % mínimo pre-apertura</p>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Entry Window (seg)</label>
+                                <input type="number" id="at-early-window" value="15" min="5" max="60" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">Máx segundos post-apertura</p>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Pre-Monitor (seg)</label>
+                                <input type="number" id="at-early-pre-monitor" value="120" min="30" max="600" step="10" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">Anticipación antes de apertura</p>
                             </div>
                         </div>
                     </div>
@@ -3197,19 +3267,24 @@ let _clData=[];
 async function loadCryptoLive(){
     const d=await fetchJson('/api/crypto-arb/live');
     if(!d)return;
-    _clData=d.signals||[];
+    _clData=d.signals||d||[];
+    if(Array.isArray(d))_clData=d;
     render_cl();
+    loadWatchingMarkets();
 }
 function render_cl(){
     const body=document.getElementById('crypto-live-body');
     const empty=document.getElementById('crypto-live-empty');
-    if(_clData.length===0){
+    const stratFilter=(document.getElementById('cl-strategy-filter')||{}).value||'';
+    let filtered=_clData;
+    if(stratFilter)filtered=_clData.filter(s=>(s.strategy||'score')===stratFilter);
+    if(filtered.length===0){
         body.innerHTML='';
         empty.classList.remove('hidden');
         return;
     }
     empty.classList.add('hidden');
-    const sorted=sortedData('cl',_clData,(s,col)=>{
+    const sorted=sortedData('cl',filtered,(s,col)=>{
         switch(col){
             case 'hora':return new Date(s.timestamp||0).getTime();
             case 'coin':return(s.coin||'');
@@ -3220,6 +3295,7 @@ function render_cl(){
             case 'edge':return s.edge_pct||0;
             case 'conf':return s.confidence||0;
             case 'score':return(s.score_details||{}).score||0;
+            case 'strategy':return s.strategy||'score';
             case 'close':return s.time_remaining_sec||0;
             default:return 0;
         }
@@ -3268,11 +3344,59 @@ function render_cl(){
             <td class="px-4 py-2 text-right font-mono text-xs text-yellow-400">${s.edge_pct.toFixed(1)}%</td>
             <td class="px-4 py-2 text-center text-xs font-mono">${bar} ${s.confidence.toFixed(0)}%</td>
             <td class="px-4 py-2 text-center text-xs"><span class="font-mono font-bold ${scoreColor}">${scoreVal}</span><div class="flex gap-1 justify-center mt-0.5">${indBadges}</div></td>
+            <td class="px-4 py-2 text-center text-xs">${(s.strategy||'score')==='early_entry'?'<span class="px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300 text-[10px] font-medium">⚡ Early</span>':'<span class="px-2 py-0.5 rounded-full bg-purple-900/50 text-purple-300 text-[10px] font-medium">📊 Score</span>'}</td>
             <td class="px-4 py-2 text-right text-xs ${cierreClass}">${cierreText}</td>
             <td class="px-4 py-2 text-center text-xs ${estadoClass}">${estado}</td>
             <td class="px-4 py-2 text-center">${s.polymarket_url?`<a href="${s.polymarket_url}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 text-xs font-medium transition">🔗 Poly</a>`:'-'}</td>
         </tr>`;
     }).join('');
+}
+
+// ── Watching Markets (Early Entry) ──
+function toggleWatching(){
+    const content=document.getElementById('watching-content');
+    const chevron=document.getElementById('watching-chevron');
+    if(content.classList.contains('hidden')){
+        content.classList.remove('hidden');
+        chevron.style.transform='rotate(180deg)';
+    }else{
+        content.classList.add('hidden');
+        chevron.style.transform='';
+    }
+}
+async function loadWatchingMarkets(){
+    try{
+        const d=await fetchJson('/api/crypto-arb/watching');
+        const grid=document.getElementById('watching-grid');
+        const empty=document.getElementById('watching-empty');
+        const countEl=document.getElementById('watching-count');
+        const markets=Array.isArray(d)?d:[];
+        countEl.textContent=markets.length;
+        if(markets.length===0){
+            grid.innerHTML='';
+            empty.classList.remove('hidden');
+            return;
+        }
+        empty.classList.add('hidden');
+        grid.innerHTML=markets.map(m=>{
+            const stateColors={'scanning':'bg-gray-700 text-gray-300','pre_monitoring':'bg-yellow-900/50 text-yellow-300','entry_window':'bg-green-900/50 text-green-300','done':'bg-gray-800 text-gray-500'};
+            const stateLabels={'scanning':'Escaneando','pre_monitoring':'Pre-Monitor','entry_window':'Ventana Entrada','done':'Completado'};
+            const sc=stateColors[m.state]||'bg-gray-700 text-gray-300';
+            const sl=stateLabels[m.state]||m.state;
+            const momColor=(m.momentum_pct||0)>=0?'text-green-400':'text-red-400';
+            const momArrow=(m.momentum_pct||0)>=0?'▲':'▼';
+            const secsToStart=m.seconds_to_start||0;
+            const timeText=secsToStart>0?`${Math.floor(secsToStart/60)}m${secsToStart%60}s`:'ABIERTO';
+            const timeColor=secsToStart>0?'text-gray-400':'text-green-400 font-bold';
+            return`<div class="bg-gray-800/40 rounded-lg p-2 text-xs flex items-center gap-2">
+                <span class="font-bold text-sm">${m.coin||'?'}</span>
+                <span class="${timeColor}">${timeText}</span>
+                <span class="px-1.5 py-0.5 rounded-full ${sc} text-[10px]">${sl}</span>
+                ${m.momentum_pct!=null?`<span class="${momColor} font-mono">${momArrow}${Math.abs(m.momentum_pct).toFixed(3)}%</span>`:''}
+                <span class="text-gray-600 ml-auto text-[10px] truncate max-w-[120px]">${m.slug||''}</span>
+            </div>`;
+        }).join('');
+    }catch(e){}
 }
 
 async function cleanSignals(){
@@ -3304,10 +3428,13 @@ function render_ch(){
     const body=document.getElementById('crypto-hist-body');
     const empty=document.getElementById('crypto-hist-empty');
     const count=document.getElementById('crypto-hist-count');
-    count.textContent=_chData.length+' señales';
-    if(_chData.length===0){body.innerHTML='';empty.classList.remove('hidden');return;}
+    const stratFilter=(document.getElementById('ch-strategy-filter')||{}).value||'';
+    let filtered=_chData;
+    if(stratFilter)filtered=_chData.filter(s=>(s.strategy||'score')===stratFilter);
+    count.textContent=filtered.length+' señales';
+    if(filtered.length===0){body.innerHTML='';empty.classList.remove('hidden');renderHistSummary([]);return;}
     empty.classList.add('hidden');
-    const sorted=sortedData('ch',_chData,(s,col)=>{
+    const sorted=sortedData('ch',filtered,(s,col)=>{
         switch(col){
             case 'fecha':return new Date(s.created_at||0).getTime();
             case 'coin':return(s.coin||'');
@@ -3315,6 +3442,7 @@ function render_ch(){
             case 'edge':return s.edge_pct||0;
             case 'conf':return s.confidence||0;
             case 'score':return parseFloat((s.score_details||s.extra||{}).score||0);
+            case 'strategy':return s.strategy||'score';
             case 'result':return s.resolved?(s.paper_result==='win'?2:0):1;
             case 'pnl':return s.paper_pnl||0;
             default:return 0;
@@ -3332,6 +3460,7 @@ function render_ch(){
         }
         const pnl=s.paper_pnl||0;
         const pnlColor=pnl>=0?'text-green-400':'text-red-400';
+        const stratBadge=(s.strategy||'score')==='early_entry'?'<span class="px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300 text-[10px]">⚡ Early</span>':'<span class="px-2 py-0.5 rounded-full bg-purple-900/50 text-purple-300 text-[10px]">📊 Score</span>';
         return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
             <td class="px-4 py-2 text-xs text-gray-400">${ts.toLocaleDateString()} ${ts.toLocaleTimeString()}</td>
             <td class="px-4 py-2 text-center font-bold">${s.coin}</td>
@@ -3339,11 +3468,38 @@ function render_ch(){
             <td class="px-4 py-2 text-right font-mono text-xs text-yellow-400">${(s.edge_pct||0).toFixed(1)}%</td>
             <td class="px-4 py-2 text-center text-xs">${(s.confidence||0).toFixed(0)}%</td>
             <td class="px-4 py-2 text-center text-xs"><span class="font-mono font-bold ${(()=>{const sc=parseFloat((s.score_details||s.extra||{}).score||0);return sc>=0.7?'text-green-400':sc>=0.5?'text-yellow-400':'text-orange-400';})()}">${parseFloat((s.score_details||s.extra||{}).score||0).toFixed(2)}</span></td>
+            <td class="px-4 py-2 text-center">${stratBadge}</td>
             <td class="px-4 py-2 text-center">${resultBadge}</td>
             <td class="px-4 py-2 text-right font-mono text-xs ${pnlColor}">${s.resolved?'$'+pnl.toFixed(2):'-'}</td>
             <td class="px-4 py-2 text-center">${s.event_slug?`<a href="https://polymarket.com/event/${s.event_slug}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 text-xs font-medium transition">🔗 Poly</a>`:'-'}</td>
         </tr>`;
     }).join('');
+    renderHistSummary(_chData);
+}
+function renderHistSummary(data){
+    let el=document.getElementById('hist-strategy-summary');
+    if(!el){
+        el=document.createElement('div');
+        el.id='hist-strategy-summary';
+        el.className='px-4 py-3 border-t border-gray-700/30';
+        const parent=document.getElementById('cpanel-history');
+        if(parent)parent.appendChild(el);
+    }
+    if(!data||data.length===0){el.innerHTML='';return;}
+    const calc=(arr)=>{
+        const resolved=arr.filter(s=>s.resolved);
+        const wins=resolved.filter(s=>s.paper_result==='win');
+        const pnl=resolved.reduce((a,s)=>a+(s.paper_pnl||0),0);
+        return{total:arr.length,resolved:resolved.length,wins:wins.length,wr:resolved.length?Math.round(wins.length/resolved.length*100):0,pnl};
+    };
+    const score=calc(data.filter(s=>(s.strategy||'score')!=='early_entry'));
+    const early=calc(data.filter(s=>(s.strategy||'score')==='early_entry'));
+    const total=calc(data);
+    el.innerHTML=`<div class="grid grid-cols-3 gap-3 text-xs">
+        <div class="bg-purple-900/20 rounded-lg p-2 text-center"><div class="text-purple-400 font-medium">📊 Score</div><div class="text-gray-300">${score.total} señales</div><div class="${score.wr>=55?'text-green-400':'text-gray-400'}">${score.wr}% WR</div><div class="${score.pnl>=0?'text-green-400':'text-red-400'}">$${score.pnl.toFixed(2)}</div></div>
+        <div class="bg-yellow-900/20 rounded-lg p-2 text-center"><div class="text-yellow-400 font-medium">⚡ Early Entry</div><div class="text-gray-300">${early.total} señales</div><div class="${early.wr>=55?'text-green-400':'text-gray-400'}">${early.wr}% WR</div><div class="${early.pnl>=0?'text-green-400':'text-red-400'}">$${early.pnl.toFixed(2)}</div></div>
+        <div class="bg-gray-800/40 rounded-lg p-2 text-center"><div class="text-gray-400 font-medium">Total</div><div class="text-gray-300">${total.total} señales</div><div class="${total.wr>=55?'text-green-400':'text-gray-400'}">${total.wr}% WR</div><div class="${total.pnl>=0?'text-green-400':'text-red-400'}">$${total.pnl.toFixed(2)}</div></div>
+    </div>`;
 }
 
 
@@ -3530,6 +3686,16 @@ async function loadAutotradeConfig(){
     document.getElementById('at-slippage').value=c.slippage_max_pct||3;
     document.getElementById('at-min-score').value=c.min_score||0;
     document.getElementById('at-funder-address').value=c.funder_address||'';
+    // Early Entry config
+    document.getElementById('at-use-score').checked=c.use_score_strategy!==false;
+    document.getElementById('at-use-early').checked=c.use_early_entry||false;
+    document.getElementById('at-early-bet-size').value=c.early_entry_bet_size||3;
+    document.getElementById('at-early-min-momentum').value=c.early_entry_min_momentum||0.10;
+    document.getElementById('at-early-window').value=c.early_entry_window||15;
+    document.getElementById('at-early-pre-monitor').value=c.early_entry_pre_monitor||120;
+    // Mostrar/ocultar params early entry
+    document.getElementById('early-entry-params').style.display=c.use_early_entry?'block':'none';
+    document.getElementById('at-use-early').onchange=function(){document.getElementById('early-entry-params').style.display=this.checked?'block':'none';};
     document.getElementById('at-coin-btc').checked=c.coins?.includes('BTC')!==false;
     document.getElementById('at-coin-eth').checked=c.coins?.includes('ETH')!==false;
     document.getElementById('at-coin-sol').checked=c.coins?.includes('SOL')!==false;
@@ -3580,6 +3746,13 @@ async function saveAutotradeConfig(){
         min_score:parseFloat(document.getElementById('at-min-score').value)||0,
         coins:coins,
         funder_address:(document.getElementById('at-funder-address').value||'').trim(),
+        use_score_strategy:document.getElementById('at-use-score').checked,
+        use_early_entry:document.getElementById('at-use-early').checked,
+        early_entry_enabled:document.getElementById('at-use-early').checked,
+        early_entry_bet_size:parseFloat(document.getElementById('at-early-bet-size').value)||3,
+        early_entry_min_momentum:parseFloat(document.getElementById('at-early-min-momentum').value)||0.10,
+        early_entry_window:parseInt(document.getElementById('at-early-window').value)||15,
+        early_entry_pre_monitor:parseInt(document.getElementById('at-early-pre-monitor').value)||120,
     };
     try{
         const data=await postJson('/api/crypto-arb/autotrade-config',body);

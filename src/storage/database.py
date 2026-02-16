@@ -261,6 +261,8 @@ class Database:
                 ALTER TABLE crypto_signals ADD COLUMN IF NOT EXISTS event_slug TEXT DEFAULT '';
                 -- Migración: agregar score_details JSONB para guardar score + indicadores
                 ALTER TABLE crypto_signals ADD COLUMN IF NOT EXISTS score_details JSONB DEFAULT '{}'::jsonb;
+                -- Migración: agregar strategy para diferenciar score vs early_entry
+                ALTER TABLE crypto_signals ADD COLUMN IF NOT EXISTS strategy TEXT DEFAULT 'score';
                 CREATE INDEX IF NOT EXISTS idx_crypto_signals_created
                     ON crypto_signals(created_at);
                 CREATE INDEX IF NOT EXISTS idx_crypto_signals_coin
@@ -296,6 +298,8 @@ class Database:
                     resolved_at     TIMESTAMPTZ,
                     created_at      TIMESTAMPTZ DEFAULT NOW()
                 );
+                -- Migración: agregar strategy para diferenciar score vs early_entry
+                ALTER TABLE autotrades ADD COLUMN IF NOT EXISTS strategy TEXT DEFAULT 'score';
                 CREATE INDEX IF NOT EXISTS idx_autotrades_created
                     ON autotrades(created_at);
                 CREATE INDEX IF NOT EXISTS idx_autotrades_resolved
@@ -1668,8 +1672,8 @@ class Database:
                 INSERT INTO crypto_signals
                 (coin, direction, spot_change_pct, poly_odds, fair_odds,
                  confidence, edge_pct, condition_id, market_question,
-                 spot_price, time_remaining_sec, paper_bet_size, event_slug, score_details)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                 spot_price, time_remaining_sec, paper_bet_size, event_slug, score_details, strategy)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
                 ON CONFLICT (condition_id) DO NOTHING
                 RETURNING id
             """,
@@ -1682,6 +1686,7 @@ class Database:
                 signal.get("paper_bet_size", 0),
                 signal.get("event_slug", ""),
                 json.dumps(signal.get("score_details", {})),
+                signal.get("strategy", "score"),
             )
             return row["id"] if row else 0
 
@@ -1782,8 +1787,8 @@ class Database:
                 INSERT INTO autotrades
                     (condition_id, order_id, coin, direction, side, price, size_usd,
                      shares, token_id, edge_pct, confidence, event_slug,
-                     order_type, status, error, user_id)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                     order_type, status, error, user_id, strategy)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
             """,
                 trade.get("condition_id", ""),
                 trade.get("order_id", ""),
@@ -1801,6 +1806,7 @@ class Database:
                 trade.get("status", "filled"),
                 trade.get("error"),
                 user_id,
+                trade.get("strategy", "score"),
             )
 
     async def resolve_autotrade(self, condition_id: str, result: str, pnl: float):

@@ -60,6 +60,7 @@ class AutoTrader:
                 "at_max_daily_loss", "at_max_daily_trades", "at_cooldown_sec",
                 "at_coins", "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
                 "at_funder_address", "at_min_score",
+                "at_use_score_strategy", "at_use_early_entry", "at_early_entry_bet_size",
                 # Stop-Loss / Take-Profit / Risk Management
                 "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
                 "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
@@ -91,6 +92,9 @@ class AutoTrader:
                 "trailing_stop_pct": float(raw.get("at_trailing_stop_pct", config.AT_TRAILING_STOP_PCT)),
                 "slippage_max_pct": float(raw.get("at_slippage_max_pct", config.AT_SLIPPAGE_MAX_PCT)),
                 "min_score": float(raw.get("at_min_score", 0)),
+                "use_score_strategy": raw.get("at_use_score_strategy", "true") == "true",
+                "use_early_entry": raw.get("at_use_early_entry", "false") == "true",
+                "early_entry_bet_size": float(raw.get("at_early_entry_bet_size", config.EARLY_ENTRY_BET_SIZE)),
             }
             self._enabled = self._config["enabled"]
 
@@ -111,8 +115,14 @@ class AutoTrader:
                 reason = " (sin credenciales)"
             min_sc = self._config.get('min_score', 0)
             score_info = f" score>={min_sc}" if min_sc > 0 else ""
+            strats = []
+            if self._config.get('use_score_strategy'): strats.append('score')
+            if self._config.get('use_early_entry'): strats.append('early')
+            strat_info = f" strategies={'+'.join(strats)}" if strats else ""
+            early_bet = self._config.get('early_entry_bet_size', 0)
+            early_info = f" early_bet=${early_bet}" if self._config.get('use_early_entry') else ""
             print(f"[AutoTrader] {status}{reason} | bet=${self._config['bet_size']} "
-                  f"edge>={self._config['min_edge']}% conf>={self._config['min_confidence']}%{score_info}",
+                  f"edge>={self._config['min_edge']}% conf>={self._config['min_confidence']}%{score_info}{strat_info}{early_info}",
                   flush=True)
         except Exception as e:
             print(f"[AutoTrader] Error inicializando: {e}", flush=True)
@@ -231,6 +241,13 @@ class AutoTrader:
 
         cfg = self._config
 
+        # Filtro: estrategia habilitada
+        strategy = signal.get("strategy", "score")
+        if strategy == "early_entry" and not cfg.get("use_early_entry", True):
+            return None
+        if strategy in ("score", "divergence") and not cfg.get("use_score_strategy", True):
+            return None
+
         # Filtro: moneda habilitada
         if signal.get("coin", "") not in cfg["coins"]:
             print(f"{tag} SKIP: coin '{coin}' not in {cfg['coins']}", flush=True)
@@ -311,13 +328,18 @@ class AutoTrader:
             print(f"{tag} SKIP: time remaining {remaining}s < 30s", flush=True)
             return None
 
-        print(f"{tag} PASS: edge={edge}% conf={confidence}% odds={poly_odds} remaining={remaining}s -> EXECUTING ${cfg['bet_size']}", flush=True)
+        # Bet size diferenciado por estrategia
+        bet_size = cfg["bet_size"]
+        if strategy == "early_entry":
+            bet_size = cfg.get("early_entry_bet_size", cfg["bet_size"])
+
+        print(f"{tag} PASS [{strategy}]: edge={edge}% conf={confidence}% odds={poly_odds} remaining={remaining}s -> EXECUTING ${bet_size}", flush=True)
 
         # v8.0: Bankroll check — no apostar más del % permitido
         if config.FEATURE_BANKROLL:
             from src.infra.bankroll import BankrollTracker
             bankroll = getattr(self, '_bankroll', None)
-            if bankroll and not bankroll.can_trade(cfg["bet_size"]):
+            if bankroll and not bankroll.can_trade(bet_size):
                 return None
 
         return {
@@ -328,12 +350,13 @@ class AutoTrader:
             "confidence": confidence,
             "poly_odds": poly_odds,
             "fair_odds": signal.get("fair_odds", 0),
-            "bet_size": cfg["bet_size"],
+            "bet_size": bet_size,
             "order_type": cfg["order_type"],
             "spot_price": signal.get("spot_price", 0),
             "event_slug": signal.get("event_slug", ""),
             "market_question": signal.get("market_question", ""),
             "time_remaining_sec": remaining,
+            "strategy": strategy,
         }
 
     # ── Ejecución de órdenes ──────────────────────────────────────────
@@ -523,6 +546,7 @@ class AutoTrader:
                     "confidence": trade_info["confidence"],
                     "event_slug": trade_info["event_slug"],
                     "order_type": trade_info["order_type"],
+                    "strategy": trade_info.get("strategy", "score"),
                     "status": "filled",
                     "created_ts": time.time(),
                 }
@@ -554,6 +578,7 @@ class AutoTrader:
                     "confidence": trade_info["confidence"],
                     "event_slug": trade_info["event_slug"],
                     "order_type": trade_info["order_type"],
+                    "strategy": trade_info.get("strategy", "score"),
                     "status": "rejected",
                     "error": error_msg,
                 })

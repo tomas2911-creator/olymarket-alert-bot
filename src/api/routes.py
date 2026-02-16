@@ -614,6 +614,33 @@ async def crypto_arb_signals(request: Request, limit: int = 100, coin: str = Non
         return []
 
 
+@router.get("/api/crypto-arb/watching")
+async def crypto_watching_markets(request: Request):
+    """Mercados en observación del early entry detector."""
+    bot = request.app.state.bot
+    if bot and getattr(bot, 'early_detector', None):
+        return bot.early_detector.get_watching_markets()
+    return []
+
+
+@router.get("/api/crypto-arb/live-signals")
+async def crypto_live_signals(request: Request, limit: int = 50):
+    """Señales en vivo combinando score + early entry detectors."""
+    bot = request.app.state.bot
+    signals = []
+    if bot and getattr(bot, 'crypto_detector', None):
+        signals = bot.crypto_detector.get_recent_signals(limit)
+    if bot and getattr(bot, 'early_detector', None):
+        early = bot.early_detector.get_recent_signals(limit)
+        existing_cids = {s["condition_id"] for s in signals}
+        for es in early:
+            if es["condition_id"] not in existing_cids:
+                signals.append(es)
+                existing_cids.add(es["condition_id"])
+    signals.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    return signals[:limit]
+
+
 @router.get("/api/crypto-arb/price-sum-arb")
 async def crypto_price_sum_arb(request: Request):
     """Detectar oportunidades de Price-Sum Arbitrage (YES+NO != $1)."""
@@ -693,12 +720,23 @@ async def reset_all_data(request: Request):
 
 @router.get("/api/crypto-arb/live")
 async def crypto_arb_live(request: Request):
-    """Señales en vivo y mercados activos del detector."""
+    """Señales en vivo y mercados activos — merge score + early entry."""
     bot = request.app.state.bot
     if not bot or not hasattr(bot, "crypto_detector") or not bot.crypto_detector:
         return {"signals": [], "markets": [], "enabled": False}
+    signals = bot.crypto_detector.get_recent_signals(50)
+    # Merge señales early entry
+    if getattr(bot, 'early_detector', None):
+        early = bot.early_detector.get_recent_signals(50)
+        if early:
+            existing_cids = {s["condition_id"] for s in signals}
+            for es in early:
+                if es["condition_id"] not in existing_cids:
+                    signals.append(es)
+                    existing_cids.add(es["condition_id"])
+    signals.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
     return {
-        "signals": bot.crypto_detector.get_recent_signals(50),
+        "signals": signals[:100],
         "markets": bot.crypto_detector.get_active_markets(),
         "enabled": True,
     }
@@ -881,6 +919,9 @@ async def get_autotrade_config(request: Request):
         "at_max_daily_loss", "at_max_daily_trades", "at_cooldown_sec",
         "at_coins", "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
         "at_funder_address", "at_min_score",
+        "at_use_score_strategy", "at_use_early_entry", "at_early_entry_bet_size",
+        "at_early_entry_enabled", "at_early_entry_pre_monitor",
+        "at_early_entry_window", "at_early_entry_min_momentum",
         "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
         "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
         "at_slippage_max_pct",
@@ -933,6 +974,13 @@ async def get_autotrade_config(request: Request):
         "funder_address": raw.get("at_funder_address", ""),
         "funder_address_set": bool(raw.get("at_funder_address")),
         "min_score": float(raw.get("at_min_score", 0)),
+        "use_score_strategy": raw.get("at_use_score_strategy", "true") == "true",
+        "use_early_entry": raw.get("at_use_early_entry", "false") == "true",
+        "early_entry_bet_size": float(raw.get("at_early_entry_bet_size", 3)),
+        "early_entry_enabled": raw.get("at_early_entry_enabled") == "true",
+        "early_entry_pre_monitor": int(raw.get("at_early_entry_pre_monitor", 120)),
+        "early_entry_window": int(raw.get("at_early_entry_window", 15)),
+        "early_entry_min_momentum": float(raw.get("at_early_entry_min_momentum", 0.10)),
     }
 
 
@@ -992,6 +1040,22 @@ async def save_autotrade_config(request: Request):
         data["at_slippage_max_pct"] = str(body["slippage_max_pct"])
     if "min_score" in body:
         data["at_min_score"] = str(body["min_score"])
+    # Strategy selection
+    if "use_score_strategy" in body:
+        data["at_use_score_strategy"] = "true" if body["use_score_strategy"] else "false"
+    if "use_early_entry" in body:
+        data["at_use_early_entry"] = "true" if body["use_early_entry"] else "false"
+    if "early_entry_bet_size" in body:
+        data["at_early_entry_bet_size"] = str(body["early_entry_bet_size"])
+    # Early Entry detector config
+    if "early_entry_enabled" in body:
+        data["at_early_entry_enabled"] = "true" if body["early_entry_enabled"] else "false"
+    if "early_entry_pre_monitor" in body:
+        data["at_early_entry_pre_monitor"] = str(body["early_entry_pre_monitor"])
+    if "early_entry_window" in body:
+        data["at_early_entry_window"] = str(body["early_entry_window"])
+    if "early_entry_min_momentum" in body:
+        data["at_early_entry_min_momentum"] = str(body["early_entry_min_momentum"])
     if data:
         await db.set_config_bulk(data, user_id=uid)
     # Recargar config en el autotrader
@@ -999,6 +1063,13 @@ async def save_autotrade_config(request: Request):
     if autotrader:
         try:
             await autotrader.reload_config(user_id=uid)
+        except Exception:
+            pass
+    # Recargar config en el early detector
+    bot = getattr(request.app.state, 'bot', None)
+    if bot and getattr(bot, 'early_detector', None):
+        try:
+            await bot._configure_early_detector()
         except Exception:
             pass
     return {"status": "ok"}

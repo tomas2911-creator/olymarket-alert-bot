@@ -171,6 +171,13 @@ CRYPTO_ARB_MIN_SCORE = _crypto.get("min_score", 0.40)
 CRYPTO_ARB_ENTRY_MAX_TIME = _crypto.get("entry_max_time_sec", 180)
 CRYPTO_ARB_MIN_DISTANCE_ATR = _crypto.get("min_distance_atr", 0.3)
 CRYPTO_ARB_MIN_TREND_CONSISTENCY = _crypto.get("min_trend_consistency", 0.55)
+# Params Early Entry strategy
+_early = _crypto.get("early_entry", {})
+FEATURE_EARLY_ENTRY = _features.get("early_entry", False)
+EARLY_ENTRY_PRE_MONITOR_SEC = _early.get("pre_monitor_sec", 120)
+EARLY_ENTRY_WINDOW_SEC = _early.get("entry_window_sec", 15)
+EARLY_ENTRY_MIN_MOMENTUM_PCT = _early.get("min_momentum_pct", 0.10)
+EARLY_ENTRY_BET_SIZE = _early.get("bet_size", 3)
 
 # === Nuevas Features v8.0 ===
 
