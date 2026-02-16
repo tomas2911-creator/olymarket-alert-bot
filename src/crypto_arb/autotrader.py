@@ -641,41 +641,69 @@ class AutoTrader:
                 return None
 
         import httpx
-        total_balance = 0.0
+        eoa_balance = 0.0
 
-        # ── 1. Saldo en EOA: USDC directo en wallet (ambos contratos) ──
-        rpc_endpoints = [
-            "https://polygon-rpc.com",
-            "https://rpc.ankr.com/polygon",
-            "https://polygon-bor-rpc.publicnode.com",
-        ]
-        addr_padded = wallet_address.lower().replace("0x", "").zfill(64)
-
-        for rpc_url in rpc_endpoints:
-            try:
-                async with httpx.AsyncClient(timeout=8) as client:
-                    for contract in USDC_CONTRACTS:
-                        payload = {
-                            "jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                            "params": [{
-                                "to": contract,
-                                "data": f"0x70a08231000000000000000000000000{addr_padded}"
-                            }, "latest"]
-                        }
-                        resp = await client.post(rpc_url, json=payload)
+        # ── 1. Polygonscan API (más confiable desde Railway) ──
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                for contract in USDC_CONTRACTS:
+                    try:
+                        resp = await client.get(
+                            "https://api.polygonscan.com/api",
+                            params={
+                                "module": "account",
+                                "action": "tokenbalance",
+                                "contractaddress": contract,
+                                "address": wallet_address,
+                                "tag": "latest",
+                            },
+                        )
                         if resp.status_code == 200:
-                            result = resp.json().get("result", "0x0")
-                            if result and result != "0x":
-                                raw = int(result, 16)
-                                total_balance += raw / 1e6
-                if total_balance > 0:
-                    break  # Ya obtuvimos datos, no seguir con otros RPCs
-            except Exception as e:
-                print(f"[AutoTrader] RPC {rpc_url} error: {e}", flush=True)
-                continue
+                            data = resp.json()
+                            if data.get("status") == "1" and data.get("result"):
+                                raw = int(data["result"])
+                                bal = raw / 1e6
+                                eoa_balance += bal
+                                if bal > 0:
+                                    print(f"[AutoTrader] USDC {contract[:10]}...: ${bal:.2f}", flush=True)
+                    except Exception as e:
+                        print(f"[AutoTrader] Polygonscan error {contract[:10]}: {e}", flush=True)
+        except Exception as e:
+            print(f"[AutoTrader] Polygonscan request error: {e}", flush=True)
 
-        # ── 2. Saldo en Polymarket (proxy wallet / CTF Exchange) ──
-        # Los fondos depositados en Polymarket no están en la EOA
+        # ── 2. Fallback: RPC directo si Polygonscan no devolvió nada ──
+        if eoa_balance == 0:
+            rpc_endpoints = [
+                "https://polygon-rpc.com",
+                "https://rpc.ankr.com/polygon",
+                "https://polygon-bor-rpc.publicnode.com",
+            ]
+            addr_padded = wallet_address.lower().replace("0x", "").zfill(64)
+            for rpc_url in rpc_endpoints:
+                try:
+                    async with httpx.AsyncClient(timeout=8) as client:
+                        for contract in USDC_CONTRACTS:
+                            payload = {
+                                "jsonrpc": "2.0", "id": 1, "method": "eth_call",
+                                "params": [{
+                                    "to": contract,
+                                    "data": f"0x70a08231000000000000000000000000{addr_padded}"
+                                }, "latest"]
+                            }
+                            resp = await client.post(rpc_url, json=payload)
+                            if resp.status_code == 200:
+                                result = resp.json().get("result", "0x0")
+                                if result and result != "0x":
+                                    eoa_balance += int(result, 16) / 1e6
+                    if eoa_balance > 0:
+                        break
+                except Exception as e:
+                    print(f"[AutoTrader] RPC {rpc_url} error: {e}", flush=True)
+                    continue
+
+        total_balance = eoa_balance
+
+        # ── 3. Saldo en Polymarket (proxy wallet / CTF Exchange) ──
         if self._client:
             try:
                 from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
@@ -684,17 +712,21 @@ class AutoTrader:
                 ba = await loop.run_in_executor(
                     None, self._client.get_balance_allowance, params
                 )
+                poly_balance = 0.0
                 if ba and hasattr(ba, "balance"):
-                    poly_balance = float(ba.balance) / 1e6  # USDC 6 decimales
+                    raw_bal = float(ba.balance)
+                    # Si el balance es muy grande, está en raw units (6 decimales)
+                    poly_balance = raw_bal / 1e6 if raw_bal > 1_000 else raw_bal
+                elif isinstance(ba, dict) and "balance" in ba:
+                    raw_bal = float(ba["balance"])
+                    poly_balance = raw_bal / 1e6 if raw_bal > 1_000 else raw_bal
+                if poly_balance > 0:
                     total_balance += poly_balance
                     print(f"[AutoTrader] Balance Polymarket: ${poly_balance:.2f}", flush=True)
-                elif isinstance(ba, dict) and "balance" in ba:
-                    poly_balance = float(ba["balance"]) / 1e6
-                    total_balance += poly_balance
             except Exception as e:
                 print(f"[AutoTrader] CLOB balance error: {e}", flush=True)
 
-        print(f"[AutoTrader] Balance total USDC: ${total_balance:.2f} (wallet={wallet_address[:10]}...)", flush=True)
+        print(f"[AutoTrader] Balance total: ${total_balance:.2f} (EOA=${eoa_balance:.2f}) wallet={wallet_address}", flush=True)
         return round(total_balance, 2)
 
     async def test_connection(self) -> dict:
