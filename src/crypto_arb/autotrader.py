@@ -627,7 +627,7 @@ class AutoTrader:
         }
 
     async def get_usdc_balance(self, wallet_address: str = "") -> Optional[float]:
-        """Consultar saldo USDC real en Polygon via RPC (USDC.e + USDC nativo)."""
+        """Consultar saldo USDC real en Polygon (EOA + Polymarket proxy)."""
         if not wallet_address:
             pk = self._config.get("private_key", "")
             if not pk:
@@ -640,36 +640,62 @@ class AutoTrader:
             except Exception:
                 return None
 
-        try:
-            import httpx
-            # balanceOf(address) selector = 0x70a08231
-            addr_padded = wallet_address.lower().replace("0x", "").zfill(64)
-            total_balance = 0.0
+        import httpx
+        total_balance = 0.0
 
-            async with httpx.AsyncClient(timeout=10) as client:
-                for contract in USDC_CONTRACTS:
-                    try:
+        # ── 1. Saldo en EOA: USDC directo en wallet (ambos contratos) ──
+        rpc_endpoints = [
+            "https://polygon-rpc.com",
+            "https://rpc.ankr.com/polygon",
+            "https://polygon-bor-rpc.publicnode.com",
+        ]
+        addr_padded = wallet_address.lower().replace("0x", "").zfill(64)
+
+        for rpc_url in rpc_endpoints:
+            try:
+                async with httpx.AsyncClient(timeout=8) as client:
+                    for contract in USDC_CONTRACTS:
                         payload = {
-                            "jsonrpc": "2.0",
-                            "id": 1,
-                            "method": "eth_call",
+                            "jsonrpc": "2.0", "id": 1, "method": "eth_call",
                             "params": [{
                                 "to": contract,
                                 "data": f"0x70a08231000000000000000000000000{addr_padded}"
                             }, "latest"]
                         }
-                        resp = await client.post(POLYGON_RPC, json=payload)
+                        resp = await client.post(rpc_url, json=payload)
                         if resp.status_code == 200:
                             result = resp.json().get("result", "0x0")
-                            raw_balance = int(result, 16)
-                            total_balance += raw_balance / 1e6  # USDC = 6 decimales
-                    except Exception:
-                        pass
+                            if result and result != "0x":
+                                raw = int(result, 16)
+                                total_balance += raw / 1e6
+                if total_balance > 0:
+                    break  # Ya obtuvimos datos, no seguir con otros RPCs
+            except Exception as e:
+                print(f"[AutoTrader] RPC {rpc_url} error: {e}", flush=True)
+                continue
 
-            return round(total_balance, 2) if total_balance > 0 else 0.0
-        except Exception as e:
-            print(f"[AutoTrader] Error consultando balance USDC: {e}", flush=True)
-            return None
+        # ── 2. Saldo en Polymarket (proxy wallet / CTF Exchange) ──
+        # Los fondos depositados en Polymarket no están en la EOA
+        if self._client:
+            try:
+                from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+                loop = asyncio.get_running_loop()
+                params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+                ba = await loop.run_in_executor(
+                    None, self._client.get_balance_allowance, params
+                )
+                if ba and hasattr(ba, "balance"):
+                    poly_balance = float(ba.balance) / 1e6  # USDC 6 decimales
+                    total_balance += poly_balance
+                    print(f"[AutoTrader] Balance Polymarket: ${poly_balance:.2f}", flush=True)
+                elif isinstance(ba, dict) and "balance" in ba:
+                    poly_balance = float(ba["balance"]) / 1e6
+                    total_balance += poly_balance
+            except Exception as e:
+                print(f"[AutoTrader] CLOB balance error: {e}", flush=True)
+
+        print(f"[AutoTrader] Balance total USDC: ${total_balance:.2f} (wallet={wallet_address[:10]}...)", flush=True)
+        return round(total_balance, 2)
 
     async def test_connection(self) -> dict:
         """Probar conexión al CLOB con las credenciales actuales."""

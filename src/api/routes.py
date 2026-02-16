@@ -1137,19 +1137,28 @@ async def test_autotrade_connection(request: Request):
         wallet_addr = _derive_wallet_address(raw.get("at_private_key", ""))
         if wallet_addr:
             try:
-                from src.crypto_arb.autotrader import USDC_CONTRACTS, POLYGON_RPC
+                from src.crypto_arb.autotrader import USDC_CONTRACTS
+                rpc_list = ["https://polygon-rpc.com", "https://rpc.ankr.com/polygon", "https://polygon-bor-rpc.publicnode.com"]
                 addr_padded = wallet_addr.lower().replace("0x", "").zfill(64)
-                async with httpx.AsyncClient(timeout=10) as client:
-                    total = 0.0
-                    for contract in USDC_CONTRACTS:
-                        payload = {
-                            "jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                            "params": [{"to": contract, "data": f"0x70a08231000000000000000000000000{addr_padded}"}, "latest"]
-                        }
-                        r = await client.post(POLYGON_RPC, json=payload)
-                        if r.status_code == 200:
-                            total += int(r.json().get("result", "0x0"), 16) / 1e6
-                    balance = round(total, 2)
+                total = 0.0
+                for rpc_url in rpc_list:
+                    try:
+                        async with httpx.AsyncClient(timeout=8) as c2:
+                            for contract in USDC_CONTRACTS:
+                                payload = {
+                                    "jsonrpc": "2.0", "id": 1, "method": "eth_call",
+                                    "params": [{"to": contract, "data": f"0x70a08231000000000000000000000000{addr_padded}"}, "latest"]
+                                }
+                                r = await c2.post(rpc_url, json=payload)
+                                if r.status_code == 200:
+                                    res = r.json().get("result", "0x0")
+                                    if res and res != "0x":
+                                        total += int(res, 16) / 1e6
+                        if total > 0:
+                            break
+                    except Exception:
+                        continue
+                balance = round(total, 2)
             except Exception:
                 pass
         return {"connected": True, "balance": balance, "note": "Conexión al CLOB exitosa."}
