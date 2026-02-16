@@ -86,14 +86,7 @@ async def register(request: Request):
     result = await db.create_user(username, password, email, display_name)
     if "error" in result:
         return {"status": "error", "error": result["error"]}
-    # Copiar alertas existentes del admin para que el usuario nuevo vea data histórica
-    new_uid = result["id"]
-    if new_uid != 1:
-        try:
-            await db.copy_alerts_to_new_user(new_uid)
-        except Exception:
-            pass
-    token = await db.create_session(new_uid)
+    token = await db.create_session(result["id"])
     return {"status": "ok", "user": result, "token": token}
 
 
