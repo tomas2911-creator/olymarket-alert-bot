@@ -182,7 +182,7 @@ CORRELATION_MAX_EXPOSURE = _corr.get("max_exposure_pct", 25)  # máx % del bankr
 
 # -- Multi-Timeframe (Crypto Arb) --
 _mtf = _yaml.get("multi_timeframe", {})
-FEATURE_MULTI_TIMEFRAME = _features.get("multi_timeframe", False)
+FEATURE_MULTI_TIMEFRAME = _features.get("multi_timeframe", True)
 MTF_WINDOWS = _mtf.get("windows_sec", [30, 60, 180, 300])  # ventanas en segundos
 MTF_MIN_AGREEMENT = _mtf.get("min_agreement", 3)  # mín timeframes que deben coincidir
 MTF_BOOST_POINTS = _mtf.get("boost_points", 15)  # puntos extra si todos coinciden
@@ -204,7 +204,7 @@ RSI_BOOST_PCT = _rsi.get("boost_pct", 10)  # % boost al score si RSI confirma di
 
 # -- MACD Indicator (Crypto Arb) --
 _macd = _yaml.get("macd", {})
-FEATURE_MACD = _features.get("macd", False)
+FEATURE_MACD = _features.get("macd", True)
 MACD_FAST = _macd.get("fast", 12)
 MACD_SLOW = _macd.get("slow", 26)
 MACD_SIGNAL = _macd.get("signal", 9)
@@ -223,7 +223,7 @@ AT_SLIPPAGE_MAX_PCT = _at_risk.get("slippage_max_pct", 3.0)  # máx spread para 
 
 # -- Order Book Depth Crypto (Crypto Arb) --
 _obd_crypto = _yaml.get("orderbook_crypto", {})
-FEATURE_ORDERBOOK_CRYPTO = _features.get("orderbook_crypto", False)
+FEATURE_ORDERBOOK_CRYPTO = _features.get("orderbook_crypto", True)
 ORDERBOOK_CRYPTO_MIN_DEPTH = _obd_crypto.get("min_depth_usd", 500)  # liquidez mín en USD
 ORDERBOOK_CRYPTO_MAX_IMPACT_PCT = _obd_crypto.get("max_impact_pct", 2.0)  # máx impacto en precio
 

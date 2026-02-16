@@ -309,8 +309,14 @@ class BinanceFeed:
 
     async def start(self):
         """Iniciar feed. Intenta WebSocket con timeout, fallback a polling HTTP."""
+        from src import config
         self._running = True
         print(f"[BinanceFeed] Iniciando feed para {self.pairs}", flush=True)
+        # Si WebSocket está desactivado, ir directo a polling
+        if not config.FEATURE_WEBSOCKET:
+            print("[BinanceFeed] WebSocket desactivado por config, usando HTTP polling", flush=True)
+            await self._run_polling()
+            return
         # Intentar WebSocket con timeout de 15s para recibir primer dato
         try:
             ws_task = asyncio.create_task(self._run_websocket())
