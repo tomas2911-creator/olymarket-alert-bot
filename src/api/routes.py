@@ -214,16 +214,21 @@ async def get_alerts(request: Request, limit: int = 50):
 
 @router.delete("/api/alerts")
 async def delete_alerts(request: Request, older_than_hours: int = 24):
-    """Borrar alertas más viejas que N horas (solo del usuario actual)."""
+    """Borrar alertas más viejas que N horas (0 = borrar todas)."""
     db = request.app.state.db
     uid = await get_user_id(request)
     try:
-        from datetime import timedelta
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
         async with db._pool.acquire() as conn:
-            result = await conn.execute(
-                "DELETE FROM alerts WHERE created_at < $1 AND user_id = $2", cutoff, uid
-            )
+            if older_than_hours <= 0:
+                result = await conn.execute(
+                    "DELETE FROM alerts WHERE user_id = $1", uid
+                )
+            else:
+                from datetime import timedelta
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
+                result = await conn.execute(
+                    "DELETE FROM alerts WHERE created_at < $1 AND user_id = $2", cutoff, uid
+                )
             deleted = int(result.split(" ")[-1]) if result else 0
         return {"status": "ok", "deleted": deleted, "older_than_hours": older_than_hours}
     except Exception as e:

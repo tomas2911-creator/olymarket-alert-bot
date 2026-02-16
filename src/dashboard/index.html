@@ -586,6 +586,7 @@
                 </select>
                 <div class="ml-auto flex gap-1 items-center">
                     <select id="alert-clean-hours" class="bg-gray-800/50 rounded px-2 py-1.5 text-xs text-gray-300">
+                        <option value="0">Borrar Todo</option>
                         <option value="6">+6h</option>
                         <option value="24" selected>+24h</option>
                         <option value="72">+3 días</option>
@@ -2665,8 +2666,9 @@ let alertsPage=0, alertsPerPage=25, alertsFiltered=[];
 let alertsSortCol='fecha', alertsSortDir='desc';
 async function cleanAlerts(){
     const hours=document.getElementById('alert-clean-hours').value;
-    const labels={'6':'6 horas','24':'24 horas','72':'3 días','168':'7 días','720':'30 días'};
-    if(!confirm(`¿Borrar alertas más viejas de ${labels[hours]||hours+'h'}?`))return;
+    const labels={'0':'TODAS las alertas','6':'6 horas','24':'24 horas','72':'3 días','168':'7 días','720':'30 días'};
+    const msg=hours==='0'?'¿Borrar TODAS las alertas?':`¿Borrar alertas más viejas de ${labels[hours]||hours+'h'}?`;
+    if(!confirm(msg))return;
     try{
         const r=await fetch(`/api/alerts?older_than_hours=${hours}`,{method:'DELETE',headers:authHeaders()});
         const data=await r.json();
