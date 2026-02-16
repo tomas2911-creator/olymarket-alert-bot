@@ -126,7 +126,7 @@ class AutoTrader:
                 CLOB_HOST,
                 key=pk,
                 chain_id=CHAIN_ID,
-                signature_type=2,
+                signature_type=1,  # POLY_PROXY (proxy wallet de Polymarket)
                 creds=creds,
             )
             print("[AutoTrader] Cliente CLOB inicializado OK", flush=True)
