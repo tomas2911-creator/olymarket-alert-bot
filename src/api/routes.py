@@ -1132,36 +1132,36 @@ async def test_autotrade_connection(request: Request):
             resp = await client.get("https://clob.polymarket.com/time")
             if resp.status_code != 200:
                 return {"connected": False, "error": f"CLOB respondió con status {resp.status_code}"}
-        # Consultar saldo USDC real
+        # Consultar saldo USDC real via Polygonscan API
         balance = None
         wallet_addr = _derive_wallet_address(raw.get("at_private_key", ""))
         if wallet_addr:
             try:
                 from src.crypto_arb.autotrader import USDC_CONTRACTS
-                rpc_list = ["https://polygon-rpc.com", "https://rpc.ankr.com/polygon", "https://polygon-bor-rpc.publicnode.com"]
-                addr_padded = wallet_addr.lower().replace("0x", "").zfill(64)
                 total = 0.0
-                for rpc_url in rpc_list:
-                    try:
-                        async with httpx.AsyncClient(timeout=8) as c2:
-                            for contract in USDC_CONTRACTS:
-                                payload = {
-                                    "jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                                    "params": [{"to": contract, "data": f"0x70a08231000000000000000000000000{addr_padded}"}, "latest"]
-                                }
-                                r = await c2.post(rpc_url, json=payload)
-                                if r.status_code == 200:
-                                    res = r.json().get("result", "0x0")
-                                    if res and res != "0x":
-                                        total += int(res, 16) / 1e6
-                        if total > 0:
-                            break
-                    except Exception:
-                        continue
+                async with httpx.AsyncClient(timeout=10) as c2:
+                    for contract in USDC_CONTRACTS:
+                        try:
+                            r = await c2.get(
+                                "https://api.polygonscan.com/api",
+                                params={
+                                    "module": "account",
+                                    "action": "tokenbalance",
+                                    "contractaddress": contract,
+                                    "address": wallet_addr,
+                                    "tag": "latest",
+                                },
+                            )
+                            if r.status_code == 200:
+                                data = r.json()
+                                if data.get("status") == "1" and data.get("result"):
+                                    total += int(data["result"]) / 1e6
+                        except Exception:
+                            pass
                 balance = round(total, 2)
             except Exception:
                 pass
-        return {"connected": True, "balance": balance, "note": "Conexión al CLOB exitosa."}
+        return {"connected": True, "balance": balance, "wallet": wallet_addr, "note": "Conexión al CLOB exitosa."}
     except Exception as e:
         return {"connected": False, "error": str(e)}
 
