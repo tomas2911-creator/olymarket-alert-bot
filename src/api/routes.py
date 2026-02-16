@@ -651,7 +651,7 @@ async def delete_crypto_signals(request: Request, older_than_hours: int = 24):
         return {"status": "error", "error": str(e)}
 
 
-@router.delete("/api/crypto-arb/autotrades/reset")
+@router.post("/api/crypto-arb/autotrades/reset")
 async def reset_autotrades(request: Request):
     """Borrar TODOS los autotrades del usuario y resetear estado del autotrader."""
     db = request.app.state.db

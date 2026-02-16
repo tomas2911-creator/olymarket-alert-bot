@@ -3654,7 +3654,7 @@ async function resetAutotradeData(){
     const st=document.getElementById('at-save-status');
     st.textContent='Reseteando...';st.className='text-xs text-yellow-400 self-center';st.classList.remove('hidden');
     try{
-        const r=await fetch('/api/crypto-arb/autotrades/reset',{method:'DELETE',headers:authHeaders()});
+        const r=await fetch('/api/crypto-arb/autotrades/reset',{method:'POST',headers:authHeaders()});
         const data=await r.json();
         if(data.status==='ok'){
             st.textContent=`✅ ${data.message}`;st.className='text-xs text-green-400 self-center';
