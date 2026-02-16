@@ -976,6 +976,10 @@
                                     <option value="market">Market (FOK)</option>
                                 </select>
                             </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Slippage Max (%)</label>
+                                <input type="number" id="at-slippage" value="3" min="1" max="15" step="0.5" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                            </div>
                         </div>
                     </div>
 
@@ -3508,6 +3512,7 @@ async function loadAutotradeConfig(){
     document.getElementById('at-max-daily-loss').value=c.max_daily_loss||50;
     document.getElementById('at-max-daily-trades').value=c.max_daily_trades||20;
     document.getElementById('at-cooldown').value=c.cooldown_sec||30;
+    document.getElementById('at-slippage').value=c.slippage_max_pct||3;
     document.getElementById('at-funder-address').value=c.funder_address||'';
     document.getElementById('at-coin-btc').checked=c.coins?.includes('BTC')!==false;
     document.getElementById('at-coin-eth').checked=c.coins?.includes('ETH')!==false;
@@ -3555,6 +3560,7 @@ async function saveAutotradeConfig(){
         max_daily_loss:parseFloat(document.getElementById('at-max-daily-loss').value)||50,
         max_daily_trades:parseInt(document.getElementById('at-max-daily-trades').value)||20,
         cooldown_sec:parseInt(document.getElementById('at-cooldown').value)||30,
+        slippage_max_pct:parseFloat(document.getElementById('at-slippage').value)||3,
         coins:coins,
         funder_address:(document.getElementById('at-funder-address').value||'').trim(),
     };

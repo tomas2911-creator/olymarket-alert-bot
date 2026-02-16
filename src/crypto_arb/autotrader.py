@@ -333,7 +333,8 @@ class AutoTrader:
             # El price en FOK BUY es el MÁXIMO que estamos dispuestos a pagar
             is_fok = trade_info["order_type"] == "market"
             if is_fok:
-                slippage = 0.03  # 3 centavos de margen
+                slippage_pct = self._config.get("slippage_max_pct", 3.0)
+                slippage = round(slippage_pct / 100, 2)  # ej: 3% → 0.03
                 order_price = min(round(price + slippage, 2), 0.99)
             else:
                 order_price = price
@@ -356,7 +357,7 @@ class AutoTrader:
             if shares <= 0:
                 return {"success": False, "error": f"No se pudo calcular shares válidas para price={order_price} bet={bet_size}"}
 
-            print(f"[AutoTrader] Order: price={order_price} shares={shares} usdc={round(shares*order_price,2)} type={trade_info['order_type']}{' (slippage +3c)' if is_fok else ''}", flush=True)
+            print(f"[AutoTrader] Order: price={order_price} shares={shares} usdc={round(shares*order_price,2)} type={trade_info['order_type']}{f' (slippage +{slippage_pct}%)' if is_fok else ''}", flush=True)
 
             # Crear y enviar orden
             from py_clob_client.clob_types import OrderArgs, OrderType
