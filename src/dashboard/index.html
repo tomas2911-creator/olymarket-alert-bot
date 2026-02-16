@@ -982,6 +982,11 @@
                                 <label class="text-xs text-gray-400 block mb-1">Slippage Max (%)</label>
                                 <input type="number" id="at-slippage" value="3" min="1" max="15" step="0.5" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
                             </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-1">Min Score</label>
+                                <input type="number" id="at-min-score" value="0" min="0" max="20" step="0.1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300">
+                                <p class="text-[10px] text-gray-500 mt-0.5">0 = sin filtro. Recomendado: 0.5-1.0</p>
+                            </div>
                         </div>
                     </div>
 
@@ -3523,6 +3528,7 @@ async function loadAutotradeConfig(){
     document.getElementById('at-max-daily-trades').value=c.max_daily_trades||20;
     document.getElementById('at-cooldown').value=c.cooldown_sec||30;
     document.getElementById('at-slippage').value=c.slippage_max_pct||3;
+    document.getElementById('at-min-score').value=c.min_score||0;
     document.getElementById('at-funder-address').value=c.funder_address||'';
     document.getElementById('at-coin-btc').checked=c.coins?.includes('BTC')!==false;
     document.getElementById('at-coin-eth').checked=c.coins?.includes('ETH')!==false;
@@ -3571,6 +3577,7 @@ async function saveAutotradeConfig(){
         max_daily_trades:parseInt(document.getElementById('at-max-daily-trades').value)||20,
         cooldown_sec:parseInt(document.getElementById('at-cooldown').value)||30,
         slippage_max_pct:parseFloat(document.getElementById('at-slippage').value)||3,
+        min_score:parseFloat(document.getElementById('at-min-score').value)||0,
         coins:coins,
         funder_address:(document.getElementById('at-funder-address').value||'').trim(),
     };

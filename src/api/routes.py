@@ -880,7 +880,7 @@ async def get_autotrade_config(request: Request):
         "at_max_odds", "at_max_positions", "at_order_type",
         "at_max_daily_loss", "at_max_daily_trades", "at_cooldown_sec",
         "at_coins", "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
-        "at_funder_address",
+        "at_funder_address", "at_min_score",
         "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
         "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
         "at_slippage_max_pct",
@@ -932,6 +932,7 @@ async def get_autotrade_config(request: Request):
         "slippage_max_pct": float(raw.get("at_slippage_max_pct", 3.0)),
         "funder_address": raw.get("at_funder_address", ""),
         "funder_address_set": bool(raw.get("at_funder_address")),
+        "min_score": float(raw.get("at_min_score", 0)),
     }
 
 
@@ -989,6 +990,8 @@ async def save_autotrade_config(request: Request):
         data["at_trailing_stop_pct"] = str(body["trailing_stop_pct"])
     if "slippage_max_pct" in body:
         data["at_slippage_max_pct"] = str(body["slippage_max_pct"])
+    if "min_score" in body:
+        data["at_min_score"] = str(body["min_score"])
     if data:
         await db.set_config_bulk(data, user_id=uid)
     # Recargar config en el autotrader

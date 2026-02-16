@@ -59,7 +59,7 @@ class AutoTrader:
                 "at_max_odds", "at_max_positions", "at_order_type",
                 "at_max_daily_loss", "at_max_daily_trades", "at_cooldown_sec",
                 "at_coins", "at_api_key", "at_api_secret", "at_private_key", "at_passphrase",
-                "at_funder_address",
+                "at_funder_address", "at_min_score",
                 # Stop-Loss / Take-Profit / Risk Management
                 "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
                 "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
@@ -90,6 +90,7 @@ class AutoTrader:
                 "trailing_stop_enabled": raw.get("at_trailing_stop_enabled") == "true",
                 "trailing_stop_pct": float(raw.get("at_trailing_stop_pct", config.AT_TRAILING_STOP_PCT)),
                 "slippage_max_pct": float(raw.get("at_slippage_max_pct", config.AT_SLIPPAGE_MAX_PCT)),
+                "min_score": float(raw.get("at_min_score", 0)),
             }
             self._enabled = self._config["enabled"]
 
@@ -108,8 +109,10 @@ class AutoTrader:
             reason = ""
             if self._enabled and not self._client:
                 reason = " (sin credenciales)"
+            min_sc = self._config.get('min_score', 0)
+            score_info = f" score>={min_sc}" if min_sc > 0 else ""
             print(f"[AutoTrader] {status}{reason} | bet=${self._config['bet_size']} "
-                  f"edge>={self._config['min_edge']}% conf>={self._config['min_confidence']}%",
+                  f"edge>={self._config['min_edge']}% conf>={self._config['min_confidence']}%{score_info}",
                   flush=True)
         except Exception as e:
             print(f"[AutoTrader] Error inicializando: {e}", flush=True)
@@ -231,6 +234,13 @@ class AutoTrader:
         # Filtro: moneda habilitada
         if signal.get("coin", "") not in cfg["coins"]:
             print(f"{tag} SKIP: coin '{coin}' not in {cfg['coins']}", flush=True)
+            return None
+
+        # Filtro: score mínimo (0 = desactivado)
+        score_details = signal.get("score_details", {})
+        signal_score = score_details.get("score", 0) if isinstance(score_details, dict) else 0
+        if cfg.get("min_score", 0) > 0 and signal_score < cfg["min_score"]:
+            print(f"{tag} SKIP: score {signal_score:.2f} < min {cfg['min_score']}", flush=True)
             return None
 
         # Filtro: edge mínimo
