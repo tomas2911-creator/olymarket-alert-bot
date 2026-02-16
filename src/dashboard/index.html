@@ -3251,8 +3251,8 @@ function render_cl(){
         const cierreClass=s.time_remaining_sec>0?'text-gray-400':'text-yellow-500';
         const sd=s.score_details||{};
         const scoreVal=(sd.score||0).toFixed(2);
-        const scoreColor=(sd.score||0)>=0.7?'text-green-400':(sd.score||0)>=0.5?'text-yellow-400':'text-orange-400';
-        const indBadges=[sd.vwap_aligned?'<span class="px-1 rounded bg-blue-900/50 text-blue-300" style="font-size:9px">VWAP</span>':'',sd.rsi_aligned?'<span class="px-1 rounded bg-purple-900/50 text-purple-300" style="font-size:9px">RSI</span>':'',sd.macd_aligned?'<span class="px-1 rounded bg-cyan-900/50 text-cyan-300" style="font-size:9px">MACD</span>':''].filter(x=>x).join(' ');
+        const scoreColor=(sd.score||0)>=1.0?'text-green-400':(sd.score||0)>=0.5?'text-yellow-400':'text-orange-400';
+        const indBadges=`<span class="px-1 rounded ${sd.vwap_aligned?'bg-blue-900/60 text-blue-300':'bg-gray-800/40 text-gray-600'}" style="font-size:9px" title="VWAP ${sd.vwap_aligned?'✓':'✗'}">V</span> <span class="px-1 rounded ${sd.rsi_aligned?'bg-purple-900/60 text-purple-300':'bg-gray-800/40 text-gray-600'}" style="font-size:9px" title="RSI ${sd.rsi_aligned?'✓':'✗'}">R</span> <span class="px-1 rounded ${sd.macd_aligned?'bg-cyan-900/60 text-cyan-300':'bg-gray-800/40 text-gray-600'}" style="font-size:9px" title="MACD ${sd.macd_aligned?'✓':'✗'}">M</span>`;
         return`<tr class="${rowClass}">
             <td class="px-4 py-2 text-xs text-gray-400">${ts.toLocaleTimeString()}</td>
             <td class="px-4 py-2 text-center font-bold">${s.coin}</td>
@@ -3262,7 +3262,7 @@ function render_cl(){
             <td class="px-4 py-2 text-right font-mono text-xs text-green-400">${s.fair_odds.toFixed(2)}</td>
             <td class="px-4 py-2 text-right font-mono text-xs text-yellow-400">${s.edge_pct.toFixed(1)}%</td>
             <td class="px-4 py-2 text-center text-xs font-mono">${bar} ${s.confidence.toFixed(0)}%</td>
-            <td class="px-4 py-2 text-center text-xs"><span class="font-mono font-bold ${scoreColor}">${scoreVal}</span>${indBadges?'<div class="flex gap-0.5 justify-center mt-0.5">'+indBadges+'</div>':''}</td>
+            <td class="px-4 py-2 text-center text-xs"><span class="font-mono font-bold ${scoreColor}">${scoreVal}</span><div class="flex gap-1 justify-center mt-0.5">${indBadges}</div></td>
             <td class="px-4 py-2 text-right text-xs ${cierreClass}">${cierreText}</td>
             <td class="px-4 py-2 text-center text-xs ${estadoClass}">${estado}</td>
             <td class="px-4 py-2 text-center">${s.polymarket_url?`<a href="${s.polymarket_url}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 text-xs font-medium transition">🔗 Poly</a>`:'-'}</td>
