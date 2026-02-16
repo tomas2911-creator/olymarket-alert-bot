@@ -505,7 +505,7 @@ class AutoTrader:
                     "coin": trade_info["coin"],
                     "direction": direction,
                     "side": "BUY",
-                    "price": price,
+                    "price": order_price,
                     "size_usd": bet_size,
                     "shares": shares,
                     "token_id": token_id,
@@ -744,8 +744,11 @@ class AutoTrader:
 
             from py_clob_client.clob_types import OrderArgs, OrderType
 
+            # Slippage negativo para asegurar que el SELL se ejecute
+            sell_price = max(round(current_price - 0.02, 2), 0.01)
+
             order_args = OrderArgs(
-                price=current_price,
+                price=sell_price,
                 size=shares,
                 side="SELL",
                 token_id=token_id,
@@ -755,7 +758,17 @@ class AutoTrader:
             signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
             resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.FOK)
 
-            # Calcular PnL
+            # Verificar que la orden SELL se ejecutó
+            resp_data = resp if isinstance(resp, dict) else resp.__dict__ if hasattr(resp, '__dict__') else {"raw": str(resp)}
+            sell_filled = resp_data.get("success", False) or \
+                          str(resp_data.get("status", "")).lower() == "matched"
+
+            if not sell_filled:
+                error_msg = resp_data.get("errorMsg", resp_data.get("error", str(resp)[:200]))
+                print(f"[AutoTrader] ⚠️ SELL FOK no ejecutado {cid}: {error_msg} — posición sigue abierta", flush=True)
+                return  # NO remover de _open_positions, se reintentará
+
+            # Calcular PnL con precio real de entrada
             pnl = (current_price - entry_price) * shares
             result = "win" if pnl >= 0 else "loss"
 
@@ -895,10 +908,16 @@ class AutoTrader:
                                   (direction == "down" and winning_outcome.lower() == "down")
                         print(f"[AutoTrader] Resolve ({source}): direction={direction} winner='{winning_outcome}' → {'WIN' if won else 'LOSS'}", flush=True)
 
-                        price = trade.get("price", 0)
+                        shares = trade.get("shares", 0)
                         size_usd = trade.get("size_usd", 0)
                         if won:
-                            pnl = size_usd * ((1.0 / price) - 1)
+                            # Cada share ganadora paga $1.00 — usar shares reales
+                            if shares > 0:
+                                pnl = round(shares - size_usd, 2)
+                            else:
+                                # Fallback si no hay shares guardadas
+                                entry_p = max(trade.get("price", 0.5), 0.01)
+                                pnl = round(size_usd * ((1.0 / entry_p) - 1), 2)
                             result = "win"
                         else:
                             pnl = -size_usd
