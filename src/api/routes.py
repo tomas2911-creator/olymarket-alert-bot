@@ -1479,7 +1479,7 @@ async def get_alert_trading_config(request: Request):
         "aat_auto_exit_on_sell", "aat_min_market_liquidity",
         "aat_auto_scale_enabled", "aat_auto_scale_win_boost", "aat_auto_scale_loss_reduce",
         "aat_max_category_exposure", "aat_max_drawdown",
-        "aat_api_key", "aat_private_key",
+        "aat_api_key", "aat_private_key", "aat_funder_address",
     ], user_id=uid)
     stats = await db.get_alert_autotrade_stats(user_id=uid)
     aat = getattr(request.app.state, 'alert_autotrader', None)
@@ -1529,6 +1529,7 @@ async def get_alert_trading_config(request: Request):
         # Max drawdown
         "max_drawdown": float(raw.get("aat_max_drawdown", 0)),
         "drawdown_paused": aat_status.get("drawdown_paused", False),
+        "funder_address": raw.get("aat_funder_address", ""),
         "has_own_wallet": has_own_wallet,
         "wallet_connected": has_own_wallet,
         "wallet_address": _derive_wallet_address(raw.get("aat_private_key", "")),
@@ -1627,6 +1628,9 @@ async def save_alert_trading_config(request: Request):
     # Max drawdown
     if "max_drawdown" in body:
         data["aat_max_drawdown"] = str(body["max_drawdown"])
+    # Funder address
+    if "funder_address" in body:
+        data["aat_funder_address"] = str(body["funder_address"]).strip()
     if data:
         await db.set_config_bulk(data, user_id=uid)
     # Recargar config en alert autotrader (solo user 1 retrocompat)

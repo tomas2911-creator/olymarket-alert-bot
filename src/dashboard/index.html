@@ -114,18 +114,13 @@
         <div onclick="showTab('leaderboard')" id="nav-leaderboard" class="sidebar-nav-item"><span class="nav-icon">🏆</span>Leaderboard</div>
         <div onclick="showTab('wallets')" id="nav-wallets" class="sidebar-nav-item"><span class="nav-icon">👛</span>Wallets</div>
         <div onclick="showTab('markets')" id="nav-markets" class="sidebar-nav-item"><span class="nav-icon">🏪</span>Mercados</div>
-        <div onclick="showTab('coordination')" id="nav-coordination" class="sidebar-nav-item"><span class="nav-icon">🔗</span>Coordinación</div>
-        <div onclick="showTab('feed')" id="nav-feed" class="sidebar-nav-item"><span class="nav-icon">📡</span>Feed</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Trading</span></div>
         <div onclick="showTab('crypto')" id="nav-crypto" class="sidebar-nav-item"><span class="nav-icon">₿</span>Crypto Arb</div>
         <div onclick="showTab('alerttrading')" id="nav-alerttrading" class="sidebar-nav-item"><span class="nav-icon">⚡</span>Alert Trading</div>
-        <div onclick="showTab('kalshi')" id="nav-kalshi" class="sidebar-nav-item"><span class="nav-icon">⚖️</span>Kalshi Arb</div>
-        <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Avanzado</span></div>
+        <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Herramientas</span></div>
         <div onclick="showTab('heatmap')" id="nav-heatmap" class="sidebar-nav-item"><span class="nav-icon">🗺️</span>Heatmap</div>
-        <div onclick="showTab('journal')" id="nav-journal" class="sidebar-nav-item"><span class="nav-icon">📓</span>Journal</div>
-        <div onclick="showTab('bankroll')" id="nav-bankroll" class="sidebar-nav-item"><span class="nav-icon">💰</span>Bankroll</div>
-        <div onclick="showTab('strategies')" id="nav-strategies" class="sidebar-nav-item"><span class="nav-icon">🤖</span>Estrategias</div>
-        <div onclick="showTab('infra')" id="nav-infra" class="sidebar-nav-item"><span class="nav-icon">🔧</span>Infraestructura</div>
+        <div onclick="showTab('feed')" id="nav-feed" class="sidebar-nav-item"><span class="nav-icon">📡</span>Feed</div>
+        <div onclick="showTab('coordination')" id="nav-coordination" class="sidebar-nav-item"><span class="nav-icon">🔗</span>Coordinación</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Sistema</span></div>
         <div onclick="showTab('config')" id="nav-config" class="sidebar-nav-item"><span class="nav-icon">⚙️</span>Configuración</div>
     </nav>
@@ -1505,6 +1500,12 @@
                             <div class="text-xs text-gray-400 space-y-0.5">
                                 <div>Wallet: <span id="aat-wallet-addr" class="text-purple-300 font-mono">—</span></div>
                                 <div>API Key: <span id="aat-key-preview" class="text-green-400 font-mono">—</span></div>
+                                <div>Funder: <span id="aat-funder-preview" class="text-yellow-300 font-mono">—</span></div>
+                            </div>
+                            <div class="mt-2">
+                                <label class="text-[10px] text-gray-500 block mb-0.5">Funder / Proxy Wallet Address</label>
+                                <input type="text" id="aat-funder-address" placeholder="0x... (polymarket.com → Settings → Proxy Wallet)" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-2 py-1.5 text-xs font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-600 mt-0.5">Obligatorio para ejecutar ordenes. Ve a polymarket.com/settings y copia tu Proxy Wallet Address.</p>
                             </div>
                         </div>
                         <!-- Input wallet propia (siempre visible si no tiene propia) -->
@@ -2355,9 +2356,9 @@ function polyProfile(addr){return`https://polymarket.com/profile/${addr}`}
 function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
 // ── Sidebar Navigation ──
-const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',alerttrading:'Alert Trading',kalshi:'Kalshi Arb',heatmap:'Heatmap',journal:'Trade Journal',bankroll:'Bankroll',strategies:'Estrategias',infra:'Infraestructura',config:'Configuración'};
+const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',alerttrading:'Alert Trading',heatmap:'Heatmap',config:'Configuración'};
 function showTab(t){
-    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading','kalshi','heatmap','journal','bankroll','strategies','infra'];
+    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading','heatmap'];
     // Ocultar todos los paneles
     panels.forEach(id=>{
         const panel=document.getElementById('panel-'+id);
@@ -2384,13 +2385,7 @@ function showTab(t){
     if(t==='coordination')loadCoordination();
     if(t==='crypto')loadCryptoTab();
     if(t==='alerttrading')loadAatConfig();
-    // v8.0 panels
     if(t==='heatmap')loadHeatmap();
-    if(t==='journal')loadJournal();
-    if(t==='bankroll')loadBankroll();
-    if(t==='strategies')loadStrategies();
-    if(t==='infra')loadInfra();
-    if(t==='kalshi')loadKalshiArb();
     // Cerrar sidebar en mobile
     document.getElementById('sidebar').classList.remove('open');
 }
@@ -3964,6 +3959,10 @@ async function loadAatConfig(){
         document.getElementById('aat-wallet-form').classList.add('hidden');
         document.getElementById('aat-wallet-addr').textContent=c.wallet_address?c.wallet_address.slice(0,6)+'...'+c.wallet_address.slice(-4):'—';
         document.getElementById('aat-key-preview').textContent=c.api_key_preview||'—';
+        // Funder address
+        const funder=c.funder_address||'';
+        document.getElementById('aat-funder-preview').textContent=funder?funder.slice(0,6)+'...'+funder.slice(-4):'No configurada';
+        document.getElementById('aat-funder-address').value=funder;
     }else{
         document.getElementById('aat-wallet-connected').classList.add('hidden');
         document.getElementById('aat-wallet-form').classList.remove('hidden');
@@ -4048,6 +4047,8 @@ async function saveAatConfig(){
         min_market_liquidity:parseFloat(document.getElementById('aat-min-liquidity').value)||0,
         // Auto-exit
         auto_exit_on_sell:document.getElementById('aat-auto-exit').checked,
+        // Funder address
+        funder_address:(document.getElementById('aat-funder-address')?.value||'').trim(),
     };
     try{
         const data=await postJson('/api/alert-trading/config',body);

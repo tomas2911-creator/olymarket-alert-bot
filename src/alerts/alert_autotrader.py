@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 import structlog
+from src import config
 
 logger = structlog.get_logger()
 
@@ -73,12 +74,11 @@ class AlertAutoTrader:
                 "aat_max_drawdown",
                 # Credenciales propias del alert autotrader (NO usa las de Crypto Arb)
                 "aat_api_key", "aat_api_secret", "aat_private_key", "aat_passphrase",
+                "aat_funder_address",
             ])
-            api_key = raw.get("aat_api_key", "")
-            api_secret = raw.get("aat_api_secret", "")
-            private_key = raw.get("aat_private_key", "")
-            passphrase = raw.get("aat_passphrase", "")
-
+            pk = raw.get("aat_private_key", "")
+            if pk and not pk.startswith("0x"):
+                pk = "0x" + pk
             self._config = {
                 "enabled": raw.get("aat_enabled") == "true",
                 "bet_size": float(raw.get("aat_bet_size", 10)),
@@ -125,10 +125,11 @@ class AlertAutoTrader:
                 "max_category_exposure": int(raw.get("aat_max_category_exposure", 0)),
                 # Max drawdown
                 "max_drawdown": float(raw.get("aat_max_drawdown", 0)),
-                "api_key": api_key,
-                "api_secret": api_secret,
-                "private_key": private_key,
-                "passphrase": passphrase,
+                "api_key": raw.get("aat_api_key", ""),
+                "api_secret": raw.get("aat_api_secret", ""),
+                "private_key": pk,
+                "passphrase": raw.get("aat_passphrase", ""),
+                "funder_address": raw.get("aat_funder_address", ""),
                 "has_own_wallet": bool(raw.get("aat_private_key")),
             }
             self._enabled = self._config["enabled"]
@@ -154,7 +155,7 @@ class AlertAutoTrader:
             self._enabled = False
 
     def _init_clob_client(self):
-        """Crear cliente CLOB con credenciales compartidas."""
+        """Crear cliente CLOB con credenciales propias."""
         try:
             from py_clob_client.client import ClobClient
             from py_clob_client.clob_types import ApiCreds
@@ -164,20 +165,46 @@ class AlertAutoTrader:
                 api_secret=self._config["api_secret"],
                 api_passphrase=self._config["passphrase"],
             )
+            funder = self._config.get("funder_address", "") or None
             self._client = ClobClient(
                 CLOB_HOST,
                 key=self._config["private_key"],
                 chain_id=CHAIN_ID,
                 signature_type=2,
+                funder=funder,
                 creds=creds,
             )
-            print("[AlertTrader] Cliente CLOB inicializado OK", flush=True)
+            print(f"[AlertTrader] Cliente CLOB inicializado OK (funder={'set: '+funder[:10]+'...' if funder else 'NOT SET - orders will fail!'})", flush=True)
+            if not funder:
+                print("[AlertTrader] ⚠️ FUNDER ADDRESS no configurada. Ve a polymarket.com/settings, copia tu Proxy Wallet Address.", flush=True)
+            else:
+                self._check_allowances()
         except ImportError:
             print("[AlertTrader] ERROR: py-clob-client no instalado", flush=True)
             self._client = None
         except Exception as e:
             print(f"[AlertTrader] Error creando cliente CLOB: {e}", flush=True)
             self._client = None
+
+    def _check_allowances(self):
+        """Verificar token allowances para trading."""
+        if not self._client:
+            return
+        try:
+            from py_clob_client.clob_types import BalanceAllowanceParams
+            params = BalanceAllowanceParams(asset_type="COLLATERAL")
+            bal = self._client.get_balance_allowance(params)
+            balance = bal.get("balance", "?") if isinstance(bal, dict) else getattr(bal, "balance", "?")
+            allowance = bal.get("allowance", "?") if isinstance(bal, dict) else getattr(bal, "allowance", "?")
+            print(f"[AlertTrader] Allowance COLLATERAL: balance={balance} allowance={allowance}", flush=True)
+            try:
+                allow_val = float(str(allowance))
+                if allow_val == 0:
+                    print("[AlertTrader] ⚠️ ALLOWANCE = 0. Ve a polymarket.com y firma 'Enable Trading' + 'Approve Tokens'.", flush=True)
+            except (ValueError, TypeError):
+                pass
+        except Exception as e:
+            print(f"[AlertTrader] Allowance check error: {e}", flush=True)
 
     async def reload_config(self):
         """Recargar config desde DB."""
@@ -419,38 +446,106 @@ class AlertAutoTrader:
             if price > cfg["max_odds"] or price < cfg["min_odds"]:
                 return {"success": False, "error": f"Precio actual {price:.2f} fuera de rango [{cfg['min_odds']}, {cfg['max_odds']}]"}
 
-            shares = round(bet_size / price, 2)
+            # Calcular shares con precisión Decimal (igual que Crypto Arb)
+            from decimal import Decimal, ROUND_DOWN
+            import math
+
+            MIN_CLOB_SHARES = Decimal('5')
+            order_price = round(price, 2)
+            d_price = Decimal(str(order_price))
+            d_raw = Decimal(str(bet_size)) / d_price
+
+            d_shares = Decimal('0')
+            for decimals in [4, 3, 2, 1, 0]:
+                q = Decimal(10) ** -decimals
+                d_candidate = d_raw.quantize(q, rounding=ROUND_DOWN)
+                d_maker = d_candidate * d_price
+                if d_maker == d_maker.quantize(Decimal('0.01')):
+                    d_shares = d_candidate
+                    break
+
+            if d_shares < MIN_CLOB_SHARES:
+                d_shares = MIN_CLOB_SHARES
+                bet_size = float((d_shares * d_price).quantize(Decimal('0.01')))
+                print(f"[AlertTrader] ⚠️ Shares ajustadas al mínimo CLOB: {d_shares} (bet=${bet_size:.2f})", flush=True)
+
+            shares = float(d_shares)
+            if shares <= 0:
+                return {"success": False, "error": f"No se pudo calcular shares válidas para price={order_price} bet={bet_size}"}
 
             from py_clob_client.clob_types import OrderArgs, OrderType
 
             order_args = OrderArgs(
-                price=price,
+                price=order_price,
                 size=shares,
                 side="BUY",
                 token_id=token_id,
             )
 
+            print(f"[AlertTrader] Order: price={order_price} shares={shares} usdc={round(shares*order_price,2)} type=GTC", flush=True)
+
             # GTC (Good Till Cancel) para mercados largos
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
             resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
+
+            print(f"[AlertTrader] post_order response: {resp}", flush=True)
 
             success = False
             order_id = ""
             error_msg = ""
+            resp_status = ""
 
             if isinstance(resp, dict):
-                success = resp.get("success", False) or resp.get("orderID") is not None
-                order_id = resp.get("orderID", resp.get("order_id", ""))
+                order_id = resp.get("orderID", resp.get("order_id", "")) or ""
+                resp_status = resp.get("status", "")
+                success = bool(order_id) and resp.get("success", True)
                 if not success:
                     error_msg = resp.get("errorMsg", resp.get("error", str(resp)))
             elif hasattr(resp, "success"):
                 success = resp.success
-                order_id = getattr(resp, "orderID", "")
+                order_id = getattr(resp, "orderID", "") or ""
+                resp_status = getattr(resp, "status", "")
                 error_msg = getattr(resp, "errorMsg", "")
             else:
-                success = bool(resp)
                 order_id = str(resp) if resp else ""
+                success = bool(order_id)
+
+            # GTC 'live': polling para verificar fill
+            if success and resp_status.lower() == "live" and order_id:
+                print(f"[AlertTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill...", flush=True)
+                filled = False
+                for attempt in range(12):  # 12 × 5s = 60s máximo (mercados largos)
+                    await asyncio.sleep(5)
+                    try:
+                        order_info = await loop.run_in_executor(
+                            None, self._client.get_order, order_id
+                        )
+                        current_status = ""
+                        if isinstance(order_info, dict):
+                            current_status = order_info.get("status", "")
+                        elif hasattr(order_info, "status"):
+                            current_status = getattr(order_info, "status", "")
+                        print(f"[AlertTrader]   polling {attempt+1}/12: status={current_status}", flush=True)
+                        if current_status.lower() == "matched":
+                            filled = True
+                            break
+                        elif current_status.lower() in ("cancelled", "expired", ""):
+                            break
+                    except Exception as poll_err:
+                        print(f"[AlertTrader]   polling error: {poll_err}", flush=True)
+                        break
+
+                if not filled:
+                    try:
+                        await loop.run_in_executor(None, self._client.cancel, order_id)
+                        print(f"[AlertTrader] ❌ Orden GTC no llenada, CANCELADA: {order_id[:16]}...", flush=True)
+                    except Exception as cancel_err:
+                        print(f"[AlertTrader] ⚠️ Error cancelando orden GTC: {cancel_err}", flush=True)
+                    success = False
+                    error_msg = "GTC order not filled within timeout, cancelled"
+                else:
+                    print(f"[AlertTrader] ✅ Orden GTC llenada (matched)!", flush=True)
 
             trade_record = {
                 "condition_id": cid,
@@ -797,7 +892,7 @@ class AlertAutoTrader:
             print(f"[AlertTrader] ✅ Drawdown recuperado — REANUDADO", flush=True)
 
     async def _sell_position(self, trade: dict, sell_price: float) -> dict:
-        """Vender una posición abierta (SELL en CLOB)."""
+        """Vender una posición abierta (SELL en CLOB con slippage para asegurar fill)."""
         try:
             token_id = trade.get("token_id", "")
             shares = trade.get("shares", 0)
@@ -806,28 +901,32 @@ class AlertAutoTrader:
 
             from py_clob_client.clob_types import OrderArgs, OrderType
 
+            # Slippage negativo para asegurar que el SELL se ejecute
+            actual_sell_price = max(round(sell_price - 0.02, 2), 0.01)
+
             order_args = OrderArgs(
-                price=sell_price,
+                price=actual_sell_price,
                 size=shares,
                 side="SELL",
                 token_id=token_id,
             )
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
-            resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
+            resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.FOK)
 
-            if isinstance(resp, dict):
-                success = resp.get("success", False) or resp.get("orderID") is not None
-                order_id = resp.get("orderID", resp.get("order_id", ""))
-            elif hasattr(resp, "success"):
-                success = resp.success
-                order_id = getattr(resp, "orderID", "")
-            else:
-                success = bool(resp)
-                order_id = str(resp) if resp else ""
+            # Verificar que la orden SELL se ejecutó
+            resp_data = resp if isinstance(resp, dict) else resp.__dict__ if hasattr(resp, '__dict__') else {"raw": str(resp)}
+            sell_filled = resp_data.get("success", False) or \
+                          str(resp_data.get("status", "")).lower() == "matched"
 
-            return {"success": success, "order_id": order_id}
+            if not sell_filled:
+                error_msg = resp_data.get("errorMsg", resp_data.get("error", str(resp)[:200]))
+                print(f"[AlertTrader] ⚠️ SELL FOK no ejecutado: {error_msg} — posición sigue abierta", flush=True)
+                return {"success": False, "error": error_msg}
+
+            order_id = resp_data.get("orderID", resp_data.get("order_id", "")) or ""
+            return {"success": True, "order_id": order_id}
 
         except Exception as e:
             print(f"[AlertTrader] Error vendiendo posición: {e}", flush=True)
