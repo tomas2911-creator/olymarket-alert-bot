@@ -159,57 +159,74 @@ class AutoTrader:
 
     async def evaluate_signal(self, signal: dict) -> Optional[dict]:
         """Evaluar si una señal debe ejecutarse. Retorna trade_info o None."""
+        coin = signal.get("coin", "?")
+        direction = signal.get("direction", "?")
+        tag = f"[AT] {coin} {direction}"
+
         if not self._enabled or not self._client:
+            print(f"{tag} SKIP: enabled={self._enabled} client={self._client is not None}", flush=True)
             return None
 
         cfg = self._config
 
         # Filtro: moneda habilitada
         if signal.get("coin", "") not in cfg["coins"]:
+            print(f"{tag} SKIP: coin '{coin}' not in {cfg['coins']}", flush=True)
             return None
 
         # Filtro: edge mínimo
         edge = signal.get("edge_pct", 0)
         if edge < cfg["min_edge"]:
+            print(f"{tag} SKIP: edge {edge}% < min {cfg['min_edge']}%", flush=True)
             return None
 
         # Filtro: confianza mínima
         confidence = signal.get("confidence", 0)
         if confidence < cfg["min_confidence"]:
+            print(f"{tag} SKIP: confidence {confidence}% < min {cfg['min_confidence']}%", flush=True)
             return None
 
         # Filtro: odds máximo (no comprar si el precio ya es alto)
         poly_odds = signal.get("poly_odds", 1.0)
         if poly_odds > cfg["max_odds"]:
+            print(f"{tag} SKIP: odds {poly_odds} > max {cfg['max_odds']}", flush=True)
             return None
 
         # Filtro: cooldown entre trades
         now = time.time()
         if now - self._last_trade_time < cfg["cooldown_sec"]:
+            print(f"{tag} SKIP: cooldown ({int(now - self._last_trade_time)}s < {cfg['cooldown_sec']}s)", flush=True)
             return None
 
         # Filtro: max posiciones abiertas
         if len(self._open_positions) >= cfg["max_positions"]:
+            print(f"{tag} SKIP: max positions ({len(self._open_positions)}>={cfg['max_positions']})", flush=True)
             return None
 
         # Filtro: max trades diarios
         if len(self._trades_today) >= cfg["max_daily_trades"]:
+            print(f"{tag} SKIP: max daily trades ({len(self._trades_today)}>={cfg['max_daily_trades']})", flush=True)
             return None
 
         # Filtro: max pérdida diaria
         daily_pnl = sum(t.get("pnl", 0) for t in self._trades_today if t.get("resolved"))
         if daily_pnl <= -cfg["max_daily_loss"]:
+            print(f"{tag} SKIP: max daily loss (pnl=${daily_pnl:.2f} <= -${cfg['max_daily_loss']})", flush=True)
             return None
 
         # Filtro: no duplicar posición en mismo mercado
         cid = signal.get("condition_id", "")
         if cid in self._open_positions:
+            print(f"{tag} SKIP: already in position {cid[:12]}...", flush=True)
             return None
 
         # Filtro: tiempo restante mínimo (no entrar si queda muy poco)
         remaining = signal.get("time_remaining_sec", 0)
         if remaining < 30:
+            print(f"{tag} SKIP: time remaining {remaining}s < 30s", flush=True)
             return None
+
+        print(f"{tag} PASS: edge={edge}% conf={confidence}% odds={poly_odds} remaining={remaining}s -> EXECUTING ${cfg['bet_size']}", flush=True)
 
         # v8.0: Bankroll check — no apostar más del % permitido
         if config.FEATURE_BANKROLL:
@@ -381,7 +398,11 @@ class AutoTrader:
     async def process_signals(self, signals: list[dict]):
         """Evaluar y ejecutar señales. Llamado periódicamente desde main loop."""
         if not self._enabled or not self._client or not self._initialized:
+            if signals:
+                print(f"[AT] process_signals: {len(signals)} signals IGNORED (enabled={self._enabled} client={self._client is not None} init={self._initialized})", flush=True)
             return
+        if signals:
+            print(f"[AT] process_signals: evaluando {len(signals)} señales...", flush=True)
 
         # Recargar trades de hoy si cambió el día
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
