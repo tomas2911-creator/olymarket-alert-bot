@@ -329,31 +329,40 @@ class AutoTrader:
             if price <= 0 or price >= 1:
                 return {"success": False, "error": f"Precio inválido: {price}"}
 
+            # FOK: agregar slippage para encontrar liquidez en el order book
+            # El price en FOK BUY es el MÁXIMO que estamos dispuestos a pagar
+            is_fok = trade_info["order_type"] == "market"
+            if is_fok:
+                slippage = 0.03  # 3 centavos de margen
+                order_price = min(round(price + slippage, 2), 0.99)
+            else:
+                order_price = price
+
             # Calcular shares con precisión correcta para CLOB:
-            # - maker_amount (USDC = shares * price) → max 2 decimales
+            # - maker_amount (USDC = shares * order_price) → max 2 decimales
             # - taker_amount (shares) → max 4 decimales
             import math
-            raw_shares = bet_size / price
+            raw_shares = bet_size / order_price
             # Probar precisiones de 4 a 0 decimales hasta que maker_amount tenga <= 2 decimales
             shares = 0
             for decimals in [4, 3, 2, 1, 0]:
                 factor = 10 ** decimals
                 candidate = math.floor(raw_shares * factor) / factor
-                maker = candidate * price
+                maker = candidate * order_price
                 # Verificar que maker tiene <= 2 decimales (tolerancia floating point)
                 if abs(maker - round(maker, 2)) < 1e-9:
                     shares = candidate
                     break
             if shares <= 0:
-                return {"success": False, "error": f"No se pudo calcular shares válidas para price={price} bet={bet_size}"}
+                return {"success": False, "error": f"No se pudo calcular shares válidas para price={order_price} bet={bet_size}"}
 
-            print(f"[AutoTrader] Order: price={price} shares={shares} usdc={round(shares*price,2)} type={trade_info['order_type']}", flush=True)
+            print(f"[AutoTrader] Order: price={order_price} shares={shares} usdc={round(shares*order_price,2)} type={trade_info['order_type']}{' (slippage +3c)' if is_fok else ''}", flush=True)
 
             # Crear y enviar orden
             from py_clob_client.clob_types import OrderArgs, OrderType
 
             order_args = OrderArgs(
-                price=price,
+                price=order_price,
                 size=shares,
                 side="BUY",
                 token_id=token_id,
