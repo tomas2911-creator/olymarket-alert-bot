@@ -1085,6 +1085,9 @@
                         <button onclick="testAutotradeConnection()" class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm font-medium transition">
                             Probar Conexión
                         </button>
+                        <button onclick="resetAutotradeData()" class="px-4 py-2 rounded bg-red-600/80 hover:bg-red-500 text-white text-sm font-medium transition">
+                            Resetear Datos
+                        </button>
                         <span id="at-save-status" class="text-xs self-center hidden"></span>
                     </div>
                 </div>
@@ -3644,6 +3647,30 @@ async function testAutotradeConnection(){
         st.className='text-xs text-red-400 self-center';
     }
     setTimeout(()=>st.classList.add('hidden'),15000);
+}
+
+async function resetAutotradeData(){
+    if(!confirm('¿Resetear TODOS los datos de autotrading? Se borrarán trades, posiciones y estadísticas.')) return;
+    const st=document.getElementById('at-save-status');
+    st.textContent='Reseteando...';st.className='text-xs text-yellow-400 self-center';st.classList.remove('hidden');
+    try{
+        const r=await fetch('/api/crypto-arb/autotrades/reset',{method:'DELETE',headers:authHeaders()});
+        const data=await r.json();
+        if(data.status==='ok'){
+            st.textContent=`✅ ${data.message}`;st.className='text-xs text-green-400 self-center';
+            document.getElementById('at-trades-today').textContent='0';
+            document.getElementById('at-open-pos').textContent='0';
+            document.getElementById('at-pnl').textContent='$0.00';
+            document.getElementById('at-winrate').textContent='0%';
+            const tbody=document.getElementById('at-trades-body');
+            if(tbody)tbody.innerHTML='';
+        }else{
+            st.textContent='Error: '+(data.error||'desconocido');st.className='text-xs text-red-400 self-center';
+        }
+    }catch(e){
+        st.textContent='Error de conexión';st.className='text-xs text-red-400 self-center';
+    }
+    setTimeout(()=>st.classList.add('hidden'),8000);
 }
 
 // ── Alert Trading ──
