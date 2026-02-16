@@ -3687,8 +3687,8 @@ async function loadAutotradeConfig(){
     document.getElementById('at-min-score').value=c.min_score||0;
     document.getElementById('at-funder-address').value=c.funder_address||'';
     // Early Entry config
-    document.getElementById('at-use-score').checked=c.use_score_strategy!==false;
-    document.getElementById('at-use-early').checked=c.use_early_entry||false;
+    document.getElementById('at-use-score').checked=c.use_score_strategy===true;
+    document.getElementById('at-use-early').checked=c.use_early_entry===true;
     document.getElementById('at-early-bet-size').value=c.early_entry_bet_size||3;
     document.getElementById('at-early-min-momentum').value=c.early_entry_min_momentum||0.10;
     document.getElementById('at-early-window').value=c.early_entry_window||15;
@@ -3764,7 +3764,9 @@ async function saveAutotradeConfig(){
         }
         st.classList.remove('hidden');
         setTimeout(()=>st.classList.add('hidden'),3000);
-        loadAutotradeConfig();
+        // No recargar config completa: los inputs ya tienen los valores correctos
+        // Solo recargar status de conexión y trades
+        loadAutotradeHistory();
     }catch(e){alert('Error de conexión');}
 }
 
