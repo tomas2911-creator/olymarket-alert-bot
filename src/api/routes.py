@@ -651,6 +651,24 @@ async def delete_crypto_signals(request: Request, older_than_hours: int = 24):
         return {"status": "error", "error": str(e)}
 
 
+@router.delete("/api/crypto-arb/autotrades/reset")
+async def reset_autotrades(request: Request):
+    """Borrar TODOS los autotrades del usuario y resetear estado del autotrader."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    try:
+        async with db._pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM autotrades WHERE user_id = $1", uid)
+            deleted = int(result.split(" ")[-1]) if result else 0
+        # Resetear estado en memoria del autotrader
+        bot = request.app.state.bot
+        if bot and hasattr(bot, "autotrader") and bot.autotrader:
+            bot.autotrader.reset_state()
+        return {"status": "ok", "deleted": deleted, "message": f"Autotrades borrados: {deleted}. Estado reseteado."}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @router.delete("/api/reset-all")
 async def reset_all_data(request: Request):
     """Borrar TODOS los datos del usuario actual."""

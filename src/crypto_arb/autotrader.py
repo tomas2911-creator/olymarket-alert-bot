@@ -179,6 +179,15 @@ class AutoTrader:
         """Recargar config desde DB (llamado cuando se guarda config desde dashboard)."""
         await self.initialize(user_id=user_id)
 
+    def reset_state(self):
+        """Resetear estado en memoria (posiciones abiertas, trades de hoy)."""
+        self._open_positions = {}
+        self._trades_today = []
+        self._trades_today_date = ""
+        self._last_trade_time = 0.0
+        self._trailing_highs = {}
+        print("[AutoTrader] Estado reseteado: posiciones=0, trades_today=0", flush=True)
+
     async def _load_today_trades(self):
         """Cargar trades ejecutados hoy desde DB."""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
