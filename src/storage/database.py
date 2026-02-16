@@ -1,4 +1,5 @@
 """PostgreSQL database for storing wallet stats, market baselines, alerts and resolution tracking."""
+import json
 import asyncpg
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -258,6 +259,8 @@ class Database:
                 );
                 -- Migración: agregar event_slug si no existe
                 ALTER TABLE crypto_signals ADD COLUMN IF NOT EXISTS event_slug TEXT DEFAULT '';
+                -- Migración: agregar score_details JSONB para guardar score + indicadores
+                ALTER TABLE crypto_signals ADD COLUMN IF NOT EXISTS score_details JSONB DEFAULT '{}'::jsonb;
                 CREATE INDEX IF NOT EXISTS idx_crypto_signals_created
                     ON crypto_signals(created_at);
                 CREATE INDEX IF NOT EXISTS idx_crypto_signals_coin
@@ -1665,8 +1668,8 @@ class Database:
                 INSERT INTO crypto_signals
                 (coin, direction, spot_change_pct, poly_odds, fair_odds,
                  confidence, edge_pct, condition_id, market_question,
-                 spot_price, time_remaining_sec, paper_bet_size, event_slug)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                 spot_price, time_remaining_sec, paper_bet_size, event_slug, score_details)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
                 ON CONFLICT (condition_id) DO NOTHING
                 RETURNING id
             """,
@@ -1678,6 +1681,7 @@ class Database:
                 signal.get("time_remaining_sec"),
                 signal.get("paper_bet_size", 0),
                 signal.get("event_slug", ""),
+                json.dumps(signal.get("score_details", {})),
             )
             return row["id"] if row else 0
 
