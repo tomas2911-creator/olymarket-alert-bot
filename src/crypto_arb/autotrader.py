@@ -136,12 +136,61 @@ class AutoTrader:
             print(f"[AutoTrader] Cliente CLOB inicializado OK (funder={'set: '+funder[:10]+'...' if funder else 'NOT SET - orders will fail!'})", flush=True)
             if not funder:
                 print("[AutoTrader] ⚠️ FUNDER ADDRESS no configurada. Ve a polymarket.com/settings, copia tu Proxy Wallet Address, y pégala en el dashboard.", flush=True)
+            else:
+                # Diagnosticar y configurar allowances
+                self._setup_allowances()
         except ImportError:
             print("[AutoTrader] ERROR: py-clob-client no instalado. pip install py-clob-client", flush=True)
             self._client = None
         except Exception as e:
             print(f"[AutoTrader] Error creando cliente CLOB: {e}", flush=True)
             self._client = None
+
+    def _setup_allowances(self):
+        """Diagnosticar y configurar token allowances para trading."""
+        if not self._client:
+            return
+        try:
+            # 1. Diagnosticar: ver balance y allowance actuales
+            try:
+                bal = self._client.get_balance_allowance({"asset_type": "COLLATERAL"})
+                print(f"[AutoTrader] Allowance check COLLATERAL: balance={bal.get('balance','?')} allowance={bal.get('allowance','?')}", flush=True)
+            except Exception as e:
+                print(f"[AutoTrader] Allowance check failed: {e}", flush=True)
+
+            # 2. Intentar update_balance_allowance (API call, no gas)
+            try:
+                self._client.update_balance_allowance({"asset_type": "COLLATERAL"})
+                print("[AutoTrader] update_balance_allowance COLLATERAL OK", flush=True)
+            except Exception as e:
+                print(f"[AutoTrader] update_balance_allowance COLLATERAL error: {e}", flush=True)
+            try:
+                self._client.update_balance_allowance({"asset_type": "CONDITIONAL"})
+                print("[AutoTrader] update_balance_allowance CONDITIONAL OK", flush=True)
+            except Exception as e:
+                print(f"[AutoTrader] update_balance_allowance CONDITIONAL error: {e}", flush=True)
+
+            # 3. Intentar set_allowances (on-chain, necesita MATIC para gas)
+            try:
+                self._client.set_allowances()
+                print("[AutoTrader] ✅ set_allowances() OK — approvals configurados on-chain", flush=True)
+            except Exception as e:
+                err = str(e)
+                if "gas" in err.lower() or "insufficient" in err.lower() or "matic" in err.lower():
+                    print(f"[AutoTrader] ⚠️ set_allowances necesita MATIC para gas: {err}", flush=True)
+                    print("[AutoTrader] → Envía ~0.1 MATIC a tu EOA wallet para pagar gas de approvals", flush=True)
+                else:
+                    print(f"[AutoTrader] set_allowances error: {err}", flush=True)
+
+            # 4. Re-check después de setup
+            try:
+                bal2 = self._client.get_balance_allowance({"asset_type": "COLLATERAL"})
+                print(f"[AutoTrader] Post-setup COLLATERAL: balance={bal2.get('balance','?')} allowance={bal2.get('allowance','?')}", flush=True)
+            except Exception:
+                pass
+
+        except Exception as e:
+            print(f"[AutoTrader] Allowance setup error: {e}", flush=True)
 
     async def reload_config(self, user_id: int = None):
         """Recargar config desde DB (llamado cuando se guarda config desde dashboard)."""
