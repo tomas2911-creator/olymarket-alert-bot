@@ -426,8 +426,35 @@ class Database:
 
     # ── Auth ───────────────────────────────────────────────────────────
 
+    # Config inicial por defecto para usuarios nuevos
+    _DEFAULT_USER_CONFIG = {
+        "min_size_usd": "50",
+        "alert_threshold": "5",
+        "large_size_usd": "200",
+        "cooldown_hours": "6",
+        "feature_orderbook_depth": "False",
+        "feature_market_classification": "False",
+        "feature_wallet_baskets": "False",
+        "feature_sniper_dbscan": "False",
+        "feature_crypto_arb": "False",
+        "crypto_arb_min_score": "0.40",
+        "crypto_arb_strategy": "score",
+        "at_enabled": "false",
+        "at_bet_size": "10",
+        "at_min_edge": "5.0",
+        "at_min_confidence": "65",
+        "at_max_positions": "3",
+        "at_max_daily": "10",
+        "at_stop_loss": "15.0",
+        "at_take_profit": "25.0",
+        "aat_enabled": "false",
+        "aat_bet_size": "10",
+        "aat_min_score": "8",
+        "aat_max_positions": "3",
+    }
+
     async def create_user(self, username: str, password: str, email: str = "", display_name: str = "") -> dict:
-        """Crear usuario con password hasheado."""
+        """Crear usuario con password hasheado + config inicial."""
         import hashlib, secrets
         salt = secrets.token_hex(16)
         pw_hash = hashlib.sha256((salt + password).encode()).hexdigest() + ":" + salt
@@ -438,7 +465,15 @@ class Database:
                     VALUES ($1, $2, $3, $4)
                     RETURNING id, username, display_name, created_at
                 """, username.lower().strip(), email.strip() or None, pw_hash, display_name or username)
-                return {"id": row["id"], "username": row["username"], "display_name": row["display_name"]}
+                # Crear config inicial para el nuevo usuario
+                new_uid = row["id"]
+                if new_uid != 1:
+                    for k, v in self._DEFAULT_USER_CONFIG.items():
+                        await conn.execute("""
+                            INSERT INTO bot_config (key, value, user_id) VALUES ($1, $2, $3)
+                            ON CONFLICT (key, user_id) DO NOTHING
+                        """, k, v, new_uid)
+                return {"id": new_uid, "username": row["username"], "display_name": row["display_name"]}
             except asyncpg.UniqueViolationError:
                 return {"error": "Usuario ya existe"}
 
@@ -917,19 +952,33 @@ class Database:
 
     # ── Dashboard Queries ─────────────────────────────────────────────
 
+    async def _get_user_alert_filters(self, user_id: int) -> tuple:
+        """Obtener min_size_usd y alert_threshold del usuario para filtrar alertas."""
+        cfg = await self.get_config_bulk(
+            ["min_size_usd", "alert_threshold"], user_id=user_id
+        )
+        min_size = float(cfg.get("min_size_usd", 50))
+        min_score = int(float(cfg.get("alert_threshold", 5)))
+        return min_size, min_score
+
     async def get_dashboard_stats(self, user_id: int = 1) -> dict:
+        min_size, min_score = await self._get_user_alert_filters(user_id)
+        base_filter = "user_id = $1 AND size >= $2 AND score >= $3"
         async with self._pool.acquire() as conn:
-            total_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE user_id = $1", user_id)
-            resolved_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE resolved = TRUE AND user_id = $1", user_id)
-            correct_alerts = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE was_correct = TRUE AND user_id = $1", user_id)
-            total_trades = await conn.fetchval(
-                "SELECT COUNT(*) FROM trades WHERE wallet_address IN (SELECT DISTINCT wallet_address FROM alerts WHERE user_id = $1)", user_id
-            ) if user_id != 1 else await conn.fetchval("SELECT COUNT(*) FROM trades")
-            unique_wallets = await conn.fetchval("SELECT COUNT(DISTINCT wallet_address) FROM alerts WHERE user_id = $1", user_id)
+            total_alerts = await conn.fetchval(
+                f"SELECT COUNT(*) FROM alerts WHERE {base_filter}", user_id, min_size, min_score)
+            resolved_alerts = await conn.fetchval(
+                f"SELECT COUNT(*) FROM alerts WHERE resolved = TRUE AND {base_filter}", user_id, min_size, min_score)
+            correct_alerts = await conn.fetchval(
+                f"SELECT COUNT(*) FROM alerts WHERE was_correct = TRUE AND {base_filter}", user_id, min_size, min_score)
+            total_trades = await conn.fetchval("SELECT COUNT(*) FROM trades")
+            unique_wallets = await conn.fetchval(
+                f"SELECT COUNT(DISTINCT wallet_address) FROM alerts WHERE {base_filter}", user_id, min_size, min_score)
             alerts_24h = await conn.fetchval(
-                "SELECT COUNT(*) FROM alerts WHERE created_at > NOW() - INTERVAL '24 hours' AND user_id = $1", user_id
-            )
-            avg_score = await conn.fetchval("SELECT COALESCE(AVG(score), 0) FROM alerts WHERE user_id = $1", user_id)
+                f"SELECT COUNT(*) FROM alerts WHERE created_at > NOW() - INTERVAL '24 hours' AND {base_filter}",
+                user_id, min_size, min_score)
+            avg_score = await conn.fetchval(
+                f"SELECT COALESCE(AVG(score), 0) FROM alerts WHERE {base_filter}", user_id, min_size, min_score)
             return {
                 "total_alerts": total_alerts or 0,
                 "resolved_alerts": resolved_alerts or 0,
@@ -942,10 +991,13 @@ class Database:
             }
 
     async def get_recent_alerts(self, limit: int = 50, user_id: int = 1) -> list[dict]:
+        min_size, min_score = await self._get_user_alert_filters(user_id)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT * FROM alerts WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2
-            """, user_id, limit)
+                SELECT * FROM alerts
+                WHERE user_id = $1 AND size >= $3 AND score >= $4
+                ORDER BY created_at DESC LIMIT $2
+            """, user_id, limit, min_size, min_score)
             result = []
             for r in rows:
                 d = dict(r)
@@ -956,6 +1008,7 @@ class Database:
             return result
 
     async def get_top_wallets(self, limit: int = 20, user_id: int = 1) -> list[dict]:
+        min_size, min_score = await self._get_user_alert_filters(user_id)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT w.address,
@@ -964,15 +1017,17 @@ class Database:
                        COUNT(a.id) as alert_count,
                        MAX(a.score) as max_score
                 FROM wallets w
-                JOIN alerts a ON a.wallet_address = w.address AND a.user_id = $2
+                JOIN alerts a ON a.wallet_address = w.address
+                    AND a.user_id = $2 AND a.size >= $3 AND a.score >= $4
                 GROUP BY w.address, w.total_trades, w.total_volume,
                          w.avg_trade_size, w.win_count, w.loss_count, w.markets_traded
                 ORDER BY alert_count DESC, max_score DESC
                 LIMIT $1
-            """, limit, user_id)
+            """, limit, user_id, min_size, min_score)
             return [dict(r) for r in rows]
 
     async def get_alerts_by_day(self, days: int = 30, user_id: int = 1) -> list[dict]:
+        min_size, min_score = await self._get_user_alert_filters(user_id)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT DATE(created_at) as day,
@@ -980,20 +1035,24 @@ class Database:
                        AVG(score) as avg_score,
                        SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) as correct
                 FROM alerts
-                WHERE created_at > NOW() - ($1 || ' days')::INTERVAL AND user_id = $2
+                WHERE created_at > NOW() - ($1 || ' days')::INTERVAL
+                  AND user_id = $2 AND size >= $3 AND score >= $4
                 GROUP BY DATE(created_at)
                 ORDER BY day
-            """, str(days), user_id)
+            """, str(days), user_id, min_size, min_score)
             return [{"day": str(r["day"]), "count": r["count"],
                      "avg_score": round(float(r["avg_score"] or 0), 1),
                      "correct": r["correct"] or 0} for r in rows]
 
     async def get_score_distribution(self, user_id: int = 1) -> list[dict]:
+        min_size, min_score = await self._get_user_alert_filters(user_id)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT score, COUNT(*) as count
-                FROM alerts WHERE user_id = $1 GROUP BY score ORDER BY score
-            """, user_id)
+                FROM alerts
+                WHERE user_id = $1 AND size >= $2 AND score >= $3
+                GROUP BY score ORDER BY score
+            """, user_id, min_size, min_score)
             return [{"score": r["score"], "count": r["count"]} for r in rows]
 
     async def get_market_alerts(self, market_id: str) -> list[dict]:
@@ -1141,6 +1200,7 @@ class Database:
             return [dict(r) for r in rows]
 
     async def get_alert_category_distribution(self, user_id: int = 1) -> list[dict]:
+        min_size, min_score = await self._get_user_alert_filters(user_id)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT COALESCE(t.market_category, 'unknown') as category,
@@ -1152,10 +1212,10 @@ class Database:
                     WHERE market_id = a.market_id AND wallet_address = a.wallet_address
                     LIMIT 1
                 )
-                WHERE a.user_id = $1
+                WHERE a.user_id = $1 AND a.size >= $2 AND a.score >= $3
                 GROUP BY t.market_category
                 ORDER BY alert_count DESC
-            """, user_id)
+            """, user_id, min_size, min_score)
             return [{"category": r["category"], "alert_count": r["alert_count"],
                      "avg_score": round(float(r["avg_score"] or 0), 1)} for r in rows]
 
@@ -1449,6 +1509,7 @@ class Database:
     # ── Leaderboard ──────────────────────────────────────────────────
 
     async def get_leaderboard(self, limit: int = 30, sort_by: str = "pnl", user_id: int = 1) -> list[dict]:
+        min_size, min_score = await self._get_user_alert_filters(user_id)
         order = {
             "pnl": "total_pnl DESC",
             "roi": "roi_pct DESC",
@@ -1457,42 +1518,26 @@ class Database:
         }.get(sort_by, "total_pnl DESC")
 
         async with self._pool.acquire() as conn:
-            # User 1 (admin) ve todo; otros usuarios solo wallets con alertas propias
-            if user_id == 1:
-                rows = await conn.fetch(f"""
-                    SELECT address, name, pseudonym, profile_image,
-                           total_trades, total_volume, avg_trade_size,
-                           win_count, loss_count, markets_traded,
-                           total_pnl, total_cost, roi_pct,
-                           smart_money_score, correct_markets,
-                           is_watchlisted,
-                           on_chain_first_tx, on_chain_funded_by,
-                           on_chain_age_days, on_chain_tx_count,
-                           on_chain_usdc_in, on_chain_usdc_out,
-                           on_chain_erc1155_transfers
-                    FROM wallets
-                    WHERE (win_count + loss_count) > 0
-                    ORDER BY {order}
-                    LIMIT $1
-                """, limit)
-            else:
-                rows = await conn.fetch(f"""
-                    SELECT w.address, w.name, w.pseudonym, w.profile_image,
-                           w.total_trades, w.total_volume, w.avg_trade_size,
-                           w.win_count, w.loss_count, w.markets_traded,
-                           w.total_pnl, w.total_cost, w.roi_pct,
-                           w.smart_money_score, w.correct_markets,
-                           w.is_watchlisted,
-                           w.on_chain_first_tx, w.on_chain_funded_by,
-                           w.on_chain_age_days, w.on_chain_tx_count,
-                           w.on_chain_usdc_in, w.on_chain_usdc_out,
-                           w.on_chain_erc1155_transfers
-                    FROM wallets w
-                    WHERE (w.win_count + w.loss_count) > 0
-                      AND w.address IN (SELECT DISTINCT wallet_address FROM alerts WHERE user_id = $2)
-                    ORDER BY {order}
-                    LIMIT $1
-                """, limit, user_id)
+            rows = await conn.fetch(f"""
+                SELECT w.address, w.name, w.pseudonym, w.profile_image,
+                       w.total_trades, w.total_volume, w.avg_trade_size,
+                       w.win_count, w.loss_count, w.markets_traded,
+                       w.total_pnl, w.total_cost, w.roi_pct,
+                       w.smart_money_score, w.correct_markets,
+                       w.is_watchlisted,
+                       w.on_chain_first_tx, w.on_chain_funded_by,
+                       w.on_chain_age_days, w.on_chain_tx_count,
+                       w.on_chain_usdc_in, w.on_chain_usdc_out,
+                       w.on_chain_erc1155_transfers
+                FROM wallets w
+                WHERE (w.win_count + w.loss_count) > 0
+                  AND w.address IN (
+                      SELECT DISTINCT wallet_address FROM alerts
+                      WHERE user_id = $2 AND size >= $3 AND score >= $4
+                  )
+                ORDER BY {order}
+                LIMIT $1
+            """, limit, user_id, min_size, min_score)
             return [_serialize_row(r) for r in rows]
 
     # ── Polygonscan Data ─────────────────────────────────────────────
@@ -2115,7 +2160,8 @@ class Database:
         """Volumen y alertas por categoría para heatmap.
         Usa market_category de trades, con fallback a markets_tracked.category
         y a la categoría del slug (crypto-prices, sports, etc.).
-        Alertas filtradas por user_id."""
+        Alertas filtradas por user_id + min_size + min_score."""
+        min_size, min_score = await self._get_user_alert_filters(user_id)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 WITH trade_cats AS (
@@ -2159,7 +2205,7 @@ class Database:
                     FROM alerts a
                     LEFT JOIN markets_tracked mt ON a.market_id = mt.condition_id
                     WHERE a.created_at > NOW() - INTERVAL '30 days'
-                      AND a.user_id = $1
+                      AND a.user_id = $1 AND a.size >= $2 AND a.score >= $3
                     GROUP BY COALESCE(NULLIF(a.market_category, ''), NULLIF(mt.category, ''), 'other')
                 )
                 SELECT
@@ -2174,7 +2220,7 @@ class Database:
                 FROM trade_stats t
                 FULL OUTER JOIN alert_stats a ON t.category = a.category
                 ORDER BY COALESCE(t.total_volume, 0) DESC
-            """, user_id)
+            """, user_id, min_size, min_score)
             return [dict(r) for r in rows]
 
     # ── v8.0: ML Training Data ────────────────────────────────────
