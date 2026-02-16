@@ -23,12 +23,42 @@ class Database:
             raise RuntimeError("DATABASE_URL no configurada")
         self._pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
         await self._create_tables()
+        await self._ensure_admin_user()
         logger.info("database_connected")
 
     async def close(self):
         if self._pool:
             await self._pool.close()
             logger.info("database_closed")
+
+    async def _ensure_admin_user(self):
+        """Garantizar que existe el usuario admin (id=1) con credenciales correctas."""
+        import hashlib, secrets
+        admin_user = "admin"
+        admin_pass = "sashateamo29"
+        async with self._pool.acquire() as conn:
+            existing = await conn.fetchrow("SELECT id, username FROM users WHERE id = 1")
+            if existing:
+                # Actualizar username y password del user_id=1
+                salt = secrets.token_hex(16)
+                pw_hash = hashlib.sha256((salt + admin_pass).encode()).hexdigest() + ":" + salt
+                await conn.execute("""
+                    UPDATE users SET username = $1, password_hash = $2, display_name = $3
+                    WHERE id = 1
+                """, admin_user, pw_hash, "Admin")
+                logger.info(f"admin_user_updated username={admin_user}")
+            else:
+                # Crear usuario admin con id=1
+                salt = secrets.token_hex(16)
+                pw_hash = hashlib.sha256((salt + admin_pass).encode()).hexdigest() + ":" + salt
+                await conn.execute("""
+                    INSERT INTO users (id, username, password_hash, display_name)
+                    VALUES (1, $1, $2, $3)
+                    ON CONFLICT (id) DO UPDATE SET username = $1, password_hash = $2, display_name = $3
+                """, admin_user, pw_hash, "Admin")
+                # Asegurar que la secuencia avance más allá de 1
+                await conn.execute("SELECT setval('users_id_seq', GREATEST((SELECT MAX(id) FROM users), 1))")
+                logger.info("admin_user_created id=1")
 
     # ── Schema ────────────────────────────────────────────────────────
 
