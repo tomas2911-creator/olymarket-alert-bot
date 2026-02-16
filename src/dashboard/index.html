@@ -3379,8 +3379,8 @@ async function loadWatchingMarkets(){
         }
         empty.classList.add('hidden');
         grid.innerHTML=markets.map(m=>{
-            const stateColors={'scanning':'bg-gray-700 text-gray-300','pre_monitoring':'bg-yellow-900/50 text-yellow-300','entry_window':'bg-green-900/50 text-green-300','done':'bg-gray-800 text-gray-500'};
-            const stateLabels={'scanning':'Escaneando','pre_monitoring':'Pre-Monitor','entry_window':'Ventana Entrada','done':'Completado'};
+            const stateColors={'upcoming':'bg-blue-900/50 text-blue-300','watching':'bg-yellow-900/50 text-yellow-300','active':'bg-green-900/50 text-green-300','signal_sent':'bg-purple-900/50 text-purple-300','expired':'bg-gray-800 text-gray-500'};
+            const stateLabels={'upcoming':'Próximo','watching':'Monitoreando','active':'Ventana Entrada','signal_sent':'Señal Enviada','expired':'Expirado'};
             const sc=stateColors[m.state]||'bg-gray-700 text-gray-300';
             const sl=stateLabels[m.state]||m.state;
             const momColor=(m.momentum_pct||0)>=0?'text-green-400':'text-red-400';

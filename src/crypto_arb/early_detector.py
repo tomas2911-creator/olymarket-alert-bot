@@ -131,7 +131,9 @@ class EarlyEntryDetector:
                             continue
 
                         time_until_start = event_start_ts - now_ts
-                        if time_until_start > self.pre_monitor_sec:
+                        # Ventana de descubrimiento: al menos un intervalo completo
+                        scan_window = max(self.pre_monitor_sec, interval)
+                        if time_until_start > scan_window:
                             continue
                         if time_until_start < -interval:
                             continue
@@ -246,10 +248,13 @@ class EarlyEntryDetector:
                 continue
 
             # Actualizar estado
-            if time_until_start > 0:
-                wm.state = "watching"
+            if time_until_start > self.pre_monitor_sec:
+                wm.state = "upcoming"  # Encontrado pero fuera de ventana de monitoreo
+                continue
+            elif time_until_start > 0:
+                wm.state = "watching"  # Dentro de ventana, monitoreando momentum
             elif time_since_start <= self.entry_window_sec:
-                wm.state = "active"
+                wm.state = "active"   # Mercado abierto, ventana de entrada
             else:
                 wm.state = "expired"
                 continue
