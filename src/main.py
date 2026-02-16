@@ -272,12 +272,13 @@ class PolymarketAlertBot:
                 if self.early_detector:
                     early_signals = self.early_detector.get_recent_signals(100)
                     if early_signals:
-                        # Merge evitando duplicados por condition_id
-                        existing_cids = {s["condition_id"] for s in signals}
+                        # Merge evitando duplicados por (condition_id + strategy)
+                        existing_keys = {(s["condition_id"], s.get("strategy", "score")) for s in signals}
                         for es in early_signals:
-                            if es["condition_id"] not in existing_cids:
+                            key = (es["condition_id"], es.get("strategy", "early_entry"))
+                            if key not in existing_keys:
                                 signals.append(es)
-                                existing_cids.add(es["condition_id"])
+                                existing_keys.add(key)
                 if signals:
                     active = [s for s in signals if s.get("time_remaining_sec", 0) > 0]
                     if active:
