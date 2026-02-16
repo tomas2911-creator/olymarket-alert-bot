@@ -2959,10 +2959,10 @@ async function loadStats(){
     document.getElementById('stat-correct').textContent=fmt(s.correct_alerts);
     document.getElementById('stat-watchlist').textContent=fmt(s.watchlist_count||0);
     document.getElementById('uptime').textContent=s.uptime||'Activo';
-    const sess=[];
-    if(s.trades_this_session)sess.push(`${fmt(s.trades_this_session)} trades`);
-    if(s.alerts_this_session)sess.push(`${fmt(s.alerts_this_session)} alertas`);
-    document.getElementById('stat-session').textContent=sess.join(' / ')||'-';
+    const sessTrades=s.trades_this_session||0;
+    const sessAlerts=s.alerts_this_session||0;
+    const wsInfo=s.ws_trades?` +${fmt(s.ws_trades)}ws`:'';
+    document.getElementById('stat-session').textContent=`${fmt(sessTrades)} trades${wsInfo} / ${fmt(sessAlerts)} alertas`;
     document.getElementById('last-update').textContent='Actualizado: '+new Date().toLocaleTimeString('es');
 }
 

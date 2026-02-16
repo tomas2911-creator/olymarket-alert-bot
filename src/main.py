@@ -164,10 +164,15 @@ class PolymarketAlertBot:
             self.event_driven = EventDrivenBot(self.db)
             # Cross Platform Arb
             self.cross_platform = CrossPlatformArb(self.db)
-            # WebSocket
+            # WebSocket — conectar con callback de trades para captura en tiempo real
             if config.FEATURE_WEBSOCKET:
-                self.ws_client = PolymarketWebSocket()
+                self.ws_client = PolymarketWebSocket(on_trade=self._on_ws_trade)
                 await self.ws_client.start()
+                # Auto-suscribir a mercados activos
+                if self._last_markets:
+                    market_ids = [m.condition_id for m in self._last_markets[:50]]
+                    await self.ws_client.subscribe(market_ids)
+                    print(f"WebSocket: suscrito a {len(market_ids)} mercados", flush=True)
             # Queue System
             if config.FEATURE_QUEUE:
                 await self.signal_queue.start_workers(self._process_queued_signal)
@@ -312,6 +317,44 @@ class PolymarketAlertBot:
             await self.early_detector.stop()
         await self.db.close()
 
+    async def _on_ws_trade(self, data: dict):
+        """Callback para trades recibidos via WebSocket en tiempo real."""
+        try:
+            from src.api.polymarket import PolymarketClient
+            # Parsear trade del mensaje WS
+            cid = data.get("market", data.get("conditionId", data.get("asset_id", "")))
+            if not cid:
+                return
+            # Construir trade-like dict para parseo
+            trade_data = {
+                "conditionId": cid,
+                "transactionHash": data.get("id", data.get("transactionHash", "")),
+                "proxyWallet": data.get("maker_address", data.get("taker_address", data.get("owner", "unknown"))),
+                "side": data.get("side", "BUY"),
+                "size": data.get("size", data.get("amount", "0")),
+                "price": data.get("price", "0.5"),
+                "outcome": data.get("outcome", data.get("asset_id", "Yes")),
+                "timestamp": data.get("timestamp", data.get("match_time", "")),
+                "title": data.get("title", data.get("market_slug", "")),
+            }
+            # Usar un cliente temporal para parsear
+            async with PolymarketClient() as client:
+                trade = client._parse_trade(trade_data)
+                if trade and trade.size > 0:
+                    await self.process_trade(trade, client)
+        except Exception as e:
+            print(f"[WS] Error procesando trade: {e}", flush=True)
+
+    async def _refresh_ws_subscriptions(self):
+        """Actualizar suscripciones WS con mercados activos del último polling."""
+        if not self.ws_client or not self._last_markets:
+            return
+        try:
+            market_ids = [m.condition_id for m in self._last_markets[:50]]
+            await self.ws_client.subscribe(market_ids)
+        except Exception:
+            pass
+
     async def _run_complement_arb(self):
         """v10: Loop background para complement arb scanner."""
         await asyncio.sleep(15)
@@ -342,8 +385,9 @@ class PolymarketAlertBot:
                     if self.alert_autotrader:
                         await self.alert_autotrader.check_pending_confirmations()
 
-                # Cada 10 ciclos (~10 min): baselines + smart money scores + kill switch
+                # Cada 10 ciclos (~10 min): baselines + smart money scores + kill switch + WS refresh
                 if cycle % 10 == 0:
+                    await self._refresh_ws_subscriptions()
                     await self.update_all_baselines()
                     sm_count = await self.db.update_all_smart_money_scores()
                     if sm_count:
@@ -460,7 +504,7 @@ class PolymarketAlertBot:
             # Pre-cargar cache de mercados para enriquecer trades
             self._last_markets = await client.get_markets(limit=config.MAX_MARKETS) or []
 
-            trades = await client.get_recent_trades(limit=500)
+            trades = await client.get_recent_trades(limit=1000)
 
             if not trades:
                 print("Trades obtenidos: 0", flush=True)

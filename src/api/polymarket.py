@@ -82,7 +82,7 @@ class PolymarketClient:
     async def get_recent_trades(self, limit: int = 200) -> list[Trade]:
         """Obtener trades recientes, filtrados y enriquecidos."""
         try:
-            fetch_limit = limit * 4
+            fetch_limit = min(limit * 3, 3000)  # Máx 3000 trades raw por ciclo
             response = await self._rate_limited_get(
                 f"{config.DATA_API_URL}/trades",
                 params={"limit": fetch_limit},

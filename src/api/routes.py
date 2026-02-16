@@ -143,6 +143,10 @@ async def get_stats(request: Request):
         stats["trades_this_session"] = bot.trades_processed
         stats["alerts_this_session"] = bot.alerts_sent
         stats["watchlist_count"] = len(bot._watchlist)
+        if bot.ws_client:
+            ws_stats = bot.ws_client.get_stats()
+            stats["ws_trades"] = ws_stats.get("trades_received", 0)
+            stats["ws_connected"] = ws_stats.get("connected", False)
     return stats
 
 

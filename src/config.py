@@ -35,7 +35,7 @@ DATA_API_URL = "https://data-api.polymarket.com"
 
 # === Polling ===
 _polling = _yaml.get("polling", {})
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", _polling.get("interval_seconds", 60)))
+POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", _polling.get("interval_seconds", 30)))
 MAX_MARKETS = _polling.get("max_markets", 50)
 
 # === Detection ===
@@ -266,9 +266,10 @@ FEATURE_PUSH_NOTIFICATIONS = True  # Siempre activo — solo muestra notifs
 PUSH_MIN_SCORE = int(os.getenv("PUSH_MIN_SCORE", "7"))
 
 # -- WebSocket Polymarket (Infrastructure) --
-FEATURE_WEBSOCKET = _features.get("websocket", False)
+FEATURE_WEBSOCKET = _features.get("websocket", True)
 WS_POLYMARKET_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 WS_RECONNECT_DELAY = 5  # segundos entre reconexiones
+WS_TRADE_BUFFER_SEC = 2  # buffer para deduplicar trades WS vs polling
 
 # -- Queue System (Infrastructure) --
 FEATURE_QUEUE = _features.get("queue_system", False)
