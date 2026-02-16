@@ -1485,6 +1485,13 @@ async def get_alert_trading_config(request: Request):
         "aat_auto_scale_enabled", "aat_auto_scale_win_boost", "aat_auto_scale_loss_reduce",
         "aat_max_category_exposure", "aat_max_drawdown",
         "aat_api_key", "aat_private_key", "aat_funder_address",
+        # v10
+        "aat_orderbook_check_enabled", "aat_max_price_impact_pct",
+        "aat_dca_enabled", "aat_dca_splits", "aat_dca_interval_sec",
+        "aat_volume_spike_boost", "aat_smart_watchlist_boost", "aat_funding_chain_boost",
+        "aat_category_scoring_enabled",
+        "arb_complement_enabled", "arb_complement_min_edge",
+        "arb_complement_scan_interval", "arb_complement_max_markets",
     ], user_id=uid)
     stats = await db.get_alert_autotrade_stats(user_id=uid)
     aat = getattr(request.app.state, 'alert_autotrader', None)
@@ -1535,6 +1542,20 @@ async def get_alert_trading_config(request: Request):
         "max_drawdown": float(raw.get("aat_max_drawdown", 0)),
         "drawdown_paused": aat_status.get("drawdown_paused", False),
         "funder_address": raw.get("aat_funder_address", ""),
+        # v10
+        "orderbook_check_enabled": raw.get("aat_orderbook_check_enabled") == "true",
+        "max_price_impact_pct": float(raw.get("aat_max_price_impact_pct", 3)),
+        "dca_enabled": raw.get("aat_dca_enabled") == "true",
+        "dca_splits": int(raw.get("aat_dca_splits", 2)),
+        "dca_interval_sec": int(raw.get("aat_dca_interval_sec", 30)),
+        "volume_spike_boost": int(raw.get("aat_volume_spike_boost", 3)),
+        "smart_watchlist_boost": int(raw.get("aat_smart_watchlist_boost", 3)),
+        "funding_chain_boost": int(raw.get("aat_funding_chain_boost", 2)),
+        "category_scoring_enabled": raw.get("aat_category_scoring_enabled") == "true",
+        "complement_arb_enabled": raw.get("arb_complement_enabled") == "true",
+        "complement_arb_min_edge": float(raw.get("arb_complement_min_edge", 1)),
+        "complement_arb_scan_interval": int(raw.get("arb_complement_scan_interval", 60)),
+        "complement_arb_max_markets": int(raw.get("arb_complement_max_markets", 100)),
         "has_own_wallet": has_own_wallet,
         "wallet_connected": has_own_wallet,
         "wallet_address": _derive_wallet_address(raw.get("aat_private_key", "")),
@@ -1636,14 +1657,48 @@ async def save_alert_trading_config(request: Request):
     # Funder address
     if "funder_address" in body:
         data["aat_funder_address"] = str(body["funder_address"]).strip()
+    # v10: Features avanzadas
+    if "orderbook_check_enabled" in body:
+        data["aat_orderbook_check_enabled"] = "true" if body["orderbook_check_enabled"] else "false"
+    if "max_price_impact_pct" in body:
+        data["aat_max_price_impact_pct"] = str(body["max_price_impact_pct"])
+    if "dca_enabled" in body:
+        data["aat_dca_enabled"] = "true" if body["dca_enabled"] else "false"
+    if "dca_splits" in body:
+        data["aat_dca_splits"] = str(body["dca_splits"])
+    if "dca_interval_sec" in body:
+        data["aat_dca_interval_sec"] = str(body["dca_interval_sec"])
+    if "volume_spike_boost" in body:
+        data["aat_volume_spike_boost"] = str(body["volume_spike_boost"])
+    if "smart_watchlist_boost" in body:
+        data["aat_smart_watchlist_boost"] = str(body["smart_watchlist_boost"])
+    if "funding_chain_boost" in body:
+        data["aat_funding_chain_boost"] = str(body["funding_chain_boost"])
+    if "category_scoring_enabled" in body:
+        data["aat_category_scoring_enabled"] = "true" if body["category_scoring_enabled"] else "false"
+    # v10: Complement Arb
+    if "complement_arb_enabled" in body:
+        data["arb_complement_enabled"] = "true" if body["complement_arb_enabled"] else "false"
+    if "complement_arb_min_edge" in body:
+        data["arb_complement_min_edge"] = str(body["complement_arb_min_edge"])
+    if "complement_arb_scan_interval" in body:
+        data["arb_complement_scan_interval"] = str(body["complement_arb_scan_interval"])
+    if "complement_arb_max_markets" in body:
+        data["arb_complement_max_markets"] = str(body["complement_arb_max_markets"])
     if data:
         await db.set_config_bulk(data, user_id=uid)
-    # Recargar config en alert autotrader (solo user 1 retrocompat)
+    # Recargar config en alert autotrader y complement arb (solo user 1 retrocompat)
     if uid == 1:
         aat = getattr(request.app.state, 'alert_autotrader', None)
         if aat:
             try:
                 await aat.reload_config()
+            except Exception:
+                pass
+        carb = getattr(request.app.state, 'complement_arb', None)
+        if carb:
+            try:
+                await carb.initialize()
             except Exception:
                 pass
     return {"status": "ok"}

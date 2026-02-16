@@ -1739,6 +1739,116 @@
                         Solo Smart Money (wallets en watchlist)
                     </label>
                 </div>
+
+                <!-- ═══ v10: Features Avanzadas ═══ -->
+                <div class="space-y-3 border-t border-emerald-800/30 pt-3">
+                    <h4 class="text-xs text-emerald-400 uppercase tracking-wider font-semibold">⚡ Features v10</h4>
+
+                    <!-- Orderbook Depth Check -->
+                    <div class="bg-gray-800/30 rounded-lg p-3 space-y-2">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-gray-300 font-medium">Orderbook Depth Check</span>
+                            <label class="toggle-switch" style="transform:scale(0.8)">
+                                <input type="checkbox" id="aat-orderbook-enabled">
+                                <div class="toggle-slider"></div>
+                            </label>
+                        </div>
+                        <p class="text-[10px] text-gray-600">Verifica liquidez del orderbook antes de ejecutar. Rechaza si price impact > X%.</p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-[10px] text-gray-500 block">Max Price Impact (%)</label>
+                                <input type="number" id="aat-max-impact" value="3" min="0.5" max="20" step="0.5" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-emerald-300">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DCA Entry -->
+                    <div class="bg-gray-800/30 rounded-lg p-3 space-y-2">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-gray-300 font-medium">DCA Entry (Time-Weighted)</span>
+                            <label class="toggle-switch" style="transform:scale(0.8)">
+                                <input type="checkbox" id="aat-dca-enabled">
+                                <div class="toggle-slider"></div>
+                            </label>
+                        </div>
+                        <p class="text-[10px] text-gray-600">Divide ordenes grandes en partes mas pequenas con intervalos entre ellas.</p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-[10px] text-gray-500 block">Splits</label>
+                                <input type="number" id="aat-dca-splits" value="2" min="2" max="5" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-emerald-300">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block">Intervalo (seg)</label>
+                                <input type="number" id="aat-dca-interval" value="30" min="10" max="300" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-emerald-300">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Score Boosts -->
+                    <div class="bg-gray-800/30 rounded-lg p-3 space-y-2">
+                        <span class="text-xs text-gray-300 font-medium">Score Boosts</span>
+                        <p class="text-[10px] text-gray-600">Puntos extra al score de la alerta si se detectan estas senales. 0 = desactivado.</p>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-[10px] text-gray-500 block">Volume Spike</label>
+                                <input type="number" id="aat-vol-spike-boost" value="3" min="0" max="10" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-yellow-300">
+                                <p class="text-[10px] text-gray-600 mt-0.5">Si volumen 3x+ normal</p>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block">Smart Watchlist</label>
+                                <input type="number" id="aat-watchlist-boost" value="3" min="0" max="10" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-purple-300">
+                                <p class="text-[10px] text-gray-600 mt-0.5">Si wallet esta en watchlist</p>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block">Funding Chain</label>
+                                <input type="number" id="aat-funding-boost" value="2" min="0" max="10" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-blue-300">
+                                <p class="text-[10px] text-gray-600 mt-0.5">Si funder es smart money</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Category Scoring -->
+                    <div class="bg-gray-800/30 rounded-lg p-3">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-gray-300 font-medium">Category Scoring</span>
+                            <label class="toggle-switch" style="transform:scale(0.8)">
+                                <input type="checkbox" id="aat-cat-scoring-enabled">
+                                <div class="toggle-slider"></div>
+                            </label>
+                        </div>
+                        <p class="text-[10px] text-gray-600 mt-1">Ajusta bet size automaticamente segun win rate historico de cada categoria. Cat con >60% WR → hasta 1.5x, <40% WR → 0.5x.</p>
+                    </div>
+                </div>
+
+                <!-- ═══ v10: Complement Arb Config ═══ -->
+                <div class="space-y-3 border-t border-yellow-800/30 pt-3">
+                    <h4 class="text-xs text-yellow-400 uppercase tracking-wider font-semibold">🔄 Complement Arb</h4>
+                    <div class="bg-gray-800/30 rounded-lg p-3 space-y-2">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-gray-300 font-medium">Scanner Automatico</span>
+                            <label class="toggle-switch" style="transform:scale(0.8)">
+                                <input type="checkbox" id="aat-carb-enabled">
+                                <div class="toggle-slider"></div>
+                            </label>
+                        </div>
+                        <p class="text-[10px] text-gray-600">Si activado, escanea mercados automaticamente buscando YES+NO &lt; $1. Sin activar, solo funciona con el boton manual.</p>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-[10px] text-gray-500 block">Min Edge (%)</label>
+                                <input type="number" id="aat-carb-min-edge" value="1" min="0.1" max="10" step="0.1" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-yellow-300">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block">Intervalo Scan (seg)</label>
+                                <input type="number" id="aat-carb-interval" value="60" min="30" max="600" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-yellow-300">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block">Max Mercados</label>
+                                <input type="number" id="aat-carb-max-markets" value="100" min="10" max="500" class="w-full bg-gray-800/70 border border-gray-600 rounded px-2 py-1.5 text-xs font-mono text-yellow-300">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="flex gap-3">
                     <button onclick="saveAatConfig()" class="px-4 py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition">Guardar</button>
                     <span id="aat-save-status" class="text-xs text-green-400 self-center hidden">Guardado!</span>
@@ -4126,6 +4236,21 @@ async function loadAatConfig(){
     if(c.drawdown_paused){ddWarn.classList.remove('hidden');}else{ddWarn.classList.add('hidden');}
     // Auto-exit
     document.getElementById('aat-auto-exit').checked=c.auto_exit_on_sell||false;
+    // v10: Features avanzadas
+    document.getElementById('aat-orderbook-enabled').checked=c.orderbook_check_enabled||false;
+    document.getElementById('aat-max-impact').value=c.max_price_impact_pct!=null?c.max_price_impact_pct:3;
+    document.getElementById('aat-dca-enabled').checked=c.dca_enabled||false;
+    document.getElementById('aat-dca-splits').value=c.dca_splits||2;
+    document.getElementById('aat-dca-interval').value=c.dca_interval_sec||30;
+    document.getElementById('aat-vol-spike-boost').value=c.volume_spike_boost!=null?c.volume_spike_boost:3;
+    document.getElementById('aat-watchlist-boost').value=c.smart_watchlist_boost!=null?c.smart_watchlist_boost:3;
+    document.getElementById('aat-funding-boost').value=c.funding_chain_boost!=null?c.funding_chain_boost:2;
+    document.getElementById('aat-cat-scoring-enabled').checked=c.category_scoring_enabled||false;
+    // v10: Complement Arb
+    document.getElementById('aat-carb-enabled').checked=c.complement_arb_enabled||false;
+    document.getElementById('aat-carb-min-edge').value=c.complement_arb_min_edge!=null?c.complement_arb_min_edge:1;
+    document.getElementById('aat-carb-interval').value=c.complement_arb_scan_interval||60;
+    document.getElementById('aat-carb-max-markets').value=c.complement_arb_max_markets||100;
     // Categorías: pills rojo/verde (mismo estilo que config alertas)
     const excludedCats=(c.excluded_categories||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
     const pillsCont=document.getElementById('aat-cat-pills');
@@ -4246,6 +4371,21 @@ async function saveAatConfig(){
         auto_exit_on_sell:document.getElementById('aat-auto-exit').checked,
         // Funder address
         funder_address:(document.getElementById('aat-funder-address')?.value||'').trim(),
+        // v10: Features avanzadas
+        orderbook_check_enabled:document.getElementById('aat-orderbook-enabled').checked,
+        max_price_impact_pct:parseFloat(document.getElementById('aat-max-impact').value)||3,
+        dca_enabled:document.getElementById('aat-dca-enabled').checked,
+        dca_splits:parseInt(document.getElementById('aat-dca-splits').value)||2,
+        dca_interval_sec:parseInt(document.getElementById('aat-dca-interval').value)||30,
+        volume_spike_boost:parseInt(document.getElementById('aat-vol-spike-boost').value)||0,
+        smart_watchlist_boost:parseInt(document.getElementById('aat-watchlist-boost').value)||0,
+        funding_chain_boost:parseInt(document.getElementById('aat-funding-boost').value)||0,
+        category_scoring_enabled:document.getElementById('aat-cat-scoring-enabled').checked,
+        // v10: Complement Arb
+        complement_arb_enabled:document.getElementById('aat-carb-enabled').checked,
+        complement_arb_min_edge:parseFloat(document.getElementById('aat-carb-min-edge').value)||1,
+        complement_arb_scan_interval:parseInt(document.getElementById('aat-carb-interval').value)||60,
+        complement_arb_max_markets:parseInt(document.getElementById('aat-carb-max-markets').value)||100,
     };
     try{
         const data=await postJson('/api/alert-trading/config',body);
