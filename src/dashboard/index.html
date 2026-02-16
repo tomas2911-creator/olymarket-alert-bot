@@ -4213,13 +4213,10 @@ async function loadKalshiArb(){
 async function refresh(){await Promise.all([loadStats(),loadAlerts(),loadWallets(),loadCharts()]);}
 
 (async function init(){
-    const ok=await checkSession();
-    if(ok){
-        enterApp();
-    }else{
-        document.getElementById('login-screen').classList.remove('hidden');
-    }
-    setInterval(()=>{if(_authToken)refresh()},30000);
+    // Acceso público: entrar directo como admin sin login
+    _currentUser={id:1,username:'admin',display_name:'Admin'};
+    enterApp();
+    setInterval(()=>refresh(),30000);
 })();
 </script>
 </body>
