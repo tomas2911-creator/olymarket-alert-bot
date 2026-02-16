@@ -431,8 +431,8 @@ class AutoTrader:
             if success and resp_status == "live" and order_id:
                 print(f"[AutoTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill...", flush=True)
                 filled = False
-                for attempt in range(5):  # 5 intentos × 3s = 15s máximo
-                    await asyncio.sleep(3)
+                for attempt in range(8):  # 8 intentos × 5s = 40s máximo
+                    await asyncio.sleep(5)
                     try:
                         order_info = await loop.run_in_executor(
                             None, self._client.get_order, order_id
@@ -442,7 +442,7 @@ class AutoTrader:
                             current_status = order_info.get("status", "")
                         elif hasattr(order_info, "status"):
                             current_status = getattr(order_info, "status", "")
-                        print(f"[AutoTrader]   polling {attempt+1}/5: status={current_status}", flush=True)
+                        print(f"[AutoTrader]   polling {attempt+1}/8: status={current_status}", flush=True)
                         if current_status == "matched":
                             filled = True
                             break
