@@ -33,6 +33,7 @@ from src.strategies.market_maker import MarketMakerBot
 from src.strategies.spike_detector import SpikeDetector
 from src.strategies.event_driven import EventDrivenBot
 from src.strategies.cross_platform import CrossPlatformArb
+from src.strategies.complement_arb import ComplementArbScanner
 from src.infra.rate_limiter import get_limiter
 from src.infra.queue_system import SignalQueue
 from src.infra.websocket_client import PolymarketWebSocket
@@ -83,6 +84,8 @@ class PolymarketAlertBot:
         self.spike_detector = None
         self.event_driven = None
         self.cross_platform = None
+        # v10.0: Complement Arb Scanner
+        self.complement_arb = None
         self.rate_limiter = get_limiter()
         self.signal_queue = SignalQueue()
         self.ws_client = None
@@ -123,6 +126,15 @@ class PolymarketAlertBot:
         except Exception as e:
             print(f"Error iniciando Alert AutoTrader: {e}", flush=True)
             self.alert_autotrader = None
+        # v10.0: Complement Arb Scanner
+        try:
+            self.complement_arb = ComplementArbScanner(self.db)
+            await self.complement_arb.initialize()
+            if config.FEATURE_COMPLEMENT_ARB:
+                asyncio.create_task(self._run_complement_arb())
+        except Exception as e:
+            print(f"Error iniciando Complement Arb: {e}", flush=True)
+            self.complement_arb = None
         # v8.0: Iniciar nuevos módulos
         await self._start_v8_modules()
 
@@ -300,6 +312,19 @@ class PolymarketAlertBot:
             await self.early_detector.stop()
         await self.db.close()
 
+    async def _run_complement_arb(self):
+        """v10: Loop background para complement arb scanner."""
+        await asyncio.sleep(15)
+        while self._running and self.complement_arb:
+            try:
+                opps = await self.complement_arb.scan()
+                if opps:
+                    print(f"[ComplementArb] {len(opps)} oportunidades activas", flush=True)
+            except Exception as e:
+                print(f"[ComplementArb] Error: {e}", flush=True)
+            interval = config.COMPLEMENT_ARB_SCAN_INTERVAL or 60
+            await asyncio.sleep(interval)
+
     # ── Polling principal ─────────────────────────────────────────────
 
     async def run_polling_loop(self):
@@ -465,6 +490,10 @@ class PolymarketAlertBot:
         await self.db.record_trade(trade)
         await self.db.update_wallet_stats(trade)
         self.trades_processed += 1
+
+        # v10: Volume tracking para spike detection
+        if self.alert_autotrader and trade.market_id:
+            self.alert_autotrader.track_volume(trade.market_id, trade.size, trade.side)
 
         # Trackear mercado para resolución futura
         if trade.market_id:
@@ -1134,6 +1163,8 @@ async def lifespan(app: FastAPI):
     app.state.bankroll = bot.bankroll
     app.state.news_catalyst = bot.news_catalyst
     app.state.ml_scorer = bot.ml_scorer
+    # v10.0 módulos
+    app.state.complement_arb = bot.complement_arb
     # Lanzar polling en background
     polling_task = asyncio.create_task(bot.run_polling_loop())
     print(f"Dashboard activo en puerto {config.DASHBOARD_PORT}", flush=True)

@@ -2253,3 +2253,141 @@ async def get_kalshi_arb(request: Request):
         "markets_scanned": markets_scanned,
         "last_scan": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ── v10: Backtester ─────────────────────────────────────────────────
+
+@router.post("/api/backtest")
+async def run_backtest(request: Request):
+    """Ejecutar backtest de alertas con parámetros personalizados."""
+    user_id = await get_user_id(request)
+    db = request.app.state.db
+    body = await request.json()
+
+    from src.strategies.alert_backtester import AlertBacktester
+    backtester = AlertBacktester(db)
+    result = await backtester.run_backtest(body)
+    return result
+
+
+# ── v10: Complement Arb ─────────────────────────────────────────────
+
+@router.get("/api/complement-arb")
+async def get_complement_arb(request: Request):
+    """Obtener oportunidades de arbitraje binario (YES+NO < $1)."""
+    scanner = getattr(request.app.state, "complement_arb", None)
+    if not scanner:
+        return {"enabled": False, "opportunities": [], "error": "Scanner no inicializado"}
+    return scanner.get_status()
+
+
+@router.post("/api/complement-arb/scan")
+async def trigger_complement_scan(request: Request):
+    """Forzar un scan de complement arb."""
+    scanner = getattr(request.app.state, "complement_arb", None)
+    if not scanner:
+        return {"error": "Scanner no inicializado"}
+    opportunities = await scanner.scan()
+    return {"opportunities": len(opportunities), "results": scanner.get_status()}
+
+
+# ── v10: Alert PnL Tracking ─────────────────────────────────────────
+
+@router.get("/api/alert-pnl")
+async def get_alert_pnl(request: Request):
+    """Obtener PnL de alertas (simulado basado en price impact)."""
+    user_id = await get_user_id(request)
+    db = request.app.state.db
+
+    # Estadísticas de alert autotrades
+    stats = await db.get_alert_autotrade_stats(user_id)
+
+    # Historial de PnL por día
+    pnl_history = await db.get_alert_pnl_history(days=30, user_id=user_id)
+
+    # Ranking de wallets por profit
+    wallet_ranking = await db.get_alert_wallet_ranking(limit=15)
+
+    # Trades abiertos
+    open_trades = await db.get_open_alert_autotrades(user_id)
+
+    # Trades recientes
+    recent_trades = await db.get_alert_autotrades(hours=168, limit=50, user_id=user_id)
+
+    return {
+        "stats": stats,
+        "pnl_history": pnl_history,
+        "wallet_ranking": wallet_ranking,
+        "open_trades": open_trades,
+        "recent_trades": recent_trades,
+    }
+
+
+# ── v10: Volume & Market Intelligence ────────────────────────────────
+
+@router.get("/api/volume-spikes")
+async def get_volume_spikes(request: Request):
+    """Obtener mercados con volume spikes activos."""
+    aat = getattr(request.app.state, "alert_autotrader", None)
+    if not aat:
+        return {"spikes": []}
+
+    spikes = []
+    for market_id, entries in aat._volume_tracker.items():
+        if len(entries) < 3:
+            continue
+        ratio = aat.get_volume_spike_ratio(market_id)
+        if ratio >= 2.0:
+            bias = aat.get_volume_direction_bias(market_id)
+            total_vol = sum(e["volume"] for e in entries)
+            spikes.append({
+                "market_id": market_id,
+                "spike_ratio": round(ratio, 1),
+                "direction_bias": round(bias, 1),
+                "total_volume_4h": round(total_vol, 0),
+                "trade_count": len(entries),
+            })
+
+    spikes.sort(key=lambda x: -x["spike_ratio"])
+    return {"spikes": spikes[:20]}
+
+
+@router.get("/api/smart-watchlist")
+async def get_smart_watchlist(request: Request):
+    """Obtener wallets en la smart watchlist."""
+    db = request.app.state.db
+    try:
+        wallets = await db.get_watchlisted_wallets()
+        # Obtener detalles de cada wallet
+        details = []
+        async with db._pool.acquire() as conn:
+            for addr in list(wallets)[:30]:
+                row = await conn.fetchrow(
+                    "SELECT address, pseudonym, smart_money_score, win_count, loss_count, "
+                    "total_pnl, roi_pct, total_volume FROM wallets WHERE address = $1",
+                    addr
+                )
+                if row:
+                    total = (row["win_count"] or 0) + (row["loss_count"] or 0)
+                    details.append({
+                        "address": row["address"],
+                        "name": row["pseudonym"] or row["address"][:10] + "...",
+                        "score": round(float(row["smart_money_score"] or 0), 1),
+                        "win_rate": round((row["win_count"] or 0) / max(total, 1) * 100, 1),
+                        "total_pnl": round(float(row["total_pnl"] or 0), 2),
+                        "roi_pct": round(float(row["roi_pct"] or 0), 1),
+                        "volume": round(float(row["total_volume"] or 0), 0),
+                        "resolved": total,
+                    })
+        details.sort(key=lambda x: -x["score"])
+        return {"count": len(details), "wallets": details}
+    except Exception as e:
+        return {"count": 0, "wallets": [], "error": str(e)}
+
+
+@router.get("/api/category-edge")
+async def get_category_edge(request: Request):
+    """Obtener win rate por categoría para category-specific scoring."""
+    db = request.app.state.db
+    edges = await db.get_category_edge()
+    return {"categories": edges}

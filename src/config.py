@@ -313,6 +313,20 @@ FEATURE_CROSS_PLATFORM = _features.get("cross_platform_arb", False)
 CROSS_PLATFORM_MIN_EDGE = 3.0  # ventaja mínima en %
 CROSS_PLATFORM_SOURCES = ["kalshi", "predictit", "manifold"]
 
+# === v10.0: Binary Complement Arbitrage ===
+_comp_arb = _yaml.get("complement_arb", {})
+FEATURE_COMPLEMENT_ARB = _features.get("complement_arb", False)
+COMPLEMENT_ARB_MIN_EDGE = _comp_arb.get("min_edge_pct", 1.0)
+COMPLEMENT_ARB_SCAN_INTERVAL = _comp_arb.get("scan_interval_sec", 60)
+COMPLEMENT_ARB_MAX_MARKETS = _comp_arb.get("max_markets", 100)
+
+# === v10.0: Alert Backtester ===
+FEATURE_BACKTESTER = True  # Siempre disponible — solo analiza datos
+
+# === v10.0: WebSocket Real-Time Detection ===
+FEATURE_WS_REALTIME = _features.get("ws_realtime", False)
+WS_REALTIME_MIN_SIZE = _comp_arb.get("ws_min_size_usd", 100)
+
 # === Dashboard ===
 DASHBOARD_PORT = int(os.getenv("PORT", 8080))
 
@@ -472,3 +486,10 @@ def restore_from_db(saved: dict):
     cfg.AT_TRAILING_STOP_ENABLED = _bool("at_trailing_stop_enabled", cfg.AT_TRAILING_STOP_ENABLED)
     cfg.AT_TRAILING_STOP_PCT = _float("at_trailing_stop_pct", cfg.AT_TRAILING_STOP_PCT)
     cfg.AT_SLIPPAGE_MAX_PCT = _float("at_slippage_max_pct", cfg.AT_SLIPPAGE_MAX_PCT)
+
+    # === v10.0 ===
+    cfg.FEATURE_COMPLEMENT_ARB = _bool("feature_complement_arb", cfg.FEATURE_COMPLEMENT_ARB)
+    cfg.COMPLEMENT_ARB_MIN_EDGE = _float("arb_complement_min_edge", cfg.COMPLEMENT_ARB_MIN_EDGE)
+    cfg.COMPLEMENT_ARB_SCAN_INTERVAL = _int("arb_complement_scan_interval", cfg.COMPLEMENT_ARB_SCAN_INTERVAL)
+    cfg.COMPLEMENT_ARB_MAX_MARKETS = _int("arb_complement_max_markets", cfg.COMPLEMENT_ARB_MAX_MARKETS)
+    cfg.FEATURE_WS_REALTIME = _bool("feature_ws_realtime", cfg.FEATURE_WS_REALTIME)

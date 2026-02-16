@@ -2287,6 +2287,185 @@ class Database:
             )
             return [dict(r) for r in rows]
 
+    # ── v10.0: Alert PnL Tracking ──────────────────────────────────
+
+    async def get_alert_autotrade_stats(self, user_id: int = 1) -> dict:
+        """Estadísticas agregadas de alert autotrades."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT
+                        COUNT(*) as total_trades,
+                        COUNT(*) FILTER (WHERE resolved AND result IN ('win','take_profit','trailing_stop')) as wins,
+                        COUNT(*) FILTER (WHERE resolved AND result IN ('loss','stop_loss')) as losses,
+                        COALESCE(SUM(pnl), 0) as total_pnl,
+                        MAX(pnl) as best_trade,
+                        MIN(pnl) as worst_trade
+                    FROM alert_autotrades
+                    WHERE status = 'filled'
+                """)
+                if not row:
+                    return {}
+                total = (row["wins"] or 0) + (row["losses"] or 0)
+                return {
+                    "total_trades": row["total_trades"] or 0,
+                    "wins": row["wins"] or 0,
+                    "losses": row["losses"] or 0,
+                    "win_rate": round((row["wins"] or 0) / max(total, 1) * 100, 1),
+                    "total_pnl": round(float(row["total_pnl"] or 0), 2),
+                    "best_trade": round(float(row["best_trade"] or 0), 2) if row["best_trade"] else None,
+                    "worst_trade": round(float(row["worst_trade"] or 0), 2) if row["worst_trade"] else None,
+                }
+        except Exception as e:
+            print(f"[DB] get_alert_autotrade_stats error: {e}", flush=True)
+            return {}
+
+    async def get_alert_pnl_history(self, days: int = 30, user_id: int = 1) -> list:
+        """Historial de PnL por día para alert autotrades."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT DATE(created_at) as date,
+                           COALESCE(SUM(pnl), 0) as pnl,
+                           COUNT(*) as trades
+                    FROM alert_autotrades
+                    WHERE status = 'filled' AND resolved = TRUE
+                      AND created_at > NOW() - ($1 || ' days')::INTERVAL
+                    GROUP BY DATE(created_at)
+                    ORDER BY date
+                """, str(days))
+                return [{"date": str(r["date"]), "pnl": round(float(r["pnl"]), 2), "trades": r["trades"]} for r in rows]
+        except Exception as e:
+            print(f"[DB] get_alert_pnl_history error: {e}", flush=True)
+            return []
+
+    async def get_alert_wallet_ranking(self, limit: int = 15) -> list:
+        """Ranking de wallets por profit en alert autotrades."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        a.wallet_address as address,
+                        w.pseudonym as name,
+                        COALESCE(w.smart_money_score, 0) as score,
+                        COUNT(*) as trades,
+                        COUNT(*) FILTER (WHERE a.result IN ('win','take_profit','trailing_stop')) as wins,
+                        COALESCE(SUM(a.pnl), 0) as total_pnl,
+                        COALESCE(SUM(a.size_usd), 0) as volume
+                    FROM alert_autotrades a
+                    LEFT JOIN wallets w ON a.wallet_address = w.address
+                    WHERE a.status = 'filled' AND a.resolved = TRUE
+                    GROUP BY a.wallet_address, w.pseudonym, w.smart_money_score
+                    HAVING COUNT(*) >= 2
+                    ORDER BY SUM(a.pnl) DESC
+                    LIMIT $1
+                """, limit)
+                result = []
+                for r in rows:
+                    total = r["trades"]
+                    result.append({
+                        "address": r["address"],
+                        "name": r["name"] or (r["address"][:10] + "..."),
+                        "score": round(float(r["score"]), 1),
+                        "win_rate": round(r["wins"] / max(total, 1) * 100, 1),
+                        "total_pnl": round(float(r["total_pnl"]), 2),
+                        "volume": round(float(r["volume"]), 0),
+                    })
+                return result
+        except Exception as e:
+            print(f"[DB] get_alert_wallet_ranking error: {e}", flush=True)
+            return []
+
+    async def get_alert_autotrades(self, hours: int = 168, limit: int = 50, user_id: int = 1) -> list:
+        """Obtener alert autotrades recientes."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT * FROM alert_autotrades
+                    WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+                    ORDER BY created_at DESC LIMIT $2
+                """, str(hours), limit)
+                return [_serialize_row(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_alert_autotrades error: {e}", flush=True)
+            return []
+
+    async def get_open_alert_autotrades(self, user_id: int = 1) -> list:
+        """Obtener alert autotrades abiertos (no resueltos)."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT * FROM alert_autotrades
+                    WHERE status = 'filled' AND (resolved IS NOT TRUE)
+                    ORDER BY created_at DESC LIMIT 20
+                """)
+                return [_serialize_row(r) for r in rows]
+        except Exception as e:
+            return []
+
+    # ── v10.0: Category Edge ───────────────────────────────────────
+
+    async def get_category_edge(self) -> list:
+        """Win rate por categoría de alertas resueltas."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        COALESCE(NULLIF(market_category, ''), 'other') as category,
+                        COUNT(*) FILTER (WHERE resolved) as resolved,
+                        COUNT(*) FILTER (WHERE resolved AND was_correct) as wins,
+                        CASE WHEN COUNT(*) FILTER (WHERE resolved) > 0
+                            THEN ROUND(COUNT(*) FILTER (WHERE resolved AND was_correct)::numeric
+                                 / COUNT(*) FILTER (WHERE resolved) * 100, 1)
+                            ELSE 0 END as win_rate
+                    FROM alerts
+                    WHERE created_at > NOW() - INTERVAL '60 days'
+                    GROUP BY COALESCE(NULLIF(market_category, ''), 'other')
+                    HAVING COUNT(*) FILTER (WHERE resolved) >= 3
+                    ORDER BY win_rate DESC
+                """)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            return []
+
+    # ── v10.0: Backtest Data ───────────────────────────────────────
+
+    async def get_backtest_data(self, days: int = 30, min_score: int = 5) -> list:
+        """Datos históricos de alertas para backtesting."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        a.score, a.size,
+                        a.market_category as category,
+                        a.price_at_alert as entry_price,
+                        a.price_1h, a.price_6h, a.price_24h,
+                        a.price_latest,
+                        a.was_correct, a.resolved,
+                        a.outcome, a.side,
+                        CASE WHEN a.resolved AND a.was_correct THEN 1.0
+                             WHEN a.resolved AND NOT a.was_correct THEN 0.0
+                             ELSE NULL END as exit_price_binary,
+                        COALESCE(a.price_latest, a.price_24h, a.price_6h, a.price_1h) as exit_price,
+                        CASE WHEN a.resolved THEN
+                            CASE WHEN a.was_correct THEN 'win' ELSE 'loss' END
+                            ELSE 'open' END as sim_result,
+                        CASE WHEN (w.win_count + w.loss_count) > 0
+                            THEN (w.win_count::float / (w.win_count + w.loss_count) * 100)
+                            ELSE 0 END as hit_rate
+                    FROM alerts a
+                    LEFT JOIN wallets w ON a.wallet_address = w.address
+                    WHERE a.created_at > NOW() - ($1 || ' days')::INTERVAL
+                      AND a.score >= $2
+                      AND a.price_at_alert IS NOT NULL AND a.price_at_alert > 0
+                    ORDER BY a.created_at DESC
+                    LIMIT 2000
+                """, str(days), min_score)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_backtest_data error: {e}", flush=True)
+            return []
+
 
 def _serialize_row(row) -> dict:
     """Convertir asyncpg Record a dict serializando datetimes."""

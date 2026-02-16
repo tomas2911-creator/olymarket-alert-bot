@@ -4,17 +4,23 @@ Flujo:
 1. Recibe AlertCandidate + Trade cuando se dispara una alerta
 2. Filtra por configuración (score, odds, hit_rate, límites diarios)
 3. Busca token_id del outcome apostado por el insider
-4. Coloca orden BUY via py-clob-client
-5. Registra trade en tabla alert_autotrades
-6. Take Profit: vende automáticamente si el precio sube >= X% (configurable)
-7. Se resuelve cuando el mercado cierra o se ejecuta take profit
+4. Verifica profundidad del orderbook (price impact)
+5. Coloca orden BUY via py-clob-client (DCA si habilitado)
+6. Registra trade en tabla alert_autotrades
+7. Take Profit: vende automáticamente si el precio sube >= X% (configurable)
+8. Se resuelve cuando el mercado cierra o se ejecuta take profit
+
+v10.0: Orderbook depth check, DCA entry, volume spike detection,
+       smart watchlist boost, funding chain analysis, Kelly calibrado,
+       category-specific scoring, improved correlation filter.
 
 Credenciales: usa SOLO wallet propia (aat_). No comparte wallet con Crypto Arb.
 La config de trading es independiente con prefijo "aat_".
 """
 import asyncio
 import time
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 import structlog
 from src import config
@@ -22,6 +28,7 @@ from src import config
 logger = structlog.get_logger()
 
 CLOB_HOST = "https://clob.polymarket.com"
+GAMMA_HOST = "https://gamma-api.polymarket.com"
 CHAIN_ID = 137
 
 
@@ -43,6 +50,17 @@ class AlertAutoTrader:
         self._peak_balance: float = 0.0  # Para max drawdown tracking
         self._drawdown_paused = False
         self._initialized = False
+        # v10: Volume spike tracker — {market_id: [{ts, volume, side}]}
+        self._volume_tracker: dict[str, list] = defaultdict(list)
+        # v10: Smart watchlist cache (se refresca cada 30 min)
+        self._smart_watchlist: set[str] = set()
+        self._watchlist_updated: float = 0
+        # v10: Category win rates cache
+        self._category_win_rates: dict[str, float] = {}
+        self._category_wr_updated: float = 0
+        # v10: Backtest calibration data
+        self._calibrated_win_rate: float = 0.55  # default
+        self._calibrated_at: float = 0
 
     async def initialize(self):
         """Cargar config y crear cliente CLOB si hay credenciales."""
@@ -75,6 +93,13 @@ class AlertAutoTrader:
                 # Credenciales propias del alert autotrader (NO usa las de Crypto Arb)
                 "aat_api_key", "aat_api_secret", "aat_private_key", "aat_passphrase",
                 "aat_funder_address",
+                # v10: Nuevas features
+                "aat_orderbook_check_enabled", "aat_max_price_impact_pct",
+                "aat_dca_enabled", "aat_dca_splits", "aat_dca_interval_sec",
+                "aat_volume_spike_boost",
+                "aat_smart_watchlist_boost",
+                "aat_funding_chain_boost",
+                "aat_category_scoring_enabled",
             ])
             pk = raw.get("aat_private_key", "")
             if pk and not pk.startswith("0x"):
@@ -131,6 +156,16 @@ class AlertAutoTrader:
                 "passphrase": raw.get("aat_passphrase", ""),
                 "funder_address": raw.get("aat_funder_address", ""),
                 "has_own_wallet": bool(raw.get("aat_private_key")),
+                # v10: Nuevas features
+                "orderbook_check_enabled": raw.get("aat_orderbook_check_enabled") == "true",
+                "max_price_impact_pct": float(raw.get("aat_max_price_impact_pct", 3.0)),
+                "dca_enabled": raw.get("aat_dca_enabled") == "true",
+                "dca_splits": int(raw.get("aat_dca_splits", 2)),
+                "dca_interval_sec": int(raw.get("aat_dca_interval_sec", 30)),
+                "volume_spike_boost": int(raw.get("aat_volume_spike_boost", 3)),
+                "smart_watchlist_boost": int(raw.get("aat_smart_watchlist_boost", 3)),
+                "funding_chain_boost": int(raw.get("aat_funding_chain_boost", 2)),
+                "category_scoring_enabled": raw.get("aat_category_scoring_enabled") == "true",
             }
             self._enabled = self._config["enabled"]
 
@@ -236,19 +271,50 @@ class AlertAutoTrader:
         """Evaluar si una alerta debe copiarse como trade.
         candidate: AlertCandidate, trade: Trade
         Retorna trade_info dict o None.
+        v10: Incluye smart watchlist boost, volume spike, funding chain, category scoring.
         """
         if not self._enabled or not self._client or not self._initialized:
             return None
 
         cfg = self._config
 
-        # Filtro: score mínimo
-        if candidate.score < cfg["min_score"]:
+        # v10: Refrescar caches periódicamente
+        await self._refresh_smart_watchlist()
+        await self._refresh_category_win_rates()
+        await self._calibrate_kelly()
+
+        # ── Score ajustado con v10 boosts ──
+        adjusted_score = candidate.score
+        extra_triggers = []
+
+        # v10: Smart Watchlist boost
+        if self.is_smart_wallet(trade.wallet_address):
+            boost = cfg.get("smart_watchlist_boost", 3)
+            adjusted_score += boost
+            extra_triggers.append(f"⭐ Smart Watchlist (+{boost})")
+
+        # v10: Volume spike boost
+        spike_ratio = self.get_volume_spike_ratio(trade.market_id)
+        direction_bias = self.get_volume_direction_bias(trade.market_id)
+        if spike_ratio >= 3.0 and direction_bias >= 80:
+            boost = cfg.get("volume_spike_boost", 3)
+            adjusted_score += boost
+            extra_triggers.append(f"📊 Vol spike {spike_ratio:.1f}x ({direction_bias:.0f}% dir)")
+
+        # v10: Funding chain boost
+        funding_boost = await self._check_funding_chain(trade.wallet_address)
+        if funding_boost > 0:
+            adjusted_score += funding_boost
+            extra_triggers.append(f"🔗 Smart funder (+{funding_boost})")
+
+        # Filtro: score mínimo (usando score ajustado)
+        if adjusted_score < cfg["min_score"]:
             return None
 
-        # Filtro: require smart money (wallet en watchlist)
+        # Filtro: require smart money (wallet en watchlist o tiene triggers smart)
         if cfg["require_smart_money"]:
-            is_smart = any("Smart Money" in t for t in candidate.triggers)
+            is_smart = self.is_smart_wallet(trade.wallet_address) or \
+                        any("Smart Money" in t or "Ganador probado" in t for t in candidate.triggers)
             if not is_smart:
                 return None
 
@@ -293,20 +359,13 @@ class AlertAutoTrader:
         if trade.market_id in self._open_positions:
             return None
 
-        # Filtro: Correlation Filter — no duplicar riesgo en mercados correlacionados
+        # v10: Improved Correlation Filter — usa entidades en vez de solo palabras
         if config.FEATURE_CORRELATION_FILTER and self._open_positions:
-            market_q = (trade.market_question or "").lower()
+            market_q = trade.market_question or ""
             for pos_cid, pos in self._open_positions.items():
-                pos_q = (pos.get("market_question", "") or "").lower()
-                if not market_q or not pos_q:
-                    continue
-                # Calcular overlap de palabras clave
-                words_new = set(w for w in market_q.split() if len(w) > 3)
-                words_pos = set(w for w in pos_q.split() if len(w) > 3)
-                if words_new and words_pos:
-                    overlap = len(words_new & words_pos) / max(len(words_new | words_pos), 1) * 100
-                    if overlap >= config.CORRELATION_MIN_OVERLAP:
-                        return None  # Mercado muy similar a posición abierta
+                pos_q = pos.get("market_question", "") or ""
+                if self._markets_correlated(market_q, pos_q):
+                    return None  # Mercado correlacionado a posición abierta
 
         # Cooldown general entre trades
         now = time.time()
@@ -330,13 +389,20 @@ class AlertAutoTrader:
         # ── Calcular bet_size (base o Kelly) ──
         bet_size = cfg["bet_size"]
 
-        # Kelly Criterion: sizing dinámico basado en probabilidad estimada
+        # Kelly Criterion: sizing dinámico basado en probabilidad CALIBRADA
         if cfg.get("kelly_enabled"):
             bet_size = self._kelly_bet_size(candidate, trade, cfg)
 
         # Auto-scaling por PNL: ajustar bet_size según rendimiento del día
         if cfg.get("auto_scale_enabled"):
             bet_size = self._auto_scale_bet(bet_size, cfg)
+
+        # v10: Category-specific scaling
+        cat_mult = self.get_category_multiplier(trade.market_category or "")
+        bet_size = bet_size * cat_mult
+
+        # Merge triggers
+        all_triggers = list(candidate.triggers[:5]) + extra_triggers
 
         return {
             "condition_id": trade.market_id,
@@ -349,32 +415,40 @@ class AlertAutoTrader:
             "buy_outcome": trade.outcome if trade.side == "BUY" else ("No" if trade.outcome == "Yes" else "Yes"),
             "insider_size": trade.size,
             "insider_price": trade.price,
-            "alert_score": candidate.score,
-            "triggers": ", ".join(candidate.triggers[:5]),
+            "alert_score": adjusted_score,
+            "triggers": ", ".join(all_triggers),
             "wallet_hit_rate": candidate.wallet_hit_rate or 0,
             "bet_size": round(bet_size, 2),
             "category": trade.market_category or "",
+            "volume_spike": round(spike_ratio, 1),
+            "category_multiplier": cat_mult,
         }
 
     def _kelly_bet_size(self, candidate, trade, cfg: dict) -> float:
-        """Calcular bet size usando Kelly Criterion simplificado.
+        """Calcular bet size usando Kelly Criterion con win rate CALIBRADO.
         Kelly fraction = (p * b - q) / b
-        donde p = probabilidad estimada de ganar, q = 1-p, b = odds netas
+        donde p = probabilidad calibrada de ganar, q = 1-p, b = odds netas
+        v10: Usa win rate real del backtest en vez de score arbitrario.
         """
         base_bet = cfg["bet_size"]
         kelly_fraction = cfg.get("kelly_base_fraction", 0.25)
 
-        # Estimar probabilidad de ganar basada en score + hit rate
+        # v10: Base probability = calibrated win rate (de datos reales)
+        base_wr = self._calibrated_win_rate  # Calibrado cada 6h
+
+        # Ajustar por score relativo al mínimo
         score = candidate.score
-        max_score = 30  # Score máximo práctico
-        score_prob = min(0.5 + (score / max_score) * 0.3, 0.85)  # 50%-85%
+        min_score = cfg.get("min_score", 7)
+        # Scores más altos que el mínimo → boost proporcional
+        score_boost = min((score - min_score) / 20, 0.15)  # max +15%
+        score_prob = min(base_wr + score_boost, 0.90)
 
         # Ajustar por hit rate de la wallet si disponible
         hr = candidate.wallet_hit_rate or 0
-        if hr >= 70:
-            score_prob = min(score_prob + 0.05, 0.90)
-        elif hr >= 80:
-            score_prob = min(score_prob + 0.10, 0.92)
+        if hr >= 80:
+            score_prob = min(score_prob + 0.08, 0.92)
+        elif hr >= 70:
+            score_prob = min(score_prob + 0.04, 0.90)
 
         # Odds netas: cuánto ganamos por cada $1 apostado
         price = trade.price
@@ -418,10 +492,269 @@ class AlertAutoTrader:
 
         return bet_size * scale
 
+    # ── v10: Orderbook Depth Check ────────────────────────────────────
+
+    async def _check_orderbook_depth(self, token_id: str, side: str, size_usd: float) -> dict:
+        """Consultar CLOB orderbook y calcular price impact antes de ejecutar.
+        Retorna {ok: bool, price_impact_pct: float, best_price: float, depth_usd: float}
+        """
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=8) as client:
+                resp = await client.get(f"{CLOB_HOST}/book", params={"token_id": token_id})
+                if resp.status_code != 200:
+                    return {"ok": True, "price_impact_pct": 0, "best_price": 0, "depth_usd": 0}
+                book = resp.json()
+
+                # Para BUY miramos los asks, para SELL los bids
+                orders = book.get("asks", []) if side == "BUY" else book.get("bids", [])
+                if not orders:
+                    return {"ok": True, "price_impact_pct": 0, "best_price": 0, "depth_usd": 0}
+
+                # Calcular depth y price impact
+                total_depth_usd = 0
+                filled_usd = 0
+                worst_price = 0
+                best_price = float(orders[0].get("price", 0)) if orders else 0
+
+                for order in orders:
+                    price = float(order.get("price", 0))
+                    size = float(order.get("size", 0))
+                    level_usd = price * size
+                    total_depth_usd += level_usd
+                    if filled_usd < size_usd:
+                        remaining = size_usd - filled_usd
+                        take = min(level_usd, remaining)
+                        filled_usd += take
+                        worst_price = price
+
+                if best_price <= 0:
+                    return {"ok": True, "price_impact_pct": 0, "best_price": 0, "depth_usd": total_depth_usd}
+
+                price_impact_pct = abs(worst_price - best_price) / best_price * 100 if worst_price > 0 else 0
+
+                return {
+                    "ok": True,
+                    "price_impact_pct": round(price_impact_pct, 2),
+                    "best_price": best_price,
+                    "depth_usd": round(total_depth_usd, 2),
+                }
+        except Exception as e:
+            print(f"[AlertTrader] Orderbook check error: {e}", flush=True)
+            return {"ok": True, "price_impact_pct": 0, "best_price": 0, "depth_usd": 0}
+
+    # ── v10: Volume Spike Detection ───────────────────────────────────
+
+    def track_volume(self, market_id: str, size: float, side: str):
+        """Registrar volumen de un trade para detección de spikes."""
+        now = time.time()
+        self._volume_tracker[market_id].append({
+            "ts": now, "volume": size, "side": side
+        })
+        # Limpiar datos viejos (>4h)
+        cutoff = now - 14400
+        self._volume_tracker[market_id] = [
+            v for v in self._volume_tracker[market_id] if v["ts"] > cutoff
+        ]
+
+    def get_volume_spike_ratio(self, market_id: str) -> float:
+        """Calcular ratio de volumen última hora vs promedio 4h.
+        Retorna >1 si hay spike (ej: 5.0 = 5x el promedio).
+        """
+        entries = self._volume_tracker.get(market_id, [])
+        if len(entries) < 3:
+            return 1.0
+        now = time.time()
+        vol_1h = sum(e["volume"] for e in entries if e["ts"] > now - 3600)
+        vol_4h = sum(e["volume"] for e in entries)
+        hours_4h = min((now - entries[0]["ts"]) / 3600, 4.0) if entries else 4.0
+        avg_hourly = (vol_4h / max(hours_4h, 0.5))
+        if avg_hourly <= 0:
+            return 1.0
+        return vol_1h / avg_hourly
+
+    def get_volume_direction_bias(self, market_id: str) -> float:
+        """Porcentaje de volumen en una sola dirección en última hora.
+        Retorna 0-100 (100 = 100% buy o 100% sell).
+        """
+        entries = self._volume_tracker.get(market_id, [])
+        now = time.time()
+        recent = [e for e in entries if e["ts"] > now - 3600]
+        if not recent:
+            return 50.0
+        buy_vol = sum(e["volume"] for e in recent if e["side"] == "BUY")
+        total = sum(e["volume"] for e in recent)
+        if total <= 0:
+            return 50.0
+        return max(buy_vol / total * 100, (1 - buy_vol / total) * 100)
+
+    # ── v10: Smart Watchlist ──────────────────────────────────────────
+
+    async def _refresh_smart_watchlist(self):
+        """Actualizar cache de wallets en watchlist (cada 30 min)."""
+        now = time.time()
+        if now - self._watchlist_updated < 1800 and self._smart_watchlist:
+            return
+        try:
+            self._smart_watchlist = await self.db.get_watchlisted_wallets()
+            self._watchlist_updated = now
+        except Exception as e:
+            print(f"[AlertTrader] Error refreshing watchlist: {e}", flush=True)
+
+    def is_smart_wallet(self, address: str) -> bool:
+        """Verificar si wallet está en la smart watchlist."""
+        return address.lower() in self._smart_watchlist
+
+    # ── v10: Category Win Rates ───────────────────────────────────────
+
+    async def _refresh_category_win_rates(self):
+        """Actualizar win rates por categoría (cada 1h)."""
+        now = time.time()
+        if now - self._category_wr_updated < 3600 and self._category_win_rates:
+            return
+        try:
+            edges = await self.db.get_category_edge()
+            self._category_win_rates = {}
+            for e in edges:
+                cat = (e.get("category") or "").lower()
+                if cat and e.get("resolved", 0) >= 5:
+                    self._category_win_rates[cat] = e.get("win_rate", 50)
+            self._category_wr_updated = now
+        except Exception:
+            pass
+
+    def get_category_multiplier(self, category: str) -> float:
+        """Multiplicador de bet size según win rate de la categoría.
+        Categorías con >60% WR → hasta 1.5x, <40% WR → hasta 0.5x
+        """
+        if not self._config.get("category_scoring_enabled"):
+            return 1.0
+        cat = (category or "").lower()
+        wr = self._category_win_rates.get(cat)
+        if wr is None:
+            return 1.0
+        if wr >= 70:
+            return 1.5
+        elif wr >= 60:
+            return 1.25
+        elif wr >= 50:
+            return 1.0
+        elif wr >= 40:
+            return 0.75
+        else:
+            return 0.5
+
+    # ── v10: Funding Chain Boost ──────────────────────────────────────
+
+    async def _check_funding_chain(self, wallet_address: str) -> int:
+        """Verificar si el funder de esta wallet es smart money.
+        Retorna puntos extra (0 o funding_chain_boost).
+        """
+        boost = self._config.get("funding_chain_boost", 0)
+        if not boost:
+            return 0
+        try:
+            async with self.db._pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT on_chain_funded_by FROM wallets WHERE address = $1",
+                    wallet_address.lower()
+                )
+                if not row or not row["on_chain_funded_by"]:
+                    return 0
+                funder = row["on_chain_funded_by"].lower()
+                # Verificar si el funder es smart money
+                funder_row = await conn.fetchrow(
+                    "SELECT smart_money_score, win_count, loss_count FROM wallets WHERE address = $1",
+                    funder
+                )
+                if not funder_row:
+                    return 0
+                score = float(funder_row["smart_money_score"] or 0)
+                wins = funder_row["win_count"] or 0
+                losses = funder_row["loss_count"] or 0
+                total = wins + losses
+                if total >= 5 and score >= 50:
+                    return boost
+                if total >= 3 and wins / max(total, 1) >= 0.65:
+                    return boost
+        except Exception:
+            pass
+        return 0
+
+    # ── v10: Kelly Calibrado con Backtest ─────────────────────────────
+
+    async def _calibrate_kelly(self):
+        """Calibrar probabilidad de win para Kelly usando datos reales.
+        Se ejecuta cada 6 horas.
+        """
+        now = time.time()
+        if now - self._calibrated_at < 21600 and self._calibrated_at > 0:
+            return
+        try:
+            async with self.db._pool.acquire() as conn:
+                # Win rate real de los alert autotrades
+                row = await conn.fetchrow("""
+                    SELECT COUNT(*) FILTER (WHERE result IN ('win','take_profit','trailing_stop')) as wins,
+                           COUNT(*) as total
+                    FROM alert_autotrades
+                    WHERE resolved = TRUE AND created_at > NOW() - INTERVAL '30 days'
+                """)
+                if row and row["total"] and row["total"] >= 10:
+                    self._calibrated_win_rate = row["wins"] / row["total"]
+                    print(f"[AlertTrader] Kelly calibrado: WR={self._calibrated_win_rate:.1%} "
+                          f"({row['wins']}/{row['total']} trades)", flush=True)
+                else:
+                    # Fallback: usar win rate de alertas simuladas
+                    row2 = await conn.fetchrow("""
+                        SELECT COUNT(*) FILTER (WHERE was_correct) as wins,
+                               COUNT(*) as total
+                        FROM alerts WHERE resolved = TRUE AND score >= 7
+                          AND created_at > NOW() - INTERVAL '30 days'
+                    """)
+                    if row2 and row2["total"] and row2["total"] >= 20:
+                        self._calibrated_win_rate = row2["wins"] / row2["total"]
+            self._calibrated_at = now
+        except Exception as e:
+            print(f"[AlertTrader] Kelly calibration error: {e}", flush=True)
+
+    # ── v10: Improved Correlation Filter ──────────────────────────────
+
+    def _markets_correlated(self, q1: str, q2: str) -> bool:
+        """Verificar si dos mercados están correlacionados usando entidades + categoría."""
+        if not q1 or not q2:
+            return False
+        q1_lower = q1.lower()
+        q2_lower = q2.lower()
+
+        # Extraer entidades (palabras capitalizadas, nombres propios)
+        import re
+        entities_1 = set(re.findall(r'\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b', q1))
+        entities_2 = set(re.findall(r'\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b', q2))
+
+        # Entidades compartidas (más preciso que overlap de palabras)
+        if entities_1 and entities_2:
+            shared = entities_1 & entities_2
+            if len(shared) >= 1 and len(shared) / max(len(entities_1 | entities_2), 1) >= 0.3:
+                return True
+
+        # Fallback: overlap de palabras significativas (>4 chars)
+        stop_words = {"will", "what", "when", "does", "about", "before", "after",
+                      "market", "price", "above", "below", "this", "that", "with"}
+        words_1 = set(w for w in q1_lower.split() if len(w) > 4 and w not in stop_words)
+        words_2 = set(w for w in q2_lower.split() if len(w) > 4 and w not in stop_words)
+        if words_1 and words_2:
+            overlap = len(words_1 & words_2) / max(len(words_1 | words_2), 1)
+            if overlap >= 0.5:
+                return True
+
+        return False
+
     # ── Ejecución de órdenes ─────────────────────────────────────────
 
     async def execute_trade(self, trade_info: dict) -> dict:
-        """Ejecutar copy-trade en Polymarket CLOB."""
+        """Ejecutar copy-trade en Polymarket CLOB.
+        v10: Incluye orderbook depth check y DCA (time-weighted entry).
+        """
         if not self._client:
             return {"success": False, "error": "Cliente CLOB no inicializado"}
 
@@ -446,149 +779,250 @@ class AlertAutoTrader:
             if price > cfg["max_odds"] or price < cfg["min_odds"]:
                 return {"success": False, "error": f"Precio actual {price:.2f} fuera de rango [{cfg['min_odds']}, {cfg['max_odds']}]"}
 
-            # Calcular shares con precisión Decimal (igual que Crypto Arb)
-            from decimal import Decimal, ROUND_DOWN
-            import math
+            # v10: Orderbook Depth Check — verificar price impact antes de ejecutar
+            if cfg.get("orderbook_check_enabled"):
+                ob_result = await self._check_orderbook_depth(token_id, "BUY", bet_size)
+                max_impact = cfg.get("max_price_impact_pct", 3.0)
+                if ob_result["price_impact_pct"] > max_impact:
+                    return {"success": False,
+                            "error": f"Price impact {ob_result['price_impact_pct']:.1f}% > max {max_impact}% "
+                                     f"(depth=${ob_result['depth_usd']:.0f})"}
+                if ob_result["depth_usd"] > 0 and ob_result["depth_usd"] < bet_size * 0.5:
+                    # Reducir bet size si hay poca liquidez
+                    old_bet = bet_size
+                    bet_size = min(bet_size, ob_result["depth_usd"] * 0.4)
+                    bet_size = max(bet_size, 1.0)
+                    if bet_size < old_bet:
+                        print(f"[AlertTrader] ⚠️ Bet reducido por liquidez: ${old_bet:.2f} → ${bet_size:.2f} "
+                              f"(depth=${ob_result['depth_usd']:.0f})", flush=True)
 
-            MIN_CLOB_SHARES = Decimal('5')
-            order_price = round(price, 2)
-            d_price = Decimal(str(order_price))
-            d_raw = Decimal(str(bet_size)) / d_price
-
-            d_shares = Decimal('0')
-            for decimals in [4, 3, 2, 1, 0]:
-                q = Decimal(10) ** -decimals
-                d_candidate = d_raw.quantize(q, rounding=ROUND_DOWN)
-                d_maker = d_candidate * d_price
-                if d_maker == d_maker.quantize(Decimal('0.01')):
-                    d_shares = d_candidate
-                    break
-
-            if d_shares < MIN_CLOB_SHARES:
-                d_shares = MIN_CLOB_SHARES
-                bet_size = float((d_shares * d_price).quantize(Decimal('0.01')))
-                print(f"[AlertTrader] ⚠️ Shares ajustadas al mínimo CLOB: {d_shares} (bet=${bet_size:.2f})", flush=True)
-
-            shares = float(d_shares)
-            if shares <= 0:
-                return {"success": False, "error": f"No se pudo calcular shares válidas para price={order_price} bet={bet_size}"}
-
-            from py_clob_client.clob_types import OrderArgs, OrderType
-
-            order_args = OrderArgs(
-                price=order_price,
-                size=shares,
-                side="BUY",
-                token_id=token_id,
-            )
-
-            print(f"[AlertTrader] Order: price={order_price} shares={shares} usdc={round(shares*order_price,2)} type=GTC", flush=True)
-
-            # GTC (Good Till Cancel) para mercados largos
-            loop = asyncio.get_running_loop()
-            signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
-            resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
-
-            print(f"[AlertTrader] post_order response: {resp}", flush=True)
-
-            success = False
-            order_id = ""
-            error_msg = ""
-            resp_status = ""
-
-            if isinstance(resp, dict):
-                order_id = resp.get("orderID", resp.get("order_id", "")) or ""
-                resp_status = resp.get("status", "")
-                success = bool(order_id) and resp.get("success", True)
-                if not success:
-                    error_msg = resp.get("errorMsg", resp.get("error", str(resp)))
-            elif hasattr(resp, "success"):
-                success = resp.success
-                order_id = getattr(resp, "orderID", "") or ""
-                resp_status = getattr(resp, "status", "")
-                error_msg = getattr(resp, "errorMsg", "")
+            # v10: DCA — dividir en múltiples órdenes
+            if cfg.get("dca_enabled") and cfg.get("dca_splits", 1) > 1:
+                return await self._execute_dca(trade_info, token_id, price, bet_size)
             else:
-                order_id = str(resp) if resp else ""
-                success = bool(order_id)
-
-            # GTC 'live': polling para verificar fill
-            if success and resp_status.lower() == "live" and order_id:
-                print(f"[AlertTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill...", flush=True)
-                filled = False
-                for attempt in range(12):  # 12 × 5s = 60s máximo (mercados largos)
-                    await asyncio.sleep(5)
-                    try:
-                        order_info = await loop.run_in_executor(
-                            None, self._client.get_order, order_id
-                        )
-                        current_status = ""
-                        if isinstance(order_info, dict):
-                            current_status = order_info.get("status", "")
-                        elif hasattr(order_info, "status"):
-                            current_status = getattr(order_info, "status", "")
-                        print(f"[AlertTrader]   polling {attempt+1}/12: status={current_status}", flush=True)
-                        if current_status.lower() == "matched":
-                            filled = True
-                            break
-                        elif current_status.lower() in ("cancelled", "expired", ""):
-                            break
-                    except Exception as poll_err:
-                        print(f"[AlertTrader]   polling error: {poll_err}", flush=True)
-                        break
-
-                if not filled:
-                    try:
-                        await loop.run_in_executor(None, self._client.cancel, order_id)
-                        print(f"[AlertTrader] ❌ Orden GTC no llenada, CANCELADA: {order_id[:16]}...", flush=True)
-                    except Exception as cancel_err:
-                        print(f"[AlertTrader] ⚠️ Error cancelando orden GTC: {cancel_err}", flush=True)
-                    success = False
-                    error_msg = "GTC order not filled within timeout, cancelled"
-                else:
-                    print(f"[AlertTrader] ✅ Orden GTC llenada (matched)!", flush=True)
-
-            trade_record = {
-                "condition_id": cid,
-                "order_id": order_id,
-                "market_slug": trade_info["market_slug"],
-                "market_question": trade_info["market_question"],
-                "wallet_address": trade_info["wallet_address"],
-                "insider_side": trade_info["insider_side"],
-                "insider_outcome": outcome,
-                "insider_size": trade_info["insider_size"],
-                "alert_score": trade_info["alert_score"],
-                "triggers": trade_info["triggers"],
-                "side": "BUY",
-                "outcome": outcome,
-                "price": price,
-                "size_usd": bet_size,
-                "shares": shares,
-                "token_id": token_id,
-                "category": trade_info["category"],
-                "wallet_hit_rate": trade_info["wallet_hit_rate"],
-                "status": "filled" if success else "rejected",
-                "error": error_msg if not success else None,
-            }
-
-            await self.db.record_alert_autotrade(trade_record)
-
-            if success:
-                self._last_trade_time = time.time()
-                self._trades_today.append(trade_record)
-                self._open_positions[cid] = trade_record
-                print(f"[AlertTrader] ✅ COPY-TRADE: {outcome} en {trade_info['market_slug'][:40]} "
-                      f"${bet_size} @ {price:.2f} (score={trade_info['alert_score']} "
-                      f"insider=${trade_info['insider_size']:.0f}) order={order_id}",
-                      flush=True)
-                return {"success": True, "order_id": order_id, "trade": trade_record}
-            else:
-                print(f"[AlertTrader] ❌ Orden rechazada: {error_msg}", flush=True)
-                return {"success": False, "error": error_msg}
+                return await self._execute_single_order(trade_info, token_id, price, bet_size)
 
         except Exception as e:
             error = str(e)
             print(f"[AlertTrader] ❌ Error ejecutando trade: {error}", flush=True)
             return {"success": False, "error": error}
+
+    def _calc_shares(self, bet_size: float, order_price: float) -> float:
+        """Calcular shares con precisión Decimal para CLOB."""
+        from decimal import Decimal, ROUND_DOWN
+        MIN_CLOB_SHARES = Decimal('5')
+        d_price = Decimal(str(order_price))
+        d_raw = Decimal(str(bet_size)) / d_price
+        d_shares = Decimal('0')
+        for decimals in [4, 3, 2, 1, 0]:
+            q = Decimal(10) ** -decimals
+            d_candidate = d_raw.quantize(q, rounding=ROUND_DOWN)
+            d_maker = d_candidate * d_price
+            if d_maker == d_maker.quantize(Decimal('0.01')):
+                d_shares = d_candidate
+                break
+        if d_shares < MIN_CLOB_SHARES:
+            d_shares = MIN_CLOB_SHARES
+        return float(d_shares)
+
+    async def _post_and_poll_order(self, order_args, token_id: str) -> tuple:
+        """Postear orden GTC y hacer polling. Retorna (success, order_id, error_msg)."""
+        from py_clob_client.clob_types import OrderType
+        loop = asyncio.get_running_loop()
+        signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
+        resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
+
+        success = False
+        order_id = ""
+        error_msg = ""
+        resp_status = ""
+
+        if isinstance(resp, dict):
+            order_id = resp.get("orderID", resp.get("order_id", "")) or ""
+            resp_status = resp.get("status", "")
+            success = bool(order_id) and resp.get("success", True)
+            if not success:
+                error_msg = resp.get("errorMsg", resp.get("error", str(resp)))
+        elif hasattr(resp, "success"):
+            success = resp.success
+            order_id = getattr(resp, "orderID", "") or ""
+            resp_status = getattr(resp, "status", "")
+            error_msg = getattr(resp, "errorMsg", "")
+        else:
+            order_id = str(resp) if resp else ""
+            success = bool(order_id)
+
+        # GTC 'live': polling para verificar fill
+        if success and resp_status.lower() == "live" and order_id:
+            print(f"[AlertTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill...", flush=True)
+            filled = False
+            for attempt in range(12):  # 12 × 5s = 60s máximo
+                await asyncio.sleep(5)
+                try:
+                    order_info = await loop.run_in_executor(None, self._client.get_order, order_id)
+                    current_status = ""
+                    if isinstance(order_info, dict):
+                        current_status = order_info.get("status", "")
+                    elif hasattr(order_info, "status"):
+                        current_status = getattr(order_info, "status", "")
+                    print(f"[AlertTrader]   polling {attempt+1}/12: status={current_status}", flush=True)
+                    if current_status.lower() == "matched":
+                        filled = True
+                        break
+                    elif current_status.lower() in ("cancelled", "expired", ""):
+                        break
+                except Exception as poll_err:
+                    print(f"[AlertTrader]   polling error: {poll_err}", flush=True)
+                    break
+
+            if not filled:
+                try:
+                    await loop.run_in_executor(None, self._client.cancel, order_id)
+                    print(f"[AlertTrader] ❌ Orden GTC no llenada, CANCELADA: {order_id[:16]}...", flush=True)
+                except Exception:
+                    pass
+                success = False
+                error_msg = "GTC order not filled within timeout, cancelled"
+            else:
+                print(f"[AlertTrader] ✅ Orden GTC llenada (matched)!", flush=True)
+
+        return success, order_id, error_msg
+
+    async def _execute_single_order(self, trade_info: dict, token_id: str, price: float, bet_size: float) -> dict:
+        """Ejecutar una sola orden BUY."""
+        cid = trade_info["condition_id"]
+        outcome = trade_info["buy_outcome"]
+        order_price = round(price, 2)
+        shares = self._calc_shares(bet_size, order_price)
+        if shares <= 0:
+            return {"success": False, "error": f"No se pudo calcular shares para price={order_price} bet={bet_size}"}
+
+        from py_clob_client.clob_types import OrderArgs
+        order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
+        print(f"[AlertTrader] Order: price={order_price} shares={shares} usdc={round(shares*order_price,2)} type=GTC", flush=True)
+
+        success, order_id, error_msg = await self._post_and_poll_order(order_args, token_id)
+
+        trade_record = {
+            "condition_id": cid,
+            "order_id": order_id,
+            "market_slug": trade_info["market_slug"],
+            "market_question": trade_info["market_question"],
+            "wallet_address": trade_info["wallet_address"],
+            "insider_side": trade_info["insider_side"],
+            "insider_outcome": outcome,
+            "insider_size": trade_info["insider_size"],
+            "alert_score": trade_info["alert_score"],
+            "triggers": trade_info["triggers"],
+            "side": "BUY",
+            "outcome": outcome,
+            "price": price,
+            "size_usd": bet_size,
+            "shares": shares,
+            "token_id": token_id,
+            "category": trade_info["category"],
+            "wallet_hit_rate": trade_info["wallet_hit_rate"],
+            "status": "filled" if success else "rejected",
+            "error": error_msg if not success else None,
+        }
+
+        await self.db.record_alert_autotrade(trade_record)
+
+        if success:
+            self._last_trade_time = time.time()
+            self._trades_today.append(trade_record)
+            self._open_positions[cid] = trade_record
+            print(f"[AlertTrader] ✅ COPY-TRADE: {outcome} en {trade_info['market_slug'][:40]} "
+                  f"${bet_size} @ {price:.2f} (score={trade_info['alert_score']} "
+                  f"insider=${trade_info['insider_size']:.0f}) order={order_id}",
+                  flush=True)
+            return {"success": True, "order_id": order_id, "trade": trade_record}
+        else:
+            print(f"[AlertTrader] ❌ Orden rechazada: {error_msg}", flush=True)
+            return {"success": False, "error": error_msg}
+
+    async def _execute_dca(self, trade_info: dict, token_id: str, price: float, total_bet: float) -> dict:
+        """v10: DCA — dividir la orden en múltiples partes con intervalos.
+        Reduce price impact y verifica que el precio sigue favorable.
+        """
+        cfg = self._config
+        splits = max(cfg.get("dca_splits", 2), 2)
+        interval = cfg.get("dca_interval_sec", 30)
+        split_size = total_bet / splits
+        cid = trade_info["condition_id"]
+        outcome = trade_info["buy_outcome"]
+
+        total_shares = 0
+        total_cost = 0
+        order_ids = []
+        fills = 0
+
+        print(f"[AlertTrader] 🔄 DCA: {splits} órdenes de ${split_size:.2f} cada {interval}s", flush=True)
+
+        for i in range(splits):
+            if i > 0:
+                await asyncio.sleep(interval)
+                # Re-check precio actual antes de cada split
+                _, current_price = await self._get_token_and_price(cid, outcome)
+                if current_price and current_price > 0:
+                    # Si el precio subió más de 5% desde el original, parar DCA
+                    if current_price > price * 1.05:
+                        print(f"[AlertTrader] ⚠️ DCA parado: precio subió a {current_price:.2f} (+{((current_price/price)-1)*100:.1f}%)",
+                              flush=True)
+                        break
+                    price = current_price
+
+            order_price = round(price, 2)
+            shares = self._calc_shares(split_size, order_price)
+            if shares <= 0:
+                continue
+
+            from py_clob_client.clob_types import OrderArgs
+            order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
+            print(f"[AlertTrader]   DCA [{i+1}/{splits}]: {shares} shares @ {order_price}", flush=True)
+
+            success, order_id, error_msg = await self._post_and_poll_order(order_args, token_id)
+            if success:
+                total_shares += shares
+                total_cost += shares * order_price
+                order_ids.append(order_id)
+                fills += 1
+
+        if fills == 0:
+            return {"success": False, "error": "DCA: ninguna orden llenada"}
+
+        avg_price = total_cost / total_shares if total_shares > 0 else price
+        trade_record = {
+            "condition_id": cid,
+            "order_id": ",".join(order_ids[:3]),
+            "market_slug": trade_info["market_slug"],
+            "market_question": trade_info["market_question"],
+            "wallet_address": trade_info["wallet_address"],
+            "insider_side": trade_info["insider_side"],
+            "insider_outcome": outcome,
+            "insider_size": trade_info["insider_size"],
+            "alert_score": trade_info["alert_score"],
+            "triggers": trade_info["triggers"],
+            "side": "BUY",
+            "outcome": outcome,
+            "price": round(avg_price, 4),
+            "size_usd": round(total_cost, 2),
+            "shares": round(total_shares, 4),
+            "token_id": token_id,
+            "category": trade_info["category"],
+            "wallet_hit_rate": trade_info["wallet_hit_rate"],
+            "status": "filled",
+            "error": None,
+        }
+
+        await self.db.record_alert_autotrade(trade_record)
+        self._last_trade_time = time.time()
+        self._trades_today.append(trade_record)
+        self._open_positions[cid] = trade_record
+        print(f"[AlertTrader] ✅ DCA COPY-TRADE: {outcome} en {trade_info['market_slug'][:40]} "
+              f"${total_cost:.2f} @ avg {avg_price:.3f} ({fills}/{splits} fills, {total_shares:.2f} shares)",
+              flush=True)
+        return {"success": True, "order_id": order_ids[0] if order_ids else "", "trade": trade_record}
 
     async def _get_token_and_price(self, condition_id: str, outcome: str) -> tuple:
         """Obtener token_id y precio actual del outcome (Yes/No)."""
