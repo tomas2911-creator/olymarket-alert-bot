@@ -309,6 +309,8 @@ class PolymarketAlertBot:
 
     async def stop(self):
         self._running = False
+        if self.ws_client:
+            await self.ws_client.stop()
         if self.binance_feed:
             await self.binance_feed.stop()
         if self.crypto_detector:
@@ -320,8 +322,6 @@ class PolymarketAlertBot:
     async def _on_ws_trade(self, data: dict):
         """Callback para trades recibidos via WebSocket en tiempo real."""
         try:
-            from src.api.polymarket import PolymarketClient
-            # Parsear trade del mensaje WS
             cid = data.get("market", data.get("conditionId", data.get("asset_id", "")))
             if not cid:
                 return
@@ -337,11 +337,13 @@ class PolymarketAlertBot:
                 "timestamp": data.get("timestamp", data.get("match_time", "")),
                 "title": data.get("title", data.get("market_slug", "")),
             }
-            # Usar un cliente temporal para parsear
-            async with PolymarketClient() as client:
-                trade = client._parse_trade(trade_data)
-                if trade and trade.size > 0:
-                    await self.process_trade(trade, client)
+            # Reusar _ws_client persistente (no crear uno nuevo por trade)
+            if not hasattr(self, '_ws_poly_client') or self._ws_poly_client is None:
+                self._ws_poly_client = PolymarketClient()
+                self._ws_poly_client._client = __import__('httpx').AsyncClient(timeout=30)
+            trade = self._ws_poly_client._parse_trade(trade_data)
+            if trade and trade.size > 0:
+                await self.process_trade(trade, self._ws_poly_client)
         except Exception as e:
             print(f"[WS] Error procesando trade: {e}", flush=True)
 
@@ -522,6 +524,10 @@ class PolymarketAlertBot:
 
             for trade in trades:
                 await self.process_trade(trade, client)
+
+            # Después del primer ciclo, suscribir WS a mercados activos
+            if self.ws_client and self._last_markets:
+                await self._refresh_ws_subscriptions()
 
         logger.info("ciclo_completo", procesados=self.trades_processed, alertas=self.alerts_sent)
 
