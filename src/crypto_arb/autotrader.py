@@ -428,7 +428,7 @@ class AutoTrader:
 
             # ── GTC 'live': la orden está en el orderbook pero NO llenada aún ──
             # Hacer polling para verificar si se llena, y cancelar si no.
-            if success and resp_status == "live" and order_id:
+            if success and resp_status.lower() == "live" and order_id:
                 print(f"[AutoTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill...", flush=True)
                 filled = False
                 for attempt in range(8):  # 8 intentos × 5s = 40s máximo
@@ -443,10 +443,10 @@ class AutoTrader:
                         elif hasattr(order_info, "status"):
                             current_status = getattr(order_info, "status", "")
                         print(f"[AutoTrader]   polling {attempt+1}/8: status={current_status}", flush=True)
-                        if current_status == "matched":
+                        if current_status.lower() == "matched":
                             filled = True
                             break
-                        elif current_status in ("cancelled", "expired", ""):
+                        elif current_status.lower() in ("cancelled", "expired", ""):
                             break  # Ya no está activa
                     except Exception as poll_err:
                         print(f"[AutoTrader]   polling error: {poll_err}", flush=True)
