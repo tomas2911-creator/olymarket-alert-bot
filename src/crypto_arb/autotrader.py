@@ -20,6 +20,12 @@ logger = structlog.get_logger()
 # Constantes
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137  # Polygon
+# USDC en Polygon (ambas versiones, 6 decimales)
+USDC_CONTRACTS = [
+    "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",  # USDC.e (bridged)
+    "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",  # USDC (native)
+]
+POLYGON_RPC = "https://polygon-rpc.com"
 
 
 class AutoTrader:
@@ -620,6 +626,51 @@ class AutoTrader:
             "pnl_today": round(daily_pnl, 2),
         }
 
+    async def get_usdc_balance(self, wallet_address: str = "") -> Optional[float]:
+        """Consultar saldo USDC real en Polygon via RPC (USDC.e + USDC nativo)."""
+        if not wallet_address:
+            pk = self._config.get("private_key", "")
+            if not pk:
+                return None
+            try:
+                from eth_account import Account
+                if not pk.startswith("0x"):
+                    pk = "0x" + pk
+                wallet_address = Account.from_key(pk).address
+            except Exception:
+                return None
+
+        try:
+            import httpx
+            # balanceOf(address) selector = 0x70a08231
+            addr_padded = wallet_address.lower().replace("0x", "").zfill(64)
+            total_balance = 0.0
+
+            async with httpx.AsyncClient(timeout=10) as client:
+                for contract in USDC_CONTRACTS:
+                    try:
+                        payload = {
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "eth_call",
+                            "params": [{
+                                "to": contract,
+                                "data": f"0x70a08231000000000000000000000000{addr_padded}"
+                            }, "latest"]
+                        }
+                        resp = await client.post(POLYGON_RPC, json=payload)
+                        if resp.status_code == 200:
+                            result = resp.json().get("result", "0x0")
+                            raw_balance = int(result, 16)
+                            total_balance += raw_balance / 1e6  # USDC = 6 decimales
+                    except Exception:
+                        pass
+
+            return round(total_balance, 2) if total_balance > 0 else 0.0
+        except Exception as e:
+            print(f"[AutoTrader] Error consultando balance USDC: {e}", flush=True)
+            return None
+
     async def test_connection(self) -> dict:
         """Probar conexión al CLOB con las credenciales actuales."""
         if not self._config.get("api_key") or not self._config.get("api_secret"):
@@ -640,6 +691,9 @@ class AutoTrader:
             if not self._client:
                 return {"connected": False, "error": "No se pudo crear el cliente CLOB."}
 
+            # Consultar saldo USDC real
+            balance = await self.get_usdc_balance()
+
             # Intentar obtener API keys (valida credenciales) — síncrono, usar executor
             try:
                 loop = asyncio.get_running_loop()
@@ -647,7 +701,7 @@ class AutoTrader:
                 return {
                     "connected": True,
                     "api_keys_count": len(api_keys) if isinstance(api_keys, list) else 1,
-                    "balance": None,
+                    "balance": balance,
                     "note": "Credenciales válidas. Conexión exitosa.",
                 }
             except Exception as e:
@@ -657,7 +711,7 @@ class AutoTrader:
                 # Si el error no es de auth, la conexión al menos funciona
                 return {
                     "connected": True,
-                    "balance": None,
+                    "balance": balance,
                     "note": f"Conexión OK (advertencia: {err[:100]})",
                 }
         except Exception as e:

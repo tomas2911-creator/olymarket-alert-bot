@@ -871,6 +871,14 @@ async def get_autotrade_config(request: Request):
     # Estado del motor
     autotrader = getattr(request.app.state, 'autotrader', None)
     at_status = autotrader.get_status() if autotrader else {}
+    # Consultar saldo USDC real
+    wallet_addr = _derive_wallet_address(raw.get("at_private_key", ""))
+    balance = None
+    if autotrader and wallet_addr:
+        try:
+            balance = await autotrader.get_usdc_balance(wallet_addr)
+        except Exception:
+            pass
     return {
         "enabled": raw.get("at_enabled") == "true",
         "bet_size": float(raw.get("at_bet_size", 5)),
@@ -888,9 +896,9 @@ async def get_autotrade_config(request: Request):
         "private_key_set": bool(raw.get("at_private_key")),
         "passphrase_set": bool(raw.get("at_passphrase")),
         "api_key_preview": (raw.get("at_api_key", "")[:12] + "...") if raw.get("at_api_key") else "",
-        "wallet_address": _derive_wallet_address(raw.get("at_private_key", "")),
+        "wallet_address": wallet_addr,
         "connected": at_status.get("connected", False),
-        "balance": None,
+        "balance": balance,
         "open_positions": stats.get("open_positions", 0),
         "pnl_today": stats.get("pnl_24h", 0),
         "trades_today": stats.get("trades_24h", 0),
@@ -1122,9 +1130,29 @@ async def test_autotrade_connection(request: Request):
         import httpx
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get("https://clob.polymarket.com/time")
-            if resp.status_code == 200:
-                return {"connected": True, "balance": None, "note": "Conexión al CLOB exitosa."}
-            return {"connected": False, "error": f"CLOB respondió con status {resp.status_code}"}
+            if resp.status_code != 200:
+                return {"connected": False, "error": f"CLOB respondió con status {resp.status_code}"}
+        # Consultar saldo USDC real
+        balance = None
+        wallet_addr = _derive_wallet_address(raw.get("at_private_key", ""))
+        if wallet_addr:
+            try:
+                from src.crypto_arb.autotrader import USDC_CONTRACTS, POLYGON_RPC
+                addr_padded = wallet_addr.lower().replace("0x", "").zfill(64)
+                async with httpx.AsyncClient(timeout=10) as client:
+                    total = 0.0
+                    for contract in USDC_CONTRACTS:
+                        payload = {
+                            "jsonrpc": "2.0", "id": 1, "method": "eth_call",
+                            "params": [{"to": contract, "data": f"0x70a08231000000000000000000000000{addr_padded}"}, "latest"]
+                        }
+                        r = await client.post(POLYGON_RPC, json=payload)
+                        if r.status_code == 200:
+                            total += int(r.json().get("result", "0x0"), 16) / 1e6
+                    balance = round(total, 2)
+            except Exception:
+                pass
+        return {"connected": True, "balance": balance, "note": "Conexión al CLOB exitosa."}
     except Exception as e:
         return {"connected": False, "error": str(e)}
 
