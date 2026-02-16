@@ -980,7 +980,7 @@ async def get_autotrade_config(request: Request):
         "early_entry_enabled": raw.get("at_early_entry_enabled") == "true",
         "early_entry_pre_monitor": int(raw.get("at_early_entry_pre_monitor", 120)),
         "early_entry_window": int(raw.get("at_early_entry_window", 15)),
-        "early_entry_min_momentum": float(raw.get("at_early_entry_min_momentum", 0.10)),
+        "early_entry_min_momentum": float(raw.get("at_early_entry_min_momentum", 0.03)),
     }
 
 

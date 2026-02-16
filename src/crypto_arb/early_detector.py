@@ -206,8 +206,8 @@ class EarlyEntryDetector:
         to_resolve = [
             wm for wm in self._watched.values()
             if not wm.condition_id
-            and (wm.event_start_ts - now_ts) < 30  # Solo los que abren en <30s o ya abrieron
-            and wm.state in ("watching", "active")
+            and (wm.event_start_ts - now_ts) < 90  # Resolver hasta 90s antes de apertura
+            and wm.state in ("upcoming", "watching", "active")
         ]
         if not to_resolve:
             return
@@ -294,6 +294,36 @@ class EarlyEntryDetector:
                                  time_since_start: float) -> Optional[CryptoSignal]:
         """Intentar generar señal early entry para un mercado activo."""
         now_ts = time.time()
+
+        # Si no tenemos condition_id, intentar resolver ahora
+        if not wm.condition_id:
+            try:
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.get(
+                        f"{GAMMA_API_URL}/events",
+                        params={"slug": wm.slug},
+                    )
+                    if resp.status_code == 200:
+                        events = resp.json()
+                        if events:
+                            for m in events[0].get("markets", []):
+                                cid = m.get("conditionId", "")
+                                if cid and not m.get("closed"):
+                                    wm.condition_id = cid
+                                    wm.question = m.get("question", "") or events[0].get("title", wm.question)
+                                    try:
+                                        resp2 = await client.get(f"{CLOB_API_URL}/markets/{cid}")
+                                        if resp2.status_code == 200:
+                                            wm.tokens = resp2.json().get("tokens", [])
+                                    except Exception:
+                                        pass
+                                    break
+            except Exception:
+                pass
+
+        if not wm.condition_id:
+            print(f"[EarlyEntry] {wm.coin} {wm.slug}: sin condition_id, no se puede generar señal", flush=True)
+            return None
 
         # Registrar target price
         if not wm.target_price:

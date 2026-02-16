@@ -176,7 +176,7 @@ _early = _crypto.get("early_entry", {})
 FEATURE_EARLY_ENTRY = _features.get("early_entry", False)
 EARLY_ENTRY_PRE_MONITOR_SEC = _early.get("pre_monitor_sec", 120)
 EARLY_ENTRY_WINDOW_SEC = _early.get("entry_window_sec", 15)
-EARLY_ENTRY_MIN_MOMENTUM_PCT = _early.get("min_momentum_pct", 0.10)
+EARLY_ENTRY_MIN_MOMENTUM_PCT = _early.get("min_momentum_pct", 0.03)
 EARLY_ENTRY_BET_SIZE = _early.get("bet_size", 3)
 
 # === Nuevas Features v8.0 ===
