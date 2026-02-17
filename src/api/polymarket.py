@@ -110,13 +110,16 @@ class PolymarketClient:
     # ── Trades ────────────────────────────────────────────────────────
 
     async def get_recent_trades(self, limit: int = 200,
-                                excluded_categories: set | None = None) -> list[Trade]:
+                                excluded_categories: set | None = None,
+                                whale_min_size: float = 0) -> list[Trade]:
         """Obtener trades recientes con paginación y filtrado dinámico por categorías.
-        Si excluded_categories está vacío o None → NO filtra nada → todos los trades pasan."""
+        Si excluded_categories está vacío o None → NO filtra nada → todos los trades pasan.
+        whale_min_size > 0: extrae trades grandes ANTES del filtro de categoría."""
         excluded = excluded_categories or set()
         exclude_re = _build_exclude_regex(excluded)
 
         trades: list[Trade] = []
+        self._last_whale_trades: list[Trade] = []
         filtered_cat = 0
         no_id = 0
         raw_total = 0
@@ -170,6 +173,13 @@ class PolymarketClient:
                         else:
                             filter_title = item.get("title", "")
 
+                        # Parsear trade ANTES de filtros para capturar whales
+                        trade = self._parse_trade(item)
+
+                        # Whale tracker: capturar trades grandes SIN filtro de categoría
+                        if trade and whale_min_size > 0 and trade.size >= whale_min_size:
+                            self._last_whale_trades.append(trade)
+
                         # 1. Excluir crypto up/down SIEMPRE (hardcodeado, lo cubre Crypto Arb bot)
                         if filter_tags and {t.lower() for t in filter_tags} & _ALWAYS_EXCLUDED_CATS:
                             filtered_cat += 1
@@ -183,7 +193,6 @@ class PolymarketClient:
                             filtered_cat += 1
                             continue
 
-                        trade = self._parse_trade(item)
                         if trade:
                             trades.append(trade)
 
@@ -222,6 +231,10 @@ class PolymarketClient:
         except httpx.HTTPError as e:
             logger.error("error_obteniendo_trades", error=str(e))
             return []
+
+    def get_last_whale_trades(self) -> list[Trade]:
+        """Whale trades extraídos del último ciclo (antes del filtro de categoría)."""
+        return getattr(self, '_last_whale_trades', [])
 
     def get_pipeline_stats(self) -> dict:
         """Devolver stats del último ciclo de trades."""

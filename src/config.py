@@ -138,6 +138,11 @@ BASKET_CATEGORY_SHIFT_THRESHOLD = _baskets.get("category_shift_threshold", 0.15)
 BASKET_POINTS = _baskets.get("basket_points", 3)
 BASKET_CROSS_MIN = _baskets.get("cross_basket_min", 2)
 
+# === Whale Tracker ===
+_whale_tracker = _yaml.get("whale_tracker", {})
+WHALE_TRACKER_MIN_SIZE = _whale_tracker.get("min_size", 50000)
+WHALE_TRACKER_ENABLED = _whale_tracker.get("enabled", True)
+
 # === Sniper DBSCAN ===
 _sniper = _yaml.get("sniper_dbscan", {})
 SNIPER_TIME_WINDOW_SEC = _sniper.get("time_window_sec", 120)
@@ -386,6 +391,10 @@ def restore_from_db(saved: dict):
     cfg.BASKET_CATEGORY_SHIFT_THRESHOLD = _float("basket_shift_threshold", cfg.BASKET_CATEGORY_SHIFT_THRESHOLD)
     cfg.BASKET_POINTS = _int("basket_points", cfg.BASKET_POINTS)
     cfg.BASKET_CROSS_MIN = _int("basket_cross_min", cfg.BASKET_CROSS_MIN)
+
+    # Whale Tracker
+    cfg.WHALE_TRACKER_MIN_SIZE = _int("whale_tracker_min_size", cfg.WHALE_TRACKER_MIN_SIZE)
+    cfg.WHALE_TRACKER_ENABLED = _bool("whale_tracker_enabled", cfg.WHALE_TRACKER_ENABLED)
 
     # Sniper DBSCAN
     cfg.SNIPER_TIME_WINDOW_SEC = _int("sniper_time_window", cfg.SNIPER_TIME_WINDOW_SEC)

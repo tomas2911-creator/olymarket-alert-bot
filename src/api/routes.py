@@ -301,6 +301,33 @@ async def get_wallet_tracker_trades(request: Request, address: str):
     return {"trades": trades}
 
 
+# ── Whale Trades ─────────────────────────────────────────────────────
+
+@router.get("/api/whales/feed")
+async def get_whale_feed(request: Request, min_size: float = 50000,
+                          hours: int = 24, side: str = "", limit: int = 200):
+    db = request.app.state.db
+    trades = await db.get_whale_feed(min_size=min_size, hours=hours, side=side, limit=limit)
+    return {"trades": trades, "total": len(trades)}
+
+
+@router.get("/api/whales/ranking")
+async def get_whale_ranking(request: Request, min_size: float = 50000,
+                             min_trades: int = 1, min_winrate: float = 0,
+                             sort_by: str = "volume"):
+    db = request.app.state.db
+    wallets = await db.get_whale_ranking(min_size=min_size, min_trades=min_trades,
+                                          min_winrate=min_winrate, sort_by=sort_by)
+    return {"wallets": wallets, "total": len(wallets)}
+
+
+@router.get("/api/whales/stats")
+async def get_whale_stats(request: Request, hours: int = 24, min_size: float = 50000):
+    db = request.app.state.db
+    stats = await db.get_whale_stats(hours=hours, min_size=min_size)
+    return stats
+
+
 # ── Markets ──────────────────────────────────────────────────────────
 
 @router.get("/api/markets")

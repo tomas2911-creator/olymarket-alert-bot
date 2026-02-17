@@ -515,13 +515,25 @@ class PolymarketAlertBot:
             self._last_markets = await client.get_markets(limit=config.MAX_MARKETS) or []
 
             # Pasar categorías excluidas del dashboard al filtro dinámico
+            whale_min = config.WHALE_TRACKER_MIN_SIZE if config.WHALE_TRACKER_ENABLED else 0
             trades = await client.get_recent_trades(
                 limit=2000,
                 excluded_categories=self._excluded_categories,
+                whale_min_size=whale_min,
             )
 
             # Guardar stats del pipeline para el dashboard
             self._pipeline_stats = client.get_pipeline_stats()
+
+            # Whale Tracker: guardar trades grandes en DB (antes de filtros normales)
+            whale_trades = client.get_last_whale_trades()
+            if whale_trades:
+                saved = 0
+                for wt in whale_trades:
+                    if await self.db.save_whale_trade(wt):
+                        saved += 1
+                if saved:
+                    print(f"[WhaleTracker] {len(whale_trades)} detectados, {saved} nuevos guardados (>=${whale_min:,.0f}$)", flush=True)
 
             if not trades:
                 print("Trades obtenidos: 0", flush=True)

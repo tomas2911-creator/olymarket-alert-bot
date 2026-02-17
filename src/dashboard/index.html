@@ -119,6 +119,7 @@
         <div onclick="showTab('alerttrading')" id="nav-alerttrading" class="sidebar-nav-item"><span class="nav-icon">⚡</span>Alert Trading</div>
         <div onclick="showTab('alertpnl')" id="nav-alertpnl" class="sidebar-nav-item"><span class="nav-icon">💰</span>PnL Alertas</div>
         <div onclick="showTab('wallettracker')" id="nav-wallettracker" class="sidebar-nav-item"><span class="nav-icon">🏆</span>Top Wallets</div>
+        <div onclick="showTab('whales')" id="nav-whales" class="sidebar-nav-item"><span class="nav-icon">🐋</span>Whale Trades</div>
         <div onclick="showTab('backtester')" id="nav-backtester" class="sidebar-nav-item"><span class="nav-icon">📈</span>Backtester</div>
         <div onclick="showTab('complementarb')" id="nav-complementarb" class="sidebar-nav-item"><span class="nav-icon">🔄</span>Complement Arb</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Herramientas</span></div>
@@ -2258,6 +2259,129 @@
             </div>
         </div>
 
+        <!-- ═══ Whale Trades Panel ═══ -->
+        <div id="panel-whales" class="hidden space-y-4">
+            <div class="glass glow rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-cyan-400 uppercase tracking-wider">Whale Trades</h3>
+                        <p class="text-[10px] text-gray-500">Todos los trades grandes de Polymarket. Sin filtro de score ni categoría.</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="showWhaleView('feed')" id="whale-btn-feed" class="px-3 py-1 bg-cyan-600/40 text-cyan-300 rounded text-xs font-semibold">Feed</button>
+                        <button onclick="showWhaleView('ranking')" id="whale-btn-ranking" class="px-3 py-1 bg-gray-700/40 text-gray-400 rounded text-xs">Ranking</button>
+                        <button onclick="loadWhaleData()" class="px-3 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-400 rounded text-xs">Actualizar</button>
+                    </div>
+                </div>
+                <!-- Stats -->
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4" id="whale-stats">
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500 uppercase">Whale Trades 24h</div>
+                        <div class="text-lg font-bold text-cyan-400" id="ws-total">0</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500 uppercase">Volumen Total</div>
+                        <div class="text-lg font-bold text-green-400" id="ws-volume">$0</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500 uppercase">Trade Máximo</div>
+                        <div class="text-lg font-bold text-yellow-400" id="ws-max">$0</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500 uppercase">Wallets Únicas</div>
+                        <div class="text-lg font-bold text-purple-400" id="ws-wallets">0</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500 uppercase">Sentimiento</div>
+                        <div class="text-sm font-bold"><span class="text-green-400" id="ws-buy-pct">0%</span> BUY / <span class="text-red-400" id="ws-sell-pct">0%</span> SELL</div>
+                    </div>
+                </div>
+                <!-- Filtros comunes -->
+                <div class="flex flex-wrap gap-3 mb-4 items-end">
+                    <div>
+                        <label class="text-[10px] text-gray-500 block mb-1">Min Size ($)</label>
+                        <select id="wh-min-size" class="bg-gray-800/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="loadWhaleData()">
+                            <option value="10000">$10K+</option><option value="25000">$25K+</option><option value="50000" selected>$50K+</option><option value="100000">$100K+</option><option value="250000">$250K+</option><option value="500000">$500K+</option>
+                        </select>
+                    </div>
+                    <div id="wh-filter-side-wrap">
+                        <label class="text-[10px] text-gray-500 block mb-1">Side</label>
+                        <select id="wh-side" class="bg-gray-800/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="loadWhaleData()">
+                            <option value="">Todos</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
+                        </select>
+                    </div>
+                    <div id="wh-filter-hours-wrap">
+                        <label class="text-[10px] text-gray-500 block mb-1">Período</label>
+                        <select id="wh-hours" class="bg-gray-800/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="loadWhaleData()">
+                            <option value="6">6h</option><option value="12">12h</option><option value="24" selected>24h</option><option value="48">48h</option><option value="168">7d</option>
+                        </select>
+                    </div>
+                    <div id="wh-filter-sort-wrap" class="hidden">
+                        <label class="text-[10px] text-gray-500 block mb-1">Ordenar por</label>
+                        <select id="wh-sort" class="bg-gray-800/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="loadWhaleData()">
+                            <option value="volume" selected>Volumen</option><option value="trades">N Trades</option><option value="pnl">PnL</option><option value="roi">ROI</option><option value="winrate">Win Rate</option><option value="score">Score</option><option value="avg_size">Avg Size</option>
+                        </select>
+                    </div>
+                    <div id="wh-filter-mintrades-wrap" class="hidden">
+                        <label class="text-[10px] text-gray-500 block mb-1">Min Whale Trades</label>
+                        <select id="wh-min-trades" class="bg-gray-800/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="loadWhaleData()">
+                            <option value="1" selected>1+</option><option value="2">2+</option><option value="3">3+</option><option value="5">5+</option>
+                        </select>
+                    </div>
+                    <div id="wh-filter-minwr-wrap" class="hidden">
+                        <label class="text-[10px] text-gray-500 block mb-1">Min Win Rate</label>
+                        <select id="wh-min-wr" class="bg-gray-800/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="loadWhaleData()">
+                            <option value="0" selected>Todas</option><option value="40">40%+</option><option value="50">50%+</option><option value="60">60%+</option>
+                        </select>
+                    </div>
+                    <div class="ml-auto text-[10px] text-gray-500">Total: <b class="text-gray-300" id="wh-total">0</b></div>
+                </div>
+                <!-- Vista Feed -->
+                <div id="whale-view-feed">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                                <th class="text-left p-2">Hora</th>
+                                <th class="text-left p-2">Mercado</th>
+                                <th class="text-left p-2">Wallet</th>
+                                <th class="text-center p-2">Side</th>
+                                <th class="text-right p-2">Monto</th>
+                                <th class="text-center p-2">Outcome</th>
+                                <th class="text-right p-2">Precio</th>
+                                <th class="text-center p-2">Win%</th>
+                                <th class="text-center p-2">Score</th>
+                                <th class="text-center p-2 w-8"></th>
+                            </tr></thead>
+                            <tbody id="whale-feed-body"><tr><td colspan="10" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- Vista Ranking -->
+                <div id="whale-view-ranking" class="hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                                <th class="text-center p-2 w-8"></th>
+                                <th class="text-left p-2">Wallet</th>
+                                <th class="text-center p-2">Whale Trades</th>
+                                <th class="text-right p-2">Vol Whale</th>
+                                <th class="text-right p-2">Avg Size</th>
+                                <th class="text-right p-2">Max Trade</th>
+                                <th class="text-center p-2">W/L</th>
+                                <th class="text-center p-2">Win%</th>
+                                <th class="text-right p-2">PnL</th>
+                                <th class="text-right p-2">ROI</th>
+                                <th class="text-center p-2">Score</th>
+                                <th class="text-center p-2">Mercados</th>
+                                <th class="text-center p-2 w-8"></th>
+                            </tr></thead>
+                            <tbody id="whale-rank-body"><tr><td colspan="13" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- ═══ v10: Backtester Panel ═══ -->
         <div id="panel-backtester" class="hidden space-y-4">
             <div class="glass glow rounded-xl p-4">
@@ -2785,9 +2909,9 @@ function polyProfile(addr){return`https://polymarket.com/profile/${addr}`}
 function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
 // ── Sidebar Navigation ──
-const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',backtester:'Backtester',complementarb:'Complement Arb',heatmap:'Heatmap',config:'Configuración'};
+const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',whales:'Whale Trades',backtester:'Backtester',complementarb:'Complement Arb',heatmap:'Heatmap',config:'Configuración'};
 function showTab(t){
-    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading','alertpnl','wallettracker','backtester','complementarb','heatmap'];
+    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading','alertpnl','wallettracker','whales','backtester','complementarb','heatmap'];
     // Ocultar todos los paneles
     panels.forEach(id=>{
         const panel=document.getElementById('panel-'+id);
@@ -2816,6 +2940,7 @@ function showTab(t){
     if(t==='alerttrading')loadAatConfig();
     if(t==='alertpnl')loadAlertPnl();
     if(t==='wallettracker')loadWalletTracker();
+    if(t==='whales')loadWhaleData();
     if(t==='backtester')loadBacktesterDefaults();
     if(t==='complementarb')loadComplementArb();
     if(t==='heatmap')loadHeatmap();
@@ -5102,6 +5227,109 @@ async function showWalletDetail(addr,idx){
     }catch(e){dtb.innerHTML='<tr><td colspan="7" class="text-center text-red-400 p-4">Error cargando trades</td></tr>';}
     // Scroll al detalle
     panel.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// ── Whale Trades ──
+let _whaleView='feed';
+function showWhaleView(v){
+    _whaleView=v;
+    document.getElementById('whale-view-feed').classList.toggle('hidden',v!=='feed');
+    document.getElementById('whale-view-ranking').classList.toggle('hidden',v!=='ranking');
+    document.getElementById('whale-btn-feed').className='px-3 py-1 rounded text-xs '+(v==='feed'?'bg-cyan-600/40 text-cyan-300 font-semibold':'bg-gray-700/40 text-gray-400');
+    document.getElementById('whale-btn-ranking').className='px-3 py-1 rounded text-xs '+(v==='ranking'?'bg-cyan-600/40 text-cyan-300 font-semibold':'bg-gray-700/40 text-gray-400');
+    // Mostrar/ocultar filtros específicos de cada vista
+    document.getElementById('wh-filter-side-wrap').classList.toggle('hidden',v!=='feed');
+    document.getElementById('wh-filter-hours-wrap').classList.toggle('hidden',v!=='feed');
+    document.getElementById('wh-filter-sort-wrap').classList.toggle('hidden',v!=='ranking');
+    document.getElementById('wh-filter-mintrades-wrap').classList.toggle('hidden',v!=='ranking');
+    document.getElementById('wh-filter-minwr-wrap').classList.toggle('hidden',v!=='ranking');
+    loadWhaleData();
+}
+async function loadWhaleData(){
+    const minSize=document.getElementById('wh-min-size')?.value||50000;
+    // Cargar stats
+    const stats=await fetchJson(`/api/whales/stats?min_size=${minSize}&hours=24`);
+    if(stats){
+        document.getElementById('ws-total').textContent=stats.total_trades||0;
+        document.getElementById('ws-volume').textContent='$'+(stats.total_volume||0).toLocaleString();
+        document.getElementById('ws-max').textContent='$'+(stats.max_trade||0).toLocaleString();
+        document.getElementById('ws-wallets').textContent=stats.unique_wallets||0;
+        document.getElementById('ws-buy-pct').textContent=(stats.buy_pct||0)+'%';
+        document.getElementById('ws-sell-pct').textContent=(stats.sell_pct||0)+'%';
+    }
+    if(_whaleView==='feed') await loadWhaleFeed(minSize);
+    else await loadWhaleRanking(minSize);
+}
+async function loadWhaleFeed(minSize){
+    const fb=document.getElementById('whale-feed-body');
+    fb.innerHTML='<tr><td colspan="10" class="text-center text-cyan-400 p-6">Cargando whale trades...</td></tr>';
+    const side=document.getElementById('wh-side')?.value||'';
+    const hours=document.getElementById('wh-hours')?.value||24;
+    const data=await fetchJson(`/api/whales/feed?min_size=${minSize}&hours=${hours}&side=${side}&limit=200`);
+    if(!data){fb.innerHTML='<tr><td colspan="10" class="text-center text-red-400 p-6">Error al cargar</td></tr>';return;}
+    const trades=data.trades||[];
+    document.getElementById('wh-total').textContent=trades.length;
+    if(!trades.length){fb.innerHTML='<tr><td colspan="10" class="text-center text-gray-600 p-6">No hay whale trades en este período</td></tr>';return;}
+    fb.innerHTML=trades.map(t=>{
+        const d=t.created_at?new Date(t.created_at):null;
+        const timeStr=d?d.toLocaleString('es-CL',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+        const sideC=t.side==='BUY'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400';
+        const outC=t.outcome==='Yes'?'bg-green-900/30 text-green-400':'bg-red-900/30 text-red-400';
+        const addr=t.wallet_address||'';
+        const name=t.wallet_name||addr.slice(0,6)+'...'+addr.slice(-4);
+        const wrC=t.win_rate>=60?'text-green-400':t.win_rate>=40?'text-yellow-400':'text-gray-500';
+        const scC=t.smart_score>=60?'text-green-400':t.smart_score>=30?'text-yellow-400':'text-gray-500';
+        const star=t.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400';
+        const mq=(t.market_question||'').length>50?t.market_question.slice(0,50)+'…':t.market_question||'';
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="p-2 text-gray-400 whitespace-nowrap">${timeStr}</td>
+            <td class="p-2 text-gray-300 max-w-[200px] truncate" title="${t.market_question||''}">${mq}</td>
+            <td class="p-2"><a href="${polyProfile(addr)}" target="_blank" class="text-cyan-400 hover:underline">${name}</a></td>
+            <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${sideC}">${t.side}</span></td>
+            <td class="p-2 text-right font-mono font-bold text-white">$${(t.size||0).toLocaleString()}</td>
+            <td class="p-2 text-center"><span class="px-1 py-0.5 rounded text-[10px] ${outC}">${t.outcome||''}</span></td>
+            <td class="p-2 text-right font-mono text-gray-400">${(t.price||0).toFixed(2)}</td>
+            <td class="p-2 text-center ${wrC}">${t.win_rate>0?t.win_rate+'%':'-'}</td>
+            <td class="p-2 text-center ${scC}">${t.smart_score>0?t.smart_score:'-'}</td>
+            <td class="p-2 text-center cursor-pointer ${star}" onclick="toggleWatchlist('${addr}',this)">★</td>
+        </tr>`;
+    }).join('');
+}
+async function loadWhaleRanking(minSize){
+    const rb=document.getElementById('whale-rank-body');
+    rb.innerHTML='<tr><td colspan="13" class="text-center text-cyan-400 p-6">Cargando ranking ballenas...</td></tr>';
+    const sortBy=document.getElementById('wh-sort')?.value||'volume';
+    const minTrades=document.getElementById('wh-min-trades')?.value||1;
+    const minWr=document.getElementById('wh-min-wr')?.value||0;
+    const data=await fetchJson(`/api/whales/ranking?min_size=${minSize}&min_trades=${minTrades}&min_winrate=${minWr}&sort_by=${sortBy}`);
+    if(!data){rb.innerHTML='<tr><td colspan="13" class="text-center text-red-400 p-6">Error al cargar</td></tr>';return;}
+    const wallets=data.wallets||[];
+    document.getElementById('wh-total').textContent=wallets.length;
+    if(!wallets.length){rb.innerHTML='<tr><td colspan="13" class="text-center text-gray-600 p-6">No hay ballenas con esos filtros</td></tr>';return;}
+    rb.innerHTML=wallets.map((w,i)=>{
+        const pC=w.total_pnl>=0?'text-green-400':'text-red-400';
+        const rC=w.roi_pct>=0?'text-green-400':'text-red-400';
+        const wrC=w.win_rate>=60?'text-green-400':w.win_rate>=40?'text-yellow-400':'text-red-400';
+        const scC=w.smart_money_score>=60?'text-green-400':w.smart_money_score>=30?'text-yellow-400':'text-gray-500';
+        const star=w.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400';
+        const addr=w.address||'';
+        const name=w.name||addr.slice(0,6)+'...'+addr.slice(-4);
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="p-2 text-center text-gray-600">${i+1}</td>
+            <td class="p-2"><a href="${polyProfile(addr)}" target="_blank" class="text-cyan-400 hover:underline">${name}</a></td>
+            <td class="p-2 text-center font-mono">${w.whale_trades}</td>
+            <td class="p-2 text-right font-mono font-bold text-white">$${(w.whale_volume||0).toLocaleString()}</td>
+            <td class="p-2 text-right font-mono text-gray-300">$${(w.avg_size||0).toLocaleString()}</td>
+            <td class="p-2 text-right font-mono text-yellow-400">$${(w.max_trade||0).toLocaleString()}</td>
+            <td class="p-2 text-center"><span class="text-green-400">${w.wins}</span>/<span class="text-red-400">${w.losses}</span></td>
+            <td class="p-2 text-center font-bold ${wrC}">${w.win_rate}%</td>
+            <td class="p-2 text-right font-mono ${pC}">$${w.total_pnl.toFixed(2)}</td>
+            <td class="p-2 text-right font-mono ${rC}">${w.roi_pct}%</td>
+            <td class="p-2 text-center ${scC}">${w.smart_money_score}</td>
+            <td class="p-2 text-center text-gray-400">${w.markets}</td>
+            <td class="p-2 text-center cursor-pointer ${star}" onclick="toggleWatchlist('${addr}',this)">★</td>
+        </tr>`;
+    }).join('');
 }
 
 // ── v10: Backtester ──

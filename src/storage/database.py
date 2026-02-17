@@ -407,6 +407,28 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_push_user ON push_notifications(user_id, read);
                 CREATE INDEX IF NOT EXISTS idx_journal_user ON trade_journal(user_id);
             """)
+            # === Whale Trades ===
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS whale_trades (
+                    id              SERIAL PRIMARY KEY,
+                    transaction_hash TEXT UNIQUE,
+                    wallet_address  TEXT NOT NULL,
+                    market_id       TEXT,
+                    market_question TEXT,
+                    market_slug     TEXT,
+                    market_category TEXT,
+                    side            TEXT,
+                    outcome         TEXT,
+                    size            DOUBLE PRECISION NOT NULL,
+                    price           DOUBLE PRECISION,
+                    wallet_name     TEXT,
+                    wallet_image    TEXT,
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_whale_trades_created ON whale_trades(created_at);
+                CREATE INDEX IF NOT EXISTS idx_whale_trades_wallet ON whale_trades(wallet_address);
+                CREATE INDEX IF NOT EXISTS idx_whale_trades_size ON whale_trades(size DESC);
+            """)
 
             # Migración multi-tenant: agregar user_id a todas las tablas per-user
             user_migrations = [
@@ -1242,6 +1264,193 @@ class Database:
         except Exception as e:
             print(f"[DB] get_wallet_trades_detail error: {e}", flush=True)
             return []
+
+    # ── Whale Trades ──────────────────────────────────────────────────
+
+    async def save_whale_trade(self, trade) -> bool:
+        """Guardar un whale trade. Dedup por transaction_hash."""
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO whale_trades (transaction_hash, wallet_address, market_id,
+                        market_question, market_slug, market_category, side, outcome,
+                        size, price, wallet_name, wallet_image, created_at)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                    ON CONFLICT (transaction_hash) DO NOTHING
+                """, trade.transaction_hash, trade.wallet_address.lower(),
+                    trade.market_id, trade.market_question, trade.market_slug,
+                    trade.market_category, trade.side, trade.outcome,
+                    trade.size, trade.price,
+                    getattr(trade, 'trader_name', None),
+                    getattr(trade, 'trader_profile_image', None),
+                    trade.timestamp)
+                return True
+        except Exception as e:
+            print(f"[DB] save_whale_trade error: {e}", flush=True)
+            return False
+
+    async def get_whale_feed(self, min_size: float = 50000, hours: int = 24,
+                              side: str = "", limit: int = 200) -> list[dict]:
+        """Feed cronológico de whale trades."""
+        try:
+            async with self._pool.acquire() as conn:
+                query = """
+                    SELECT wt.*, COALESCE(w.name, w.pseudonym) as w_name,
+                           w.profile_image as w_image,
+                           w.win_count, w.loss_count,
+                           COALESCE(w.smart_money_score, 0) as smart_score,
+                           COALESCE(w.is_watchlisted, FALSE) as is_watchlisted
+                    FROM whale_trades wt
+                    LEFT JOIN wallets w ON wt.wallet_address = w.address
+                    WHERE wt.size >= $1
+                      AND wt.created_at >= NOW() - make_interval(hours => $2)
+                """
+                params = [min_size, hours]
+                if side and side.upper() in ("BUY", "SELL"):
+                    query += f" AND wt.side = ${len(params)+1}"
+                    params.append(side.upper())
+                query += " ORDER BY wt.created_at DESC LIMIT $" + str(len(params)+1)
+                params.append(limit)
+
+                rows = await conn.fetch(query, *params)
+                result = []
+                for r in rows:
+                    wins = int(r["win_count"] or 0)
+                    losses = int(r["loss_count"] or 0)
+                    total_resolved = wins + losses
+                    wr = round(wins / max(total_resolved, 1) * 100, 1)
+                    result.append({
+                        "id": r["id"],
+                        "transaction_hash": r["transaction_hash"],
+                        "wallet_address": r["wallet_address"],
+                        "wallet_name": r["w_name"] or r["wallet_name"],
+                        "wallet_image": r["w_image"] or r["wallet_image"],
+                        "market_question": r["market_question"],
+                        "market_slug": r["market_slug"],
+                        "market_category": r["market_category"],
+                        "side": r["side"],
+                        "outcome": r["outcome"],
+                        "size": round(float(r["size"] or 0), 2),
+                        "price": round(float(r["price"] or 0), 4),
+                        "smart_score": round(float(r["smart_score"] or 0), 1),
+                        "win_rate": wr,
+                        "is_watchlisted": bool(r["is_watchlisted"]),
+                        "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    })
+                return result
+        except Exception as e:
+            print(f"[DB] get_whale_feed error: {e}", flush=True)
+            return []
+
+    async def get_whale_ranking(self, min_size: float = 50000, min_trades: int = 1,
+                                 min_winrate: float = 0, sort_by: str = "volume") -> list[dict]:
+        """Ranking de wallets que hacen whale trades, con métricas."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        wt.wallet_address as address,
+                        COALESCE(w.name, w.pseudonym) as name,
+                        w.profile_image,
+                        COALESCE(w.smart_money_score, 0) as smart_money_score,
+                        COALESCE(w.is_watchlisted, FALSE) as is_watchlisted,
+                        COALESCE(w.win_count, 0) as win_count,
+                        COALESCE(w.loss_count, 0) as loss_count,
+                        COALESCE(w.total_pnl, 0) as total_pnl,
+                        COALESCE(w.roi_pct, 0) as roi_pct,
+                        COUNT(*) as whale_trades,
+                        SUM(wt.size) as whale_volume,
+                        AVG(wt.size) as avg_size,
+                        MAX(wt.size) as max_trade,
+                        SUM(CASE WHEN wt.side = 'BUY' THEN 1 ELSE 0 END) as buys,
+                        SUM(CASE WHEN wt.side = 'SELL' THEN 1 ELSE 0 END) as sells,
+                        MAX(wt.created_at) as last_whale_at,
+                        COUNT(DISTINCT wt.market_id) as markets
+                    FROM whale_trades wt
+                    LEFT JOIN wallets w ON wt.wallet_address = w.address
+                    WHERE wt.size >= $1
+                    GROUP BY wt.wallet_address, w.name, w.pseudonym, w.profile_image,
+                             w.smart_money_score, w.is_watchlisted, w.win_count, w.loss_count,
+                             w.total_pnl, w.roi_pct
+                    HAVING COUNT(*) >= $2
+                """, min_size, min_trades)
+
+                result = []
+                for r in rows:
+                    wins = int(r["win_count"] or 0)
+                    losses = int(r["loss_count"] or 0)
+                    total_resolved = wins + losses
+                    wr = round(wins / max(total_resolved, 1) * 100, 1)
+                    if wr < min_winrate:
+                        continue
+                    result.append({
+                        "address": r["address"],
+                        "name": r["name"],
+                        "profile_image": r["profile_image"],
+                        "smart_money_score": round(float(r["smart_money_score"] or 0), 1),
+                        "is_watchlisted": bool(r["is_watchlisted"]),
+                        "wins": wins,
+                        "losses": losses,
+                        "win_rate": wr,
+                        "total_pnl": round(float(r["total_pnl"] or 0), 2),
+                        "roi_pct": round(float(r["roi_pct"] or 0), 1),
+                        "whale_trades": int(r["whale_trades"] or 0),
+                        "whale_volume": round(float(r["whale_volume"] or 0), 0),
+                        "avg_size": round(float(r["avg_size"] or 0), 0),
+                        "max_trade": round(float(r["max_trade"] or 0), 0),
+                        "buys": int(r["buys"] or 0),
+                        "sells": int(r["sells"] or 0),
+                        "markets": int(r["markets"] or 0),
+                        "last_whale_at": r["last_whale_at"].isoformat() if r["last_whale_at"] else None,
+                    })
+
+                sort_key = {
+                    "volume": lambda x: x["whale_volume"],
+                    "trades": lambda x: x["whale_trades"],
+                    "pnl": lambda x: x["total_pnl"],
+                    "roi": lambda x: x["roi_pct"],
+                    "winrate": lambda x: x["win_rate"],
+                    "score": lambda x: x["smart_money_score"],
+                    "avg_size": lambda x: x["avg_size"],
+                }.get(sort_by, lambda x: x["whale_volume"])
+                result.sort(key=sort_key, reverse=True)
+                return result
+        except Exception as e:
+            print(f"[DB] get_whale_ranking error: {e}", flush=True)
+            return []
+
+    async def get_whale_stats(self, hours: int = 24, min_size: float = 50000) -> dict:
+        """Estadísticas generales de whale trades para el dashboard."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT
+                        COUNT(*) as total_whale_trades,
+                        COALESCE(SUM(size), 0) as total_volume,
+                        COALESCE(AVG(size), 0) as avg_size,
+                        COALESCE(MAX(size), 0) as max_trade,
+                        COUNT(DISTINCT wallet_address) as unique_wallets,
+                        SUM(CASE WHEN side = 'BUY' THEN 1 ELSE 0 END) as total_buys,
+                        SUM(CASE WHEN side = 'SELL' THEN 1 ELSE 0 END) as total_sells
+                    FROM whale_trades
+                    WHERE size >= $1 AND created_at >= NOW() - make_interval(hours => $2)
+                """, min_size, hours)
+                if not row:
+                    return {}
+                total = int(row["total_whale_trades"] or 0)
+                buys = int(row["total_buys"] or 0)
+                return {
+                    "total_trades": total,
+                    "total_volume": round(float(row["total_volume"] or 0), 0),
+                    "avg_size": round(float(row["avg_size"] or 0), 0),
+                    "max_trade": round(float(row["max_trade"] or 0), 0),
+                    "unique_wallets": int(row["unique_wallets"] or 0),
+                    "buy_pct": round(buys / max(total, 1) * 100, 1),
+                    "sell_pct": round((total - buys) / max(total, 1) * 100, 1),
+                }
+        except Exception as e:
+            print(f"[DB] get_whale_stats error: {e}", flush=True)
+            return {}
 
     async def get_paper_recent_trades(self, limit: int = 50, user_id: int = 1) -> list[dict]:
         """Trades recientes del paper trading (alertas BUY con PnL info)."""
