@@ -140,7 +140,7 @@ BASKET_CROSS_MIN = _baskets.get("cross_basket_min", 2)
 
 # === Whale Tracker ===
 _whale_tracker = _yaml.get("whale_tracker", {})
-WHALE_TRACKER_MIN_SIZE = _whale_tracker.get("min_size", 50000)
+WHALE_TRACKER_MIN_SIZE = _whale_tracker.get("min_size", 10000)
 WHALE_TRACKER_ENABLED = _whale_tracker.get("enabled", True)
 
 # === Sniper DBSCAN ===
