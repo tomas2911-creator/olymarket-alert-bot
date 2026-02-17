@@ -118,6 +118,7 @@
         <div onclick="showTab('crypto')" id="nav-crypto" class="sidebar-nav-item"><span class="nav-icon">₿</span>Crypto Arb</div>
         <div onclick="showTab('alerttrading')" id="nav-alerttrading" class="sidebar-nav-item"><span class="nav-icon">⚡</span>Alert Trading</div>
         <div onclick="showTab('alertpnl')" id="nav-alertpnl" class="sidebar-nav-item"><span class="nav-icon">💰</span>PnL Alertas</div>
+        <div onclick="showTab('wallettracker')" id="nav-wallettracker" class="sidebar-nav-item"><span class="nav-icon">🏆</span>Top Wallets</div>
         <div onclick="showTab('backtester')" id="nav-backtester" class="sidebar-nav-item"><span class="nav-icon">📈</span>Backtester</div>
         <div onclick="showTab('complementarb')" id="nav-complementarb" class="sidebar-nav-item"><span class="nav-icon">🔄</span>Complement Arb</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Herramientas</span></div>
@@ -2162,6 +2163,101 @@
             </div>
         </div>
 
+        <!-- ═══ Wallet Tracker Panel ═══ -->
+        <div id="panel-wallettracker" class="hidden space-y-4">
+            <div class="glass glow rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-yellow-400 uppercase tracking-wider">Top Wallets — Tracker</h3>
+                        <p class="text-[10px] text-gray-500">Ranking de wallets por rentabilidad. Marca las mejores como favoritas.</p>
+                    </div>
+                    <button onclick="loadWalletTracker()" class="px-3 py-1 bg-yellow-600/30 hover:bg-yellow-600/50 text-yellow-400 rounded text-xs">Actualizar</button>
+                </div>
+                <!-- Filtros -->
+                <div class="flex flex-wrap gap-3 mb-4 items-end">
+                    <div>
+                        <label class="text-[10px] text-gray-500 block mb-1">Min Trades</label>
+                        <select id="wt-min-trades" class="bg-gray-800/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="loadWalletTracker()">
+                            <option value="1">1+</option><option value="2">2+</option><option value="3" selected>3+</option><option value="5">5+</option><option value="10">10+</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-gray-500 block mb-1">Min Win Rate</label>
+                        <select id="wt-min-winrate" class="bg-gray-800/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="loadWalletTracker()">
+                            <option value="0" selected>Todas</option><option value="40">40%+</option><option value="50">50%+</option><option value="60">60%+</option><option value="70">70%+</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-gray-500 block mb-1">Ordenar por</label>
+                        <select id="wt-sort" class="bg-gray-800/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="loadWalletTracker()">
+                            <option value="pnl" selected>PnL Total</option><option value="roi">ROI %</option><option value="winrate">Win Rate</option><option value="score">Smart Score</option><option value="volume">Volumen</option><option value="trades">N Trades</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-[10px] text-gray-500"><input type="checkbox" id="wt-watchlist-only" class="mr-1" onchange="loadWalletTracker()">Solo Favoritas</label>
+                    </div>
+                    <div class="ml-auto text-[10px] text-gray-500">Total: <b class="text-gray-300" id="wt-total">0</b> wallets</div>
+                </div>
+                <!-- Stats resumen -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4" id="wt-stats">
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500 uppercase">Wallets Rentables</div>
+                        <div class="text-lg font-bold text-green-400" id="wt-profitable">0</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500 uppercase">PnL Total Wallets</div>
+                        <div class="text-lg font-bold" id="wt-total-pnl">$0</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500 uppercase">Avg Win Rate</div>
+                        <div class="text-lg font-bold text-cyan-400" id="wt-avg-wr">-</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                        <div class="text-[10px] text-gray-500 uppercase">En Watchlist</div>
+                        <div class="text-lg font-bold text-yellow-400" id="wt-watchlisted">0</div>
+                    </div>
+                </div>
+                <!-- Tabla principal -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                            <th class="text-center p-2 w-8"></th>
+                            <th class="text-left p-2">Wallet</th>
+                            <th class="text-center p-2">Trades</th>
+                            <th class="text-center p-2">W/L</th>
+                            <th class="text-center p-2">Win%</th>
+                            <th class="text-right p-2">PnL Total</th>
+                            <th class="text-right p-2">ROI</th>
+                            <th class="text-center p-2">Score</th>
+                            <th class="text-right p-2">Vol Wallet</th>
+                            <th class="text-center p-2">Abiertas</th>
+                            <th class="text-center p-2 w-8"></th>
+                        </tr></thead>
+                        <tbody id="wt-table-body"><tr><td colspan="11" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Detalle de wallet seleccionada -->
+            <div id="wt-detail" class="hidden glass glow rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h4 class="text-sm font-semibold text-purple-400" id="wt-detail-name">Wallet</h4>
+                        <p class="text-[10px] text-gray-500" id="wt-detail-address"></p>
+                    </div>
+                    <button onclick="document.getElementById('wt-detail').classList.add('hidden')" class="text-gray-500 hover:text-gray-300 text-xs">Cerrar</button>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-3" id="wt-detail-stats"></div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                            <th class="text-left p-2">Fecha</th><th class="text-left p-2">Mercado</th><th class="text-center p-2">Outcome</th><th class="text-right p-2">$ Inv</th><th class="text-right p-2">Entry</th><th class="text-center p-2">Estado</th><th class="text-right p-2">PnL</th>
+                        </tr></thead>
+                        <tbody id="wt-detail-trades"><tr><td colspan="7" class="text-center text-gray-600 p-4">Cargando...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- ═══ v10: Backtester Panel ═══ -->
         <div id="panel-backtester" class="hidden space-y-4">
             <div class="glass glow rounded-xl p-4">
@@ -2689,9 +2785,9 @@ function polyProfile(addr){return`https://polymarket.com/profile/${addr}`}
 function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
 // ── Sidebar Navigation ──
-const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',backtester:'Backtester',complementarb:'Complement Arb',heatmap:'Heatmap',config:'Configuración'};
+const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',backtester:'Backtester',complementarb:'Complement Arb',heatmap:'Heatmap',config:'Configuración'};
 function showTab(t){
-    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading','alertpnl','backtester','complementarb','heatmap'];
+    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading','alertpnl','wallettracker','backtester','complementarb','heatmap'];
     // Ocultar todos los paneles
     panels.forEach(id=>{
         const panel=document.getElementById('panel-'+id);
@@ -2719,6 +2815,7 @@ function showTab(t){
     if(t==='crypto')loadCryptoTab();
     if(t==='alerttrading')loadAatConfig();
     if(t==='alertpnl')loadAlertPnl();
+    if(t==='wallettracker')loadWalletTracker();
     if(t==='backtester')loadBacktesterDefaults();
     if(t==='complementarb')loadComplementArb();
     if(t==='heatmap')loadHeatmap();
@@ -4880,6 +4977,124 @@ async function loadAlertPnl(){
             </tr>`;
         }).join('');
     }
+}
+
+// ── Wallet Tracker ──
+let _wtData=[];
+async function loadWalletTracker(){
+    const minTrades=document.getElementById('wt-min-trades')?.value||3;
+    const minWr=document.getElementById('wt-min-winrate')?.value||0;
+    const sortBy=document.getElementById('wt-sort')?.value||'pnl';
+    const watchOnly=document.getElementById('wt-watchlist-only')?.checked||false;
+    const data=await fetchJson(`/api/wallet-tracker?min_trades=${minTrades}&min_winrate=${minWr}&sort_by=${sortBy}`);
+    if(!data)return;
+    let wallets=data.wallets||[];
+    if(watchOnly)wallets=wallets.filter(w=>w.is_watchlisted);
+    _wtData=wallets;
+    document.getElementById('wt-total').textContent=wallets.length;
+    // Stats
+    const profitable=wallets.filter(w=>w.total_pnl>0).length;
+    const totalPnl=wallets.reduce((s,w)=>s+w.total_pnl,0);
+    const avgWr=wallets.length>0?wallets.reduce((s,w)=>s+w.win_rate,0)/wallets.length:0;
+    const watchlisted=wallets.filter(w=>w.is_watchlisted).length;
+    document.getElementById('wt-profitable').textContent=profitable;
+    const tpEl=document.getElementById('wt-total-pnl');
+    tpEl.textContent='$'+totalPnl.toFixed(2);
+    tpEl.className='text-lg font-bold '+(totalPnl>=0?'text-green-400':'text-red-400');
+    document.getElementById('wt-avg-wr').textContent=avgWr.toFixed(1)+'%';
+    document.getElementById('wt-watchlisted').textContent=watchlisted;
+    // Tabla
+    const tb=document.getElementById('wt-table-body');
+    if(wallets.length===0){
+        tb.innerHTML='<tr><td colspan="11" class="text-center text-gray-600 p-6">No hay wallets con esos filtros</td></tr>';
+        return;
+    }
+    tb.innerHTML=wallets.map((w,i)=>{
+        const pC=w.total_pnl>=0?'text-green-400':'text-red-400';
+        const rC=w.roi_pct>=0?'text-green-400':'text-red-400';
+        const wrC=w.win_rate>=60?'text-green-400':w.win_rate>=40?'text-yellow-400':'text-red-400';
+        const star=w.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400';
+        const scoreC=w.smart_money_score>=60?'text-green-400':w.smart_money_score>=30?'text-yellow-400':'text-gray-500';
+        const name=w.name||w.address?.slice(0,10)||'?';
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20 cursor-pointer" onclick="showWalletDetail('${w.address}',${i})">
+            <td class="p-2 text-center text-sm cursor-pointer" onclick="event.stopPropagation();toggleWatchlist('${w.address}',this)"><span class="${star}">&#9733;</span></td>
+            <td class="p-2"><a href="${polyProfile(w.address||'')}" target="_blank" class="text-purple-400 hover:text-purple-300" onclick="event.stopPropagation()">${name}</a><div class="text-[9px] text-gray-600">${w.address?.slice(0,8)}...${w.address?.slice(-4)}</div></td>
+            <td class="p-2 text-center">${w.total_trades}<span class="text-[9px] text-gray-600"> (${w.closed_trades}c)</span></td>
+            <td class="p-2 text-center">${w.wins}/${w.losses}</td>
+            <td class="p-2 text-center font-bold ${wrC}">${w.win_rate.toFixed(0)}%</td>
+            <td class="p-2 text-right font-mono font-bold ${pC}">$${w.total_pnl.toFixed(2)}<div class="text-[9px] text-gray-500">R:$${w.realized_pnl.toFixed(0)} U:$${w.unrealized_pnl.toFixed(0)}</div></td>
+            <td class="p-2 text-right font-mono ${rC}">${w.roi_pct.toFixed(1)}%</td>
+            <td class="p-2 text-center ${scoreC}">${w.smart_money_score.toFixed(0)}</td>
+            <td class="p-2 text-right text-gray-400 font-mono">$${fmt(w.wallet_volume||0)}</td>
+            <td class="p-2 text-center text-yellow-400">${w.open_trades}</td>
+            <td class="p-2 text-center text-gray-500 text-[10px]">&#9654;</td>
+        </tr>`;
+    }).join('');
+}
+
+async function toggleWatchlist(addr,el){
+    try{
+        const res=await fetch('/api/wallet-tracker/watchlist/'+addr,{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await res.json();
+        const span=el.querySelector('span');
+        if(span){
+            span.className=data.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400';
+        }
+        // Actualizar dato local
+        const w=_wtData.find(x=>x.address===addr);
+        if(w)w.is_watchlisted=data.is_watchlisted;
+        const watchlisted=_wtData.filter(w=>w.is_watchlisted).length;
+        document.getElementById('wt-watchlisted').textContent=watchlisted;
+    }catch(e){console.error('toggleWatchlist error',e);}
+}
+
+async function showWalletDetail(addr,idx){
+    const panel=document.getElementById('wt-detail');
+    panel.classList.remove('hidden');
+    const w=_wtData[idx];
+    document.getElementById('wt-detail-name').textContent=w?.name||addr.slice(0,12)+'...';
+    document.getElementById('wt-detail-address').innerHTML=`<a href="${polyProfile(addr)}" target="_blank" class="text-purple-400 hover:text-purple-300">${addr}</a>`;
+    // Stats del wallet
+    if(w){
+        document.getElementById('wt-detail-stats').innerHTML=`
+            <div class="bg-gray-800/40 rounded p-2 text-center"><div class="text-[9px] text-gray-500">PnL Total</div><div class="font-bold ${w.total_pnl>=0?'text-green-400':'text-red-400'}">$${w.total_pnl.toFixed(2)}</div></div>
+            <div class="bg-gray-800/40 rounded p-2 text-center"><div class="text-[9px] text-gray-500">Win Rate</div><div class="font-bold text-cyan-400">${w.win_rate.toFixed(1)}%</div></div>
+            <div class="bg-gray-800/40 rounded p-2 text-center"><div class="text-[9px] text-gray-500">ROI</div><div class="font-bold ${w.roi_pct>=0?'text-green-400':'text-red-400'}">${w.roi_pct.toFixed(1)}%</div></div>
+            <div class="bg-gray-800/40 rounded p-2 text-center"><div class="text-[9px] text-gray-500">Mejor</div><div class="font-bold text-green-400">$${w.best_trade.toFixed(2)}</div></div>
+            <div class="bg-gray-800/40 rounded p-2 text-center"><div class="text-[9px] text-gray-500">Peor</div><div class="font-bold text-red-400">$${w.worst_trade.toFixed(2)}</div></div>
+            <div class="bg-gray-800/40 rounded p-2 text-center"><div class="text-[9px] text-gray-500">Mercados</div><div class="font-bold text-gray-300">${w.markets_traded}</div></div>
+        `;
+    }
+    // Cargar trades
+    const dtb=document.getElementById('wt-detail-trades');
+    dtb.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-4">Cargando...</td></tr>';
+    try{
+        const data=await fetchJson('/api/wallet-tracker/'+addr+'/trades');
+        const trades=data?.trades||[];
+        if(trades.length===0){
+            dtb.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-4">Sin trades</td></tr>';
+            return;
+        }
+        dtb.innerHTML=trades.map(t=>{
+            const isOpen=!t.exit_type&&!t.resolved;
+            const pnlVal=isOpen?t.unrealized_pnl:t.paper_pnl;
+            let badge;
+            if(t.exit_type==='resolution'){badge=t.was_correct?'<span class="text-green-400">Win</span>':'<span class="text-red-400">Loss</span>';}
+            else if(t.exit_type==='wallet_exit'){badge='<span class="text-purple-400">Exit</span>';}
+            else{badge='<span class="text-yellow-400">Abierta</span>';}
+            return`<tr class="border-b border-gray-800/30">
+                <td class="p-2 text-gray-400 text-[10px]">${fmtDate(t.created_at)}</td>
+                <td class="p-2 max-w-[200px] truncate">${(t.market_question||'').slice(0,45)}</td>
+                <td class="p-2 text-center"><span class="px-1 py-0.5 rounded text-[10px] ${t.outcome==='Yes'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">${t.outcome||''}</span></td>
+                <td class="p-2 text-right font-mono">$${(t.size||0).toFixed(0)}</td>
+                <td class="p-2 text-right font-mono">${(t.price||0).toFixed(2)}</td>
+                <td class="p-2 text-center">${badge}</td>
+                <td class="p-2 text-right font-mono ${pnlVal!=null?(pnlVal>=0?'text-green-400':'text-red-400'):'text-gray-600'}">${pnlVal!=null?'$'+pnlVal.toFixed(2):'-'}</td>
+            </tr>`;
+        }).join('');
+    }catch(e){dtb.innerHTML='<tr><td colspan="7" class="text-center text-red-400 p-4">Error cargando trades</td></tr>';}
+    // Scroll al detalle
+    panel.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 // ── v10: Backtester ──

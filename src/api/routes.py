@@ -274,6 +274,33 @@ async def get_wallet_detail(request: Request, address: str):
     return detail
 
 
+# ── Wallet Tracker ────────────────────────────────────────────────────
+
+@router.get("/api/wallet-tracker")
+async def get_wallet_tracker(request: Request, min_trades: int = 1,
+                              min_winrate: float = 0, sort_by: str = "pnl"):
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    wallets = await db.get_wallet_tracker(user_id=uid, min_trades=min_trades,
+                                           min_winrate=min_winrate, sort_by=sort_by)
+    return {"wallets": wallets, "total": len(wallets)}
+
+
+@router.post("/api/wallet-tracker/watchlist/{address}")
+async def toggle_watchlist(request: Request, address: str):
+    db = request.app.state.db
+    new_status = await db.toggle_wallet_watchlist(address)
+    return {"address": address, "is_watchlisted": new_status}
+
+
+@router.get("/api/wallet-tracker/{address}/trades")
+async def get_wallet_tracker_trades(request: Request, address: str):
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    trades = await db.get_wallet_trades_detail(address, user_id=uid)
+    return {"trades": trades}
+
+
 # ── Markets ──────────────────────────────────────────────────────────
 
 @router.get("/api/markets")

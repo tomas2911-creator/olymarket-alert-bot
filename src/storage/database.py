@@ -1089,6 +1089,153 @@ class Database:
             print(f"[DB] get_paper_wallet_ranking error: {e}", flush=True)
             return []
 
+    async def get_wallet_tracker(self, user_id: int = 1, min_trades: int = 1,
+                                  min_winrate: float = 0, sort_by: str = "pnl") -> list[dict]:
+        """Ranking completo de wallets con PnL realizado + unrealizado, métricas y filtros."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        a.wallet_address as address,
+                        COALESCE(w.name, w.pseudonym) as name,
+                        w.profile_image,
+                        w.smart_money_score,
+                        w.is_watchlisted,
+                        w.total_volume as wallet_volume,
+                        w.markets_traded,
+                        COUNT(*) as total_trades,
+                        COUNT(*) FILTER (WHERE a.paper_pnl IS NOT NULL) as closed_trades,
+                        COUNT(*) FILTER (WHERE a.paper_pnl IS NULL AND a.resolved = FALSE AND a.exit_type IS NULL) as open_trades,
+                        AVG(a.score) as avg_score,
+                        SUM(CASE WHEN a.paper_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                        SUM(CASE WHEN a.paper_pnl IS NOT NULL AND a.paper_pnl <= 0 THEN 1 ELSE 0 END) as losses,
+                        COALESCE(SUM(a.paper_pnl), 0) as realized_pnl,
+                        COALESCE(SUM(a.size), 0) as total_invested,
+                        MAX(a.paper_pnl) as best_trade,
+                        MIN(a.paper_pnl) FILTER (WHERE a.paper_pnl IS NOT NULL) as worst_trade,
+                        MAX(a.created_at) as last_alert_at
+                    FROM alerts a
+                    LEFT JOIN wallets w ON a.wallet_address = w.address
+                    WHERE a.side = 'BUY' AND a.user_id = $1
+                    GROUP BY a.wallet_address, w.name, w.pseudonym, w.profile_image,
+                             w.smart_money_score, w.is_watchlisted, w.total_volume, w.markets_traded
+                    HAVING COUNT(*) >= $2
+                """, user_id, min_trades)
+
+                result = []
+                for r in rows:
+                    wins = int(r["wins"] or 0)
+                    losses = int(r["losses"] or 0)
+                    closed = wins + losses
+                    win_rate = round(wins / max(closed, 1) * 100, 1)
+
+                    if win_rate < min_winrate:
+                        continue
+
+                    # Calcular unrealized PnL para posiciones abiertas de esta wallet
+                    open_rows = await conn.fetch("""
+                        SELECT size, price, price_latest, price_at_alert
+                        FROM alerts
+                        WHERE wallet_address = $1 AND side = 'BUY' AND user_id = $2
+                          AND resolved = FALSE AND exit_type IS NULL AND price > 0
+                    """, r["address"], user_id)
+                    unrealized_pnl = 0.0
+                    for orow in open_rows:
+                        entry_p = float(orow["price"] or 0)
+                        latest_p = float(orow["price_latest"] or orow["price_at_alert"] or 0)
+                        if entry_p > 0 and latest_p > 0:
+                            shares = float(orow["size"] or 0) / entry_p
+                            unrealized_pnl += shares * (latest_p - entry_p)
+
+                    realized = float(r["realized_pnl"] or 0)
+                    total_pnl = realized + unrealized_pnl
+                    invested = float(r["total_invested"] or 0)
+                    roi = round((total_pnl / invested * 100) if invested > 0 else 0, 1)
+
+                    result.append({
+                        "address": r["address"],
+                        "name": r["name"],
+                        "profile_image": r["profile_image"],
+                        "smart_money_score": round(float(r["smart_money_score"] or 0), 1),
+                        "is_watchlisted": bool(r["is_watchlisted"]),
+                        "total_trades": int(r["total_trades"] or 0),
+                        "closed_trades": int(r["closed_trades"] or 0),
+                        "open_trades": int(r["open_trades"] or 0),
+                        "wins": wins,
+                        "losses": losses,
+                        "win_rate": win_rate,
+                        "realized_pnl": round(realized, 2),
+                        "unrealized_pnl": round(unrealized_pnl, 2),
+                        "total_pnl": round(total_pnl, 2),
+                        "total_invested": round(invested, 2),
+                        "roi_pct": roi,
+                        "best_trade": round(float(r["best_trade"] or 0), 2),
+                        "worst_trade": round(float(r["worst_trade"] or 0), 2),
+                        "avg_score": round(float(r["avg_score"] or 0), 1),
+                        "wallet_volume": round(float(r["wallet_volume"] or 0), 0),
+                        "markets_traded": int(r["markets_traded"] or 0),
+                        "last_alert_at": r["last_alert_at"].isoformat() if r["last_alert_at"] else None,
+                    })
+
+                # Ordenar
+                sort_key = {
+                    "pnl": lambda x: x["total_pnl"],
+                    "roi": lambda x: x["roi_pct"],
+                    "winrate": lambda x: x["win_rate"],
+                    "score": lambda x: x["smart_money_score"],
+                    "volume": lambda x: x["wallet_volume"],
+                    "trades": lambda x: x["total_trades"],
+                }.get(sort_by, lambda x: x["total_pnl"])
+                result.sort(key=sort_key, reverse=True)
+                return result
+        except Exception as e:
+            print(f"[DB] get_wallet_tracker error: {e}", flush=True)
+            return []
+
+    async def toggle_wallet_watchlist(self, address: str) -> bool:
+        """Toggle watchlist status de una wallet. Retorna el nuevo estado."""
+        try:
+            addr = address.lower()
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT is_watchlisted FROM wallets WHERE address = $1", addr)
+                if not row:
+                    return False
+                new_status = not bool(row["is_watchlisted"])
+                await conn.execute("UPDATE wallets SET is_watchlisted = $1 WHERE address = $2", new_status, addr)
+                return new_status
+        except Exception as e:
+            print(f"[DB] toggle_wallet_watchlist error: {e}", flush=True)
+            return False
+
+    async def get_wallet_trades_detail(self, address: str, user_id: int = 1) -> list[dict]:
+        """Trades recientes de una wallet específica para el panel de detalle."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT a.id, a.created_at, a.market_question, a.outcome, a.size, a.price,
+                           a.score, a.resolved, a.was_correct, a.paper_pnl,
+                           a.exit_price, a.exit_type, a.price_latest, a.price_at_alert
+                    FROM alerts a
+                    WHERE a.wallet_address = $1 AND a.side = 'BUY' AND a.user_id = $2
+                    ORDER BY a.created_at DESC LIMIT 30
+                """, address.lower(), user_id)
+                result = []
+                for r in rows:
+                    row = _serialize_row(r)
+                    if r["exit_type"] is None and not r["resolved"]:
+                        entry_p = float(r["price"] or 0)
+                        latest_p = float(r["price_latest"] or r["price_at_alert"] or 0)
+                        size = float(r["size"] or 0)
+                        if entry_p > 0 and latest_p > 0:
+                            shares = size / entry_p
+                            row["unrealized_pnl"] = round(shares * (latest_p - entry_p), 2)
+                            row["current_price"] = round(latest_p, 4)
+                    result.append(row)
+                return result
+        except Exception as e:
+            print(f"[DB] get_wallet_trades_detail error: {e}", flush=True)
+            return []
+
     async def get_paper_recent_trades(self, limit: int = 50, user_id: int = 1) -> list[dict]:
         """Trades recientes del paper trading (alertas BUY con PnL info)."""
         try:
