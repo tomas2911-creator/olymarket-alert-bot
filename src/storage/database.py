@@ -1093,26 +1093,30 @@ class Database:
                                   min_winrate: float = 0, sort_by: str = "pnl") -> list[dict]:
         """Ranking completo de wallets con PnL realizado + unrealizado, métricas y filtros."""
         try:
+            print(f"[WalletTracker] Iniciando query: user_id={user_id}, min_trades={min_trades}, min_winrate={min_winrate}, sort_by={sort_by}", flush=True)
             async with self._pool.acquire() as conn:
+                # Debug: contar alertas BUY
+                debug_count = await conn.fetchval("SELECT COUNT(*) FROM alerts WHERE side = 'BUY' AND user_id = $1", user_id)
+                print(f"[WalletTracker] Total alertas BUY para user_id={user_id}: {debug_count}", flush=True)
                 rows = await conn.fetch("""
                     SELECT
                         a.wallet_address as address,
                         COALESCE(w.name, w.pseudonym) as name,
                         w.profile_image,
-                        w.smart_money_score,
-                        w.is_watchlisted,
-                        w.total_volume as wallet_volume,
-                        w.markets_traded,
+                        COALESCE(w.smart_money_score, 0) as smart_money_score,
+                        COALESCE(w.is_watchlisted, FALSE) as is_watchlisted,
+                        COALESCE(w.total_volume, 0) as wallet_volume,
+                        COALESCE(w.markets_traded, 0) as markets_traded,
                         COUNT(*) as total_trades,
-                        COUNT(*) FILTER (WHERE a.paper_pnl IS NOT NULL) as closed_trades,
-                        COUNT(*) FILTER (WHERE a.paper_pnl IS NULL AND a.resolved = FALSE AND a.exit_type IS NULL) as open_trades,
+                        SUM(CASE WHEN a.paper_pnl IS NOT NULL THEN 1 ELSE 0 END) as closed_trades,
+                        SUM(CASE WHEN a.paper_pnl IS NULL AND a.resolved = FALSE AND a.exit_type IS NULL THEN 1 ELSE 0 END) as open_trades,
                         AVG(a.score) as avg_score,
                         SUM(CASE WHEN a.paper_pnl > 0 THEN 1 ELSE 0 END) as wins,
                         SUM(CASE WHEN a.paper_pnl IS NOT NULL AND a.paper_pnl <= 0 THEN 1 ELSE 0 END) as losses,
                         COALESCE(SUM(a.paper_pnl), 0) as realized_pnl,
                         COALESCE(SUM(a.size), 0) as total_invested,
                         MAX(a.paper_pnl) as best_trade,
-                        MIN(a.paper_pnl) FILTER (WHERE a.paper_pnl IS NOT NULL) as worst_trade,
+                        MIN(CASE WHEN a.paper_pnl IS NOT NULL THEN a.paper_pnl END) as worst_trade,
                         MAX(a.created_at) as last_alert_at
                     FROM alerts a
                     LEFT JOIN wallets w ON a.wallet_address = w.address
@@ -1121,6 +1125,7 @@ class Database:
                              w.smart_money_score, w.is_watchlisted, w.total_volume, w.markets_traded
                     HAVING COUNT(*) >= $2
                 """, user_id, min_trades)
+                print(f"[WalletTracker] Query retornó {len(rows)} wallets (min_trades={min_trades})", flush=True)
 
                 result = []
                 for r in rows:
@@ -1189,7 +1194,9 @@ class Database:
                 result.sort(key=sort_key, reverse=True)
                 return result
         except Exception as e:
+            import traceback
             print(f"[DB] get_wallet_tracker error: {e}", flush=True)
+            traceback.print_exc()
             return []
 
     async def toggle_wallet_watchlist(self, address: str) -> bool:
