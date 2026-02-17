@@ -27,8 +27,13 @@ _CAT_TITLE_PATTERNS = {
     "crypto-price": r'price of|above \$|below \$|close above|close below|all-time high|ATH',
     "updown": r'Up or Down|updown',
 }
-# Nota: se eliminó _ALWAYS_EXCLUDE_RE (\d+[AP]M.*ET) porque mataba
-# todos los trades crypto up/down cuyos títulos tienen timestamps ET
+# Categorías siempre excluidas del bot de alertas insider
+# (crypto up/down se maneja por el Crypto Arb bot, pipeline separado)
+_ALWAYS_EXCLUDED_CATS = {"updown", "crypto-prices", "crypto-price"}
+_ALWAYS_EXCLUDED_TITLE_RE = re.compile(
+    r'Up or Down|updown|price of|above \$|below \$|close above|close below|all-time high|ATH',
+    re.IGNORECASE,
+)
 
 
 def _build_exclude_regex(excluded_cats: set) -> re.Pattern | None:
@@ -154,20 +159,29 @@ class PolymarketClient:
                             no_id += 1
                             continue
 
-                        # Filtrar por categorías EXCLUIDAS del dashboard (dinámico)
-                        if excluded:
-                            market_data = self._market_cache.get(cid)
-                            filter_title = ""
-                            filter_tags = []
-                            if market_data:
-                                filter_title = market_data.get("question", "")
-                                cat = market_data.get("category", "")
-                                filter_tags = [cat] if cat else []
-                            else:
-                                filter_title = item.get("title", "")
-                            if is_category_excluded(filter_title, filter_tags, excluded, exclude_re):
-                                filtered_cat += 1
-                                continue
+                        # Obtener datos del mercado para filtrar
+                        market_data = self._market_cache.get(cid)
+                        filter_title = ""
+                        filter_tags = []
+                        if market_data:
+                            filter_title = market_data.get("question", "")
+                            cat = market_data.get("category", "")
+                            filter_tags = [cat] if cat else []
+                        else:
+                            filter_title = item.get("title", "")
+
+                        # 1. Excluir crypto up/down SIEMPRE (hardcodeado, lo cubre Crypto Arb bot)
+                        if filter_tags and {t.lower() for t in filter_tags} & _ALWAYS_EXCLUDED_CATS:
+                            filtered_cat += 1
+                            continue
+                        if filter_title and _ALWAYS_EXCLUDED_TITLE_RE.search(filter_title):
+                            filtered_cat += 1
+                            continue
+
+                        # 2. Filtrar por categorías EXCLUIDAS del dashboard (dinámico)
+                        if excluded and is_category_excluded(filter_title, filter_tags, excluded, exclude_re):
+                            filtered_cat += 1
+                            continue
 
                         trade = self._parse_trade(item)
                         if trade:
