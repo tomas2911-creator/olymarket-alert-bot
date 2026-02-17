@@ -1268,15 +1268,16 @@ class Database:
     # ── Whale Trades ──────────────────────────────────────────────────
 
     async def save_whale_trade(self, trade) -> bool:
-        """Guardar un whale trade. Dedup por transaction_hash."""
+        """Guardar un whale trade. Dedup por transaction_hash. Retorna True si fue nuevo."""
         try:
             async with self._pool.acquire() as conn:
-                await conn.execute("""
+                row = await conn.fetchrow("""
                     INSERT INTO whale_trades (transaction_hash, wallet_address, market_id,
                         market_question, market_slug, market_category, side, outcome,
                         size, price, wallet_name, wallet_image, created_at)
                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
                     ON CONFLICT (transaction_hash) DO NOTHING
+                    RETURNING id
                 """, trade.transaction_hash, trade.wallet_address.lower(),
                     trade.market_id, trade.market_question, trade.market_slug,
                     trade.market_category, trade.side, trade.outcome,
@@ -1284,7 +1285,7 @@ class Database:
                     getattr(trade, 'trader_name', None),
                     getattr(trade, 'trader_profile_image', None),
                     trade.timestamp)
-                return True
+                return row is not None
         except Exception as e:
             print(f"[DB] save_whale_trade error: {e}", flush=True)
             return False

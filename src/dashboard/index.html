@@ -5281,9 +5281,10 @@ async function loadWhaleFeed(minSize){
         const scC=t.smart_score>=60?'text-green-400':t.smart_score>=30?'text-yellow-400':'text-gray-500';
         const star=t.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400';
         const mq=(t.market_question||'').length>50?t.market_question.slice(0,50)+'…':t.market_question||'';
+        const mqSafe=(t.market_question||'').replace(/"/g,'&quot;');
         return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
             <td class="p-2 text-gray-400 whitespace-nowrap">${timeStr}</td>
-            <td class="p-2 text-gray-300 max-w-[200px] truncate" title="${t.market_question||''}">${mq}</td>
+            <td class="p-2 text-gray-300 max-w-[200px] truncate" title="${mqSafe}">${mq}</td>
             <td class="p-2"><a href="${polyProfile(addr)}" target="_blank" class="text-cyan-400 hover:underline">${name}</a></td>
             <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${sideC}">${t.side}</span></td>
             <td class="p-2 text-right font-mono font-bold text-white">$${(t.size||0).toLocaleString()}</td>
@@ -5291,7 +5292,7 @@ async function loadWhaleFeed(minSize){
             <td class="p-2 text-right font-mono text-gray-400">${(t.price||0).toFixed(2)}</td>
             <td class="p-2 text-center ${wrC}">${t.win_rate>0?t.win_rate+'%':'-'}</td>
             <td class="p-2 text-center ${scC}">${t.smart_score>0?t.smart_score:'-'}</td>
-            <td class="p-2 text-center cursor-pointer ${star}" onclick="toggleWatchlist('${addr}',this)">★</td>
+            <td class="p-2 text-center cursor-pointer ${star}" onclick="whaleToggleWatchlist('${addr}',this)">★</td>
         </tr>`;
     }).join('');
 }
@@ -5323,13 +5324,20 @@ async function loadWhaleRanking(minSize){
             <td class="p-2 text-right font-mono text-yellow-400">$${(w.max_trade||0).toLocaleString()}</td>
             <td class="p-2 text-center"><span class="text-green-400">${w.wins}</span>/<span class="text-red-400">${w.losses}</span></td>
             <td class="p-2 text-center font-bold ${wrC}">${w.win_rate}%</td>
-            <td class="p-2 text-right font-mono ${pC}">$${w.total_pnl.toFixed(2)}</td>
-            <td class="p-2 text-right font-mono ${rC}">${w.roi_pct}%</td>
+            <td class="p-2 text-right font-mono ${pC}">$${(w.total_pnl||0).toFixed(2)}</td>
+            <td class="p-2 text-right font-mono ${rC}">${(w.roi_pct||0)}%</td>
             <td class="p-2 text-center ${scC}">${w.smart_money_score}</td>
             <td class="p-2 text-center text-gray-400">${w.markets}</td>
-            <td class="p-2 text-center cursor-pointer ${star}" onclick="toggleWatchlist('${addr}',this)">★</td>
+            <td class="p-2 text-center cursor-pointer ${star}" onclick="whaleToggleWatchlist('${addr}',this)">★</td>
         </tr>`;
     }).join('');
+}
+async function whaleToggleWatchlist(addr,el){
+    try{
+        const res=await fetch('/api/wallet-tracker/watchlist/'+addr,{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await res.json();
+        el.className='p-2 text-center cursor-pointer '+(data.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400');
+    }catch(e){console.error('whaleToggleWatchlist error',e);}
 }
 
 // ── v10: Backtester ──
