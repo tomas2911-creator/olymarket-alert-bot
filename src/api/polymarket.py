@@ -369,13 +369,20 @@ class PolymarketClient:
             if response.status_code == 200:
                 data = response.json()
                 tokens = data.get("tokens", [])
-                # Buscar token que matchea el outcome pedido
+                # Buscar token que matchea el outcome pedido (case-insensitive)
+                outcome_lower = outcome.lower()
                 for token in tokens:
-                    if token.get("outcome", "").lower() == outcome.lower():
+                    token_outcome = token.get("outcome", "")
+                    if token_outcome.lower() == outcome_lower:
                         return float(token.get("price", 0))
-                # Fallback: primer token = Yes, segundo = No
+                # Fallback parcial: buscar substring match (ej: "LSU Tigers" vs "lsu tigers")
+                for token in tokens:
+                    token_outcome = token.get("outcome", "")
+                    if outcome_lower in token_outcome.lower() or token_outcome.lower() in outcome_lower:
+                        return float(token.get("price", 0))
+                # Último fallback: primer token = Yes, segundo = No
                 if tokens:
-                    idx = 0 if outcome == "Yes" else (1 if len(tokens) > 1 else 0)
+                    idx = 0 if outcome_lower in ("yes", "") else (1 if len(tokens) > 1 else 0)
                     return float(tokens[idx].get("price", 0))
         except Exception:
             pass

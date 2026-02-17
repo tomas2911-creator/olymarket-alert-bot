@@ -2597,6 +2597,14 @@ async def get_alert_pnl(request: Request):
     }
 
 
+@router.post("/api/alert-pnl/reset-prices")
+async def reset_alert_prices(request: Request):
+    """Forzar refresh de price_latest en todas las alertas abiertas."""
+    db = request.app.state.db
+    count = await db.reset_all_price_latest()
+    return {"reset": count, "message": f"Se resetearon {count} alertas. Los precios se actualizarán en el próximo ciclo (~10 min)."}
+
+
 # ── v10: Volume & Market Intelligence ────────────────────────────────
 
 @router.get("/api/volume-spikes")

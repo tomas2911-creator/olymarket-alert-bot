@@ -1123,10 +1123,9 @@ class Database:
                 unrealized_pnl = 0.0
                 for orow in open_rows:
                     entry_p = float(orow["price"] or 0)
-                    latest_p = float(orow["price_latest"] or orow["price_at_alert"] or 0)
+                    latest_p = float(orow["price_latest"] or 0)
                     if entry_p > 0 and latest_p > 0:
                         shares = float(orow["size"] or 0) / entry_p
-                        # price_latest ya contiene el precio del token específico (outcome)
                         unrealized_pnl += shares * (latest_p - entry_p)
 
                 total_pnl = realized_pnl + unrealized_pnl
@@ -1287,7 +1286,7 @@ class Database:
                     unrealized_pnl = 0.0
                     for orow in open_rows:
                         entry_p = float(orow["price"] or 0)
-                        latest_p = float(orow["price_latest"] or orow["price_at_alert"] or 0)
+                        latest_p = float(orow["price_latest"] or 0)
                         if entry_p > 0 and latest_p > 0:
                             shares = float(orow["size"] or 0) / entry_p
                             unrealized_pnl += shares * (latest_p - entry_p)
@@ -2294,11 +2293,10 @@ class Database:
                     # Para posiciones abiertas, calcular unrealized PnL
                     if r["exit_type"] is None and not r["resolved"]:
                         entry_p = float(r["price"] or 0)
-                        latest_p = float(r["price_latest"] or r["price_at_alert"] or 0)
+                        latest_p = float(r["price_latest"] or 0)
                         size = float(r["size"] or 0)
                         if entry_p > 0 and latest_p > 0:
                             shares = size / entry_p
-                            # price_latest ya contiene el precio del token específico (outcome)
                             row["unrealized_pnl"] = round(shares * (latest_p - entry_p), 2)
                             row["current_price"] = round(latest_p, 4)
                             row["paper_shares"] = round(shares, 2)
@@ -2329,11 +2327,10 @@ class Database:
                     row = _serialize_row(r)
                     # Calcular unrealized PnL con price_latest
                     entry_p = float(r["price"] or 0)
-                    latest_p = float(r["price_latest"] or r["price_at_alert"] or 0)
+                    latest_p = float(r["price_latest"] or 0)
                     size = float(r["size"] or 0)
                     if entry_p > 0 and latest_p > 0:
                         shares = size / entry_p
-                        # price_latest ya contiene el precio del token específico (outcome)
                         row["paper_shares"] = round(shares, 2)
                         row["unrealized_pnl"] = round(shares * (latest_p - entry_p), 2)
                         row["current_price"] = round(latest_p, 4)
@@ -2877,15 +2874,14 @@ class Database:
             )
 
     async def get_alerts_for_latest_price(self, limit: int = 30) -> list[dict]:
-        """Obtener alertas no resueltas que necesitan update de price_latest (cada ~1h)."""
+        """Obtener alertas no resueltas que necesitan update de price_latest (cada ~15min)."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT id, market_id, outcome, side, price_at_alert
                 FROM alerts
-                WHERE resolved = FALSE
-                  AND price_at_alert IS NOT NULL
-                  AND (price_latest_at IS NULL OR price_latest_at < NOW() - INTERVAL '55 minutes')
-                ORDER BY created_at DESC
+                WHERE resolved = FALSE AND exit_type IS NULL
+                  AND (price_latest_at IS NULL OR price_latest_at < NOW() - INTERVAL '14 minutes')
+                ORDER BY price_latest_at ASC NULLS FIRST, created_at DESC
                 LIMIT $1
             """, limit)
             return [dict(r) for r in rows]
@@ -2897,6 +2893,18 @@ class Database:
                 "UPDATE alerts SET price_latest = $1, price_latest_at = NOW() WHERE id = $2",
                 price, alert_id,
             )
+
+    async def reset_all_price_latest(self) -> int:
+        """Forzar refresh de price_latest en todas las alertas abiertas.
+        Pone price_latest = NULL para que el próximo ciclo las actualice con precio correcto."""
+        async with self._pool.acquire() as conn:
+            result = await conn.execute("""
+                UPDATE alerts SET price_latest = NULL, price_latest_at = NULL
+                WHERE resolved = FALSE AND exit_type IS NULL
+            """)
+            count = int(result.split()[-1]) if result else 0
+            print(f"[DB] Reset price_latest de {count} alertas abiertas", flush=True)
+            return count
 
     async def record_alert_with_price(self, **kwargs) -> int:
         """Record alert incluyendo price_at_alert y is_copy_trade."""

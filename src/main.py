@@ -431,9 +431,12 @@ class PolymarketAlertBot:
                 if cycle % 15 == 0:
                     await self.check_onchain_wallets()
 
-                # Cada 60 ciclos (~1h): health check + coordination + price latest
-                if cycle % 60 == 0:
+                # Cada 10 ciclos (~10 min): actualizar precios de alertas abiertas
+                if cycle % 10 == 0:
                     await self.update_latest_prices()
+
+                # Cada 60 ciclos (~1h): health check + coordination
+                if cycle % 60 == 0:
                     await self.send_health_check()
                     try:
                         coord_count = await self.db.detect_coordination()
@@ -727,11 +730,13 @@ class PolymarketAlertBot:
         # v4.0: Contexto adicional para nuevas señales
         accumulation_info = None
         market_price = None
+        outcome_price = None
         smart_cluster_count = 0
         try:
             accumulation_info = await self.db.get_accumulation_info(
                 trade.wallet_address, trade.market_id, trade.outcome)
             market_price = await client.get_market_price(trade.market_id, "Yes")
+            outcome_price = await client.get_market_price(trade.market_id, trade.outcome or "Yes") if (trade.outcome or "Yes") != "Yes" else market_price
             smart_cluster_count = await self.db.count_smart_wallets_same_side(
                 trade.market_id, trade.side, trade.outcome, trade.wallet_address)
         except Exception:
@@ -895,7 +900,7 @@ class PolymarketAlertBot:
                 cluster_wallets=candidate.cluster_wallets,
                 days_to_close=candidate.days_to_resolution,
                 wallet_hit_rate=candidate.wallet_hit_rate,
-                price_at_alert=market_price or trade.price,
+                price_at_alert=outcome_price or market_price or trade.price,
                 is_copy_trade=is_copy,
             )
             logger.info("alerta_enviada",
@@ -1123,7 +1128,7 @@ class PolymarketAlertBot:
     async def update_latest_prices(self):
         """Actualizar price_latest de alertas abiertas (cada ~1h)."""
         try:
-            alerts = await self.db.get_alerts_for_latest_price(limit=30)
+            alerts = await self.db.get_alerts_for_latest_price(limit=50)
             if not alerts:
                 return
             updated = 0
