@@ -328,6 +328,136 @@ async def get_whale_stats(request: Request, hours: int = 24, min_size: float = 5
     return stats
 
 
+# ── v11: News Feed ────────────────────────────────────────────────────
+
+@router.get("/api/news/feed")
+async def get_news_feed(request: Request, hours: int = 24, market_id: str = "", limit: int = 100):
+    db = request.app.state.db
+    items = await db.get_news_feed(hours=hours, market_id=market_id, limit=limit)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/api/news/sentiment")
+async def get_sentiments(request: Request, limit: int = 50):
+    db = request.app.state.db
+    data = await db.get_market_sentiments(limit=limit)
+    return {"markets": data, "total": len(data)}
+
+
+# ── v11: Insider Detection ───────────────────────────────────────────
+
+@router.get("/api/insider/flags")
+async def get_insider_flags(request: Request, hours: int = 48, min_prob: int = 15, limit: int = 100):
+    db = request.app.state.db
+    flags = await db.get_insider_flags(hours=hours, min_prob=min_prob, limit=limit)
+    return {"flags": flags, "total": len(flags)}
+
+
+# ── v11: Price Spikes ────────────────────────────────────────────────
+
+@router.get("/api/spikes")
+async def get_spikes(request: Request, hours: int = 24, min_pct: float = 0, limit: int = 100):
+    db = request.app.state.db
+    spikes = await db.get_price_spikes(hours=hours, min_pct=min_pct, limit=limit)
+    return {"spikes": spikes, "total": len(spikes)}
+
+
+# ── v11: Copy Trading ────────────────────────────────────────────────
+
+@router.get("/api/copy-trading/targets")
+async def get_copy_targets(request: Request):
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    targets = await db.get_copy_targets(user_id=uid)
+    return {"targets": targets, "total": len(targets)}
+
+
+@router.post("/api/copy-trading/targets/{wallet_address}")
+async def add_copy_target(request: Request, wallet_address: str):
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    result = await db.add_copy_target(
+        user_id=uid, wallet_address=wallet_address,
+        wallet_name=body.get("wallet_name", ""),
+        scale_pct=body.get("scale_pct", 1.0),
+        max_per_trade=body.get("max_per_trade", 100.0))
+    return result
+
+
+@router.delete("/api/copy-trading/targets/{wallet_address}")
+async def remove_copy_target(request: Request, wallet_address: str):
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    ok = await db.remove_copy_target(user_id=uid, wallet_address=wallet_address)
+    return {"ok": ok}
+
+
+@router.post("/api/copy-trading/targets/{wallet_address}/toggle")
+async def toggle_copy_target(request: Request, wallet_address: str):
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    return await db.toggle_copy_target(user_id=uid, wallet_address=wallet_address)
+
+
+@router.get("/api/copy-trading/trades")
+async def get_copy_trades(request: Request, limit: int = 100):
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    trades = await db.get_copy_trades_feed(user_id=uid, limit=limit)
+    return {"trades": trades, "total": len(trades)}
+
+
+@router.get("/api/copy-trading/stats")
+async def get_copy_stats(request: Request):
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    return await db.get_copy_trading_stats(user_id=uid)
+
+
+# ── v11: AI Analysis ────────────────────────────────────────────────
+
+@router.get("/api/ai/analyses")
+async def get_ai_analyses(request: Request, hours: int = 24, min_edge: float = 0, limit: int = 50):
+    db = request.app.state.db
+    data = await db.get_ai_analyses(hours=hours, min_edge=min_edge, limit=limit)
+    return {"analyses": data, "total": len(data)}
+
+
+@router.post("/api/ai/analyze/{market_id}")
+async def analyze_market_ai(request: Request, market_id: str):
+    bot = request.app.state.bot
+    if not bot or not bot.market_agent or not bot.market_agent.enabled:
+        return {"error": "AI Agent no configurado. Configura OPENAI_API_KEY en las variables de entorno."}
+    db = request.app.state.db
+    # Obtener datos del mercado
+    market_data = None
+    try:
+        markets = await db.get_tracked_markets(limit=500)
+        market_data = next((m for m in markets if m.get("condition_id") == market_id), None)
+    except Exception:
+        pass
+    if not market_data:
+        market_data = {"condition_id": market_id, "question": "", "price": 0.5, "volume": 0}
+    # Obtener noticias
+    news = await db.get_news_feed(hours=24, market_id=market_id, limit=5)
+    result = await bot.market_agent.analyze_market(market_data, news=news)
+    return result
+
+
+# ── v11: Spread Analysis ────────────────────────────────────────────
+
+@router.get("/api/spreads")
+async def get_spreads(request: Request, limit: int = 50):
+    db = request.app.state.db
+    data = await db.get_spread_opportunities(limit=limit)
+    return {"markets": data, "total": len(data)}
+
+
 # ── Markets ──────────────────────────────────────────────────────────
 
 @router.get("/api/markets")

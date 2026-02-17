@@ -40,6 +40,12 @@ from src.infra.websocket_client import PolymarketWebSocket
 from src.infra.bankroll import BankrollTracker
 from src.infra.news_catalyst import NewsCatalyst
 from src.infra.ml_scoring import MLScorer
+from src.detection.smart_score import SmartScoreCalculator
+from src.detection.insider_detector import InsiderDetector
+from src.detection.news_fetcher import NewsFetcher
+from src.detection.sentiment_analyzer import SentimentAnalyzer
+from src.trading.copy_engine import CopyTradingEngine
+from src.ai.market_agent import MarketAgent
 
 structlog.configure(
     processors=[
@@ -93,6 +99,13 @@ class PolymarketAlertBot:
         self.bankroll = None
         self.news_catalyst = NewsCatalyst()
         self.ml_scorer = None
+        # v11: Nuevos módulos
+        self.smart_score_calc = SmartScoreCalculator()
+        self.insider_detector = InsiderDetector()
+        self.news_fetcher = None
+        self.sentiment_analyzer = SentimentAnalyzer()
+        self.copy_engine = None
+        self.market_agent = None
 
     async def start(self):
         """Inicializar DB y marcar como running."""
@@ -138,6 +151,11 @@ class PolymarketAlertBot:
             self.complement_arb = None
         # v8.0: Iniciar nuevos módulos
         await self._start_v8_modules()
+        # v11: Iniciar módulos nuevos
+        self.news_fetcher = NewsFetcher(self.db)
+        self.copy_engine = CopyTradingEngine(self.db)
+        self.market_agent = MarketAgent(self.db)
+        print(f"v11 módulos iniciados: News={True} CopyTrading={True} AI={self.market_agent.enabled}", flush=True)
 
     async def _send_startup_safe(self):
         try:
@@ -532,8 +550,86 @@ class PolymarketAlertBot:
                 for wt in whale_trades:
                     if await self.db.save_whale_trade(wt):
                         saved += 1
+                        # v11: Insider Detection
+                        try:
+                            ctx = await self.db.get_insider_context(wt.wallet_address, wt.market_id)
+                            insider = self.insider_detector.analyze_trade(
+                                {"wallet_address": wt.wallet_address, "size": wt.size,
+                                 "side": wt.side, "market_id": wt.market_id},
+                                ctx)
+                            if insider["probability"] >= 15:
+                                await self.db.save_insider_flag({
+                                    "wallet_address": wt.wallet_address,
+                                    "market_id": wt.market_id,
+                                    "market_question": wt.market_question,
+                                    "trade_size": wt.size,
+                                    **insider,
+                                })
+                        except Exception:
+                            pass
+                        # v11: Copy Trading
+                        try:
+                            if self.copy_engine:
+                                await self.copy_engine.process_whale_trade(wt)
+                        except Exception:
+                            pass
                 if saved:
                     print(f"[WhaleTracker] {len(whale_trades)} detectados, {saved} nuevos guardados (>=${whale_min:,.0f}$)", flush=True)
+
+            # v11: News Fetcher + Sentiment (cada 15 min internamente)
+            try:
+                if self.news_fetcher and self._last_markets:
+                    markets_dicts = [{"condition_id": m.condition_id, "question": m.question}
+                                     for m in self._last_markets[:20]]
+                    articles = await self.news_fetcher.fetch_news_for_markets(markets_dicts)
+                    # Analizar sentimiento de artículos nuevos
+                    if articles:
+                        from collections import defaultdict
+                        by_market = defaultdict(list)
+                        for a in articles:
+                            s = self.sentiment_analyzer.analyze_article(a.get("title",""))
+                            a["sentiment_score"] = s["score"]
+                            a["sentiment_label"] = s["label"]
+                            if a.get("market_id"):
+                                by_market[a["market_id"]].append(a)
+                        # Guardar sentimiento agregado por mercado
+                        for mid, arts in by_market.items():
+                            agg = self.sentiment_analyzer.analyze_market_news(arts)
+                            agg["market_question"] = arts[0].get("market_question","")
+                            await self.db.save_market_sentiment(mid, agg)
+            except Exception as e:
+                print(f"[NewsFetcher] Error: {e}", flush=True)
+
+            # v11: Spike Detection mejorado (correlación con whales)
+            try:
+                if self.spike_detector and trades:
+                    # Construir precios reales desde trades procesados
+                    market_prices = {}
+                    for t in trades:
+                        market_prices[t.market_id] = t.price
+                    markets_dicts = [{"condition_id": mid, "price": price,
+                                      "question": next((m.question for m in self._last_markets if m.condition_id == mid), "")}
+                                     for mid, price in market_prices.items() if price > 0]
+                    spikes = await self.spike_detector.tick(markets_dicts)
+                    for spike in (spikes or []):
+                        # Correlacionar con whale trades
+                        whale_info = await self.db.get_whale_trades_for_spike(
+                            spike["market_id"], minutes=60)
+                        spike["whale_trades_correlated"] = whale_info["count"]
+                        spike["whale_volume_correlated"] = whale_info["total_volume"]
+                        spike["market_question"] = next(
+                            (m.question for m in self._last_markets
+                             if m.condition_id == spike["market_id"]), "")
+                        spike["old_price"] = spike.get("price", 0) / max(1 + spike.get("spike_pct", 0) / 100, 0.01)
+                        spike["new_price"] = spike.get("price", 0)
+                        spike["pct_change"] = spike.get("spike_pct", 0)
+                        spike["timeframe_min"] = 5
+                        await self.db.save_price_spike(spike)
+                        if whale_info["count"] > 0:
+                            print(f"[Spike] {spike['direction']} {spike['spike_pct']:.1f}% en "
+                                  f"{spike['market_question'][:50]} — {whale_info['count']} whales correlacionados", flush=True)
+            except Exception as e:
+                print(f"[SpikeDetector] Error: {e}", flush=True)
 
             if not trades:
                 print("Trades obtenidos: 0", flush=True)

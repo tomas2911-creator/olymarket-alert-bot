@@ -430,6 +430,119 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_whale_trades_size ON whale_trades(size DESC);
             """)
 
+            # === v11: News, Sentiment, Insider, Copy Trading, AI, Spikes ===
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS news_items (
+                    id              SERIAL PRIMARY KEY,
+                    title           TEXT NOT NULL,
+                    source          TEXT DEFAULT '',
+                    url             TEXT DEFAULT '',
+                    published_at    TEXT DEFAULT '',
+                    market_id       TEXT,
+                    market_question TEXT DEFAULT '',
+                    query           TEXT DEFAULT '',
+                    sentiment_score INTEGER DEFAULT 0,
+                    sentiment_label TEXT DEFAULT 'neutral',
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_news_created ON news_items(created_at);
+                CREATE INDEX IF NOT EXISTS idx_news_market ON news_items(market_id);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_news_unique ON news_items(title, market_id);
+
+                CREATE TABLE IF NOT EXISTS market_sentiment (
+                    id              SERIAL PRIMARY KEY,
+                    market_id       TEXT NOT NULL,
+                    market_question TEXT DEFAULT '',
+                    sentiment_score INTEGER DEFAULT 0,
+                    mention_count   INTEGER DEFAULT 0,
+                    positive        INTEGER DEFAULT 0,
+                    negative        INTEGER DEFAULT 0,
+                    neutral         INTEGER DEFAULT 0,
+                    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE(market_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS insider_flags (
+                    id              SERIAL PRIMARY KEY,
+                    wallet_address  TEXT NOT NULL,
+                    market_id       TEXT,
+                    market_question TEXT DEFAULT '',
+                    trade_size      DOUBLE PRECISION DEFAULT 0,
+                    probability     INTEGER DEFAULT 0,
+                    level           TEXT DEFAULT 'none',
+                    patterns        TEXT DEFAULT '',
+                    flags           TEXT DEFAULT '',
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_insider_created ON insider_flags(created_at);
+                CREATE INDEX IF NOT EXISTS idx_insider_wallet ON insider_flags(wallet_address);
+
+                CREATE TABLE IF NOT EXISTS copy_targets (
+                    id              SERIAL PRIMARY KEY,
+                    user_id         INTEGER DEFAULT 1,
+                    wallet_address  TEXT NOT NULL,
+                    wallet_name     TEXT DEFAULT '',
+                    enabled         BOOLEAN DEFAULT TRUE,
+                    scale_pct       DOUBLE PRECISION DEFAULT 1.0,
+                    max_per_trade   DOUBLE PRECISION DEFAULT 100.0,
+                    created_at      TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE(user_id, wallet_address)
+                );
+                CREATE INDEX IF NOT EXISTS idx_copy_targets_user ON copy_targets(user_id);
+
+                CREATE TABLE IF NOT EXISTS copy_trades (
+                    id              SERIAL PRIMARY KEY,
+                    target_wallet   TEXT NOT NULL,
+                    market_id       TEXT,
+                    market_question TEXT DEFAULT '',
+                    market_slug     TEXT DEFAULT '',
+                    side            TEXT,
+                    outcome         TEXT,
+                    original_size   DOUBLE PRECISION DEFAULT 0,
+                    sim_size        DOUBLE PRECISION DEFAULT 0,
+                    entry_price     DOUBLE PRECISION DEFAULT 0,
+                    current_price   DOUBLE PRECISION,
+                    pnl             DOUBLE PRECISION DEFAULT 0,
+                    status          TEXT DEFAULT 'open',
+                    closed_at       TIMESTAMPTZ,
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_copy_trades_created ON copy_trades(created_at);
+                CREATE INDEX IF NOT EXISTS idx_copy_trades_status ON copy_trades(status);
+                CREATE INDEX IF NOT EXISTS idx_copy_trades_wallet ON copy_trades(target_wallet);
+
+                CREATE TABLE IF NOT EXISTS ai_analysis (
+                    id              SERIAL PRIMARY KEY,
+                    market_id       TEXT NOT NULL,
+                    market_question TEXT DEFAULT '',
+                    ai_probability  DOUBLE PRECISION,
+                    market_price    DOUBLE PRECISION DEFAULT 0,
+                    edge_pct        DOUBLE PRECISION DEFAULT 0,
+                    reasoning       TEXT DEFAULT '',
+                    confidence      TEXT DEFAULT 'baja',
+                    model           TEXT DEFAULT '',
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_ai_analysis_created ON ai_analysis(created_at);
+                CREATE INDEX IF NOT EXISTS idx_ai_analysis_market ON ai_analysis(market_id);
+
+                CREATE TABLE IF NOT EXISTS price_spikes (
+                    id              SERIAL PRIMARY KEY,
+                    market_id       TEXT NOT NULL,
+                    market_question TEXT DEFAULT '',
+                    old_price       DOUBLE PRECISION DEFAULT 0,
+                    new_price       DOUBLE PRECISION DEFAULT 0,
+                    pct_change      DOUBLE PRECISION DEFAULT 0,
+                    direction       TEXT DEFAULT '',
+                    timeframe_min   INTEGER DEFAULT 5,
+                    whale_trades_correlated INTEGER DEFAULT 0,
+                    whale_volume_correlated DOUBLE PRECISION DEFAULT 0,
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_spikes_created ON price_spikes(created_at);
+                CREATE INDEX IF NOT EXISTS idx_spikes_market ON price_spikes(market_id);
+            """)
+
             # Migración multi-tenant: agregar user_id a todas las tablas per-user
             user_migrations = [
                 "ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
@@ -1452,6 +1565,502 @@ class Database:
         except Exception as e:
             print(f"[DB] get_whale_stats error: {e}", flush=True)
             return {}
+
+    # ── v11: News ─────────────────────────────────────────────────────
+
+    async def save_news_item(self, article: dict) -> bool:
+        """Guardar noticia. Retorna True si es nueva."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    INSERT INTO news_items (title, source, url, published_at, market_id,
+                                            market_question, query, sentiment_score, sentiment_label)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                    ON CONFLICT (title, market_id) DO NOTHING RETURNING id
+                """, article.get("title",""), article.get("source",""),
+                    article.get("url",""), article.get("published_at",""),
+                    article.get("market_id"), article.get("market_question",""),
+                    article.get("query",""), article.get("sentiment_score", 0),
+                    article.get("sentiment_label","neutral"))
+                return row is not None
+        except Exception as e:
+            print(f"[DB] save_news_item error: {e}", flush=True)
+            return False
+
+    async def get_news_feed(self, hours: int = 24, market_id: str = "",
+                             limit: int = 100) -> list[dict]:
+        """Obtener feed de noticias recientes."""
+        try:
+            async with self._pool.acquire() as conn:
+                q = """
+                    SELECT id, title, source, url, published_at, market_id,
+                           market_question, sentiment_score, sentiment_label, created_at
+                    FROM news_items
+                    WHERE created_at >= NOW() - make_interval(hours => $1)
+                """
+                params = [hours]
+                if market_id:
+                    q += " AND market_id = $2"
+                    params.append(market_id)
+                q += " ORDER BY created_at DESC LIMIT $" + str(len(params)+1)
+                params.append(limit)
+                rows = await conn.fetch(q, *params)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_news_feed error: {e}", flush=True)
+            return []
+
+    # ── v11: Sentiment ───────────────────────────────────────────────
+
+    async def save_market_sentiment(self, market_id: str, data: dict) -> None:
+        """Guardar/actualizar sentimiento de un mercado."""
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO market_sentiment (market_id, market_question, sentiment_score,
+                                                   mention_count, positive, negative, neutral, updated_at)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+                    ON CONFLICT (market_id) DO UPDATE SET
+                        sentiment_score=$3, mention_count=$4, positive=$5,
+                        negative=$6, neutral=$7, updated_at=NOW()
+                """, market_id, data.get("market_question",""),
+                    data.get("score",0), data.get("mention_count",0),
+                    data.get("positive",0), data.get("negative",0), data.get("neutral",0))
+        except Exception as e:
+            print(f"[DB] save_market_sentiment error: {e}", flush=True)
+
+    async def get_market_sentiments(self, limit: int = 50) -> list[dict]:
+        """Obtener sentimiento de todos los mercados."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT market_id, market_question, sentiment_score, mention_count,
+                           positive, negative, neutral, updated_at
+                    FROM market_sentiment
+                    ORDER BY ABS(sentiment_score) DESC, mention_count DESC
+                    LIMIT $1
+                """, limit)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_market_sentiments error: {e}", flush=True)
+            return []
+
+    # ── v11: Insider ─────────────────────────────────────────────────
+
+    async def save_insider_flag(self, data: dict) -> int:
+        """Guardar flag de insider. Retorna id."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    INSERT INTO insider_flags (wallet_address, market_id, market_question,
+                                               trade_size, probability, level, patterns, flags)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+                """, data.get("wallet_address",""), data.get("market_id",""),
+                    data.get("market_question",""), data.get("trade_size",0),
+                    data.get("probability",0), data.get("level","none"),
+                    ",".join(data.get("patterns",[])), " | ".join(data.get("flags",[])))
+                return row["id"] if row else 0
+        except Exception as e:
+            print(f"[DB] save_insider_flag error: {e}", flush=True)
+            return 0
+
+    async def get_insider_flags(self, hours: int = 48, min_prob: int = 15,
+                                 limit: int = 100) -> list[dict]:
+        """Obtener flags de insider recientes."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT f.*, COALESCE(w.name, w.pseudonym) as wallet_name,
+                           w.smart_money_score
+                    FROM insider_flags f
+                    LEFT JOIN wallets w ON f.wallet_address = w.address
+                    WHERE f.created_at >= NOW() - make_interval(hours => $1)
+                      AND f.probability >= $2
+                    ORDER BY f.probability DESC, f.created_at DESC
+                    LIMIT $3
+                """, hours, min_prob, limit)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_insider_flags error: {e}", flush=True)
+            return []
+
+    async def get_insider_context(self, wallet_address: str, market_id: str) -> dict:
+        """Obtener contexto para análisis insider de un whale trade."""
+        ctx = {
+            "wallet_age_days": None, "wallet_total_trades": 0,
+            "wallet_markets_count": 0, "wallet_market_volume_pct": 0,
+            "recent_spike_pct": 0, "simultaneous_new_wallets": 0,
+            "days_to_resolution": None,
+        }
+        try:
+            async with self._pool.acquire() as conn:
+                # Wallet info
+                w = await conn.fetchrow("""
+                    SELECT total_trades, markets_traded, first_seen
+                    FROM wallets WHERE address = $1
+                """, wallet_address)
+                if w:
+                    ctx["wallet_total_trades"] = w["total_trades"] or 0
+                    ctx["wallet_markets_count"] = w["markets_traded"] or 0
+                    if w["first_seen"]:
+                        from datetime import datetime, timezone
+                        now = datetime.now(timezone.utc)
+                        fs = w["first_seen"]
+                        if fs.tzinfo is None:
+                            fs = fs.replace(tzinfo=timezone.utc)
+                        ctx["wallet_age_days"] = (now - fs).days
+
+                # Volumen de esta wallet en este mercado vs total
+                if market_id:
+                    vol_row = await conn.fetchrow("""
+                        SELECT
+                            COALESCE(SUM(CASE WHEN market_id=$2 THEN size ELSE 0 END),0) as market_vol,
+                            COALESCE(SUM(size),0) as total_vol
+                        FROM whale_trades WHERE wallet_address=$1
+                    """, wallet_address, market_id)
+                    if vol_row and vol_row["total_vol"] > 0:
+                        ctx["wallet_market_volume_pct"] = round(
+                            vol_row["market_vol"] / vol_row["total_vol"] * 100, 1)
+
+                    # Wallets nuevas simultáneas en mismo mercado (últimos 30 min)
+                    new_w = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT wt.wallet_address)
+                        FROM whale_trades wt
+                        LEFT JOIN wallets w ON wt.wallet_address = w.address
+                        WHERE wt.market_id = $1
+                          AND wt.created_at >= NOW() - INTERVAL '30 minutes'
+                          AND (w.first_seen IS NULL OR w.first_seen >= NOW() - INTERVAL '7 days')
+                    """, market_id)
+                    ctx["simultaneous_new_wallets"] = new_w or 0
+
+                    # Days to resolution
+                    mt = await conn.fetchrow(
+                        "SELECT end_date FROM markets_tracked WHERE condition_id=$1", market_id)
+                    if mt and mt["end_date"]:
+                        from datetime import datetime, timezone
+                        now = datetime.now(timezone.utc)
+                        ed = mt["end_date"]
+                        if ed.tzinfo is None:
+                            ed = ed.replace(tzinfo=timezone.utc)
+                        ctx["days_to_resolution"] = max((ed - now).total_seconds() / 86400, 0)
+        except Exception as e:
+            print(f"[DB] get_insider_context error: {e}", flush=True)
+        return ctx
+
+    # ── v11: Copy Trading ────────────────────────────────────────────
+
+    async def get_copy_targets(self, user_id: int = 1) -> list[dict]:
+        """Obtener targets de copy trading."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT ct.*, COALESCE(w.name, w.pseudonym) as display_name,
+                           w.smart_money_score, w.profile_image
+                    FROM copy_targets ct
+                    LEFT JOIN wallets w ON ct.wallet_address = w.address
+                    WHERE ct.user_id = $1
+                    ORDER BY ct.created_at DESC
+                """, user_id)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_copy_targets error: {e}", flush=True)
+            return []
+
+    async def add_copy_target(self, user_id: int, wallet_address: str,
+                               wallet_name: str = "", scale_pct: float = 1.0,
+                               max_per_trade: float = 100.0) -> dict:
+        """Agregar wallet como target de copy trading."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    INSERT INTO copy_targets (user_id, wallet_address, wallet_name, scale_pct, max_per_trade)
+                    VALUES ($1,$2,$3,$4,$5)
+                    ON CONFLICT (user_id, wallet_address) DO UPDATE SET
+                        enabled=TRUE, scale_pct=$4, max_per_trade=$5
+                    RETURNING id, wallet_address, enabled
+                """, user_id, wallet_address, wallet_name, scale_pct, max_per_trade)
+                return dict(row) if row else {}
+        except Exception as e:
+            print(f"[DB] add_copy_target error: {e}", flush=True)
+            return {"error": str(e)}
+
+    async def remove_copy_target(self, user_id: int, wallet_address: str) -> bool:
+        """Eliminar target de copy trading."""
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute(
+                    "DELETE FROM copy_targets WHERE user_id=$1 AND wallet_address=$2",
+                    user_id, wallet_address)
+                return True
+        except Exception as e:
+            print(f"[DB] remove_copy_target error: {e}", flush=True)
+            return False
+
+    async def toggle_copy_target(self, user_id: int, wallet_address: str) -> dict:
+        """Toggle enabled/disabled de un copy target."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    UPDATE copy_targets SET enabled = NOT enabled
+                    WHERE user_id=$1 AND wallet_address=$2
+                    RETURNING enabled
+                """, user_id, wallet_address)
+                return {"enabled": row["enabled"]} if row else {"error": "No encontrado"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def save_copy_trade(self, data: dict) -> int:
+        """Guardar un copy trade simulado. Retorna id."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    INSERT INTO copy_trades (target_wallet, market_id, market_question,
+                                              market_slug, side, outcome, original_size,
+                                              sim_size, entry_price)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id
+                """, data.get("target_wallet",""), data.get("market_id",""),
+                    data.get("market_question",""), data.get("market_slug",""),
+                    data.get("side",""), data.get("outcome",""),
+                    data.get("original_size",0), data.get("sim_size",0),
+                    data.get("entry_price",0))
+                return row["id"] if row else 0
+        except Exception as e:
+            print(f"[DB] save_copy_trade error: {e}", flush=True)
+            return 0
+
+    async def get_open_copy_trades(self) -> list[dict]:
+        """Obtener copy trades abiertos."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT * FROM copy_trades WHERE status='open'
+                    ORDER BY created_at DESC
+                """)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            return []
+
+    async def update_copy_trade_price(self, trade_id: int, current_price: float) -> None:
+        """Actualizar precio actual y PnL de un copy trade."""
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE copy_trades SET current_price=$2,
+                        pnl = sim_size * (($2 / NULLIF(entry_price,0)) - 1)
+                    WHERE id=$1
+                """, trade_id, current_price)
+        except Exception as e:
+            print(f"[DB] update_copy_trade_price error: {e}", flush=True)
+
+    async def get_copy_trades_feed(self, user_id: int = 1, limit: int = 100) -> list[dict]:
+        """Feed de copy trades con stats."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT ct.*,
+                           COALESCE(cta.wallet_name, COALESCE(w.name, w.pseudonym)) as target_name,
+                           w.smart_money_score
+                    FROM copy_trades ct
+                    LEFT JOIN copy_targets cta ON ct.target_wallet = cta.wallet_address AND cta.user_id=$1
+                    LEFT JOIN wallets w ON ct.target_wallet = w.address
+                    ORDER BY ct.created_at DESC
+                    LIMIT $2
+                """, user_id, limit)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_copy_trades_feed error: {e}", flush=True)
+            return []
+
+    async def get_copy_trading_stats(self, user_id: int = 1) -> dict:
+        """Estadísticas de copy trading."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT
+                        COUNT(*) as total_trades,
+                        COUNT(CASE WHEN status='open' THEN 1 END) as open_trades,
+                        COALESCE(SUM(sim_size),0) as total_invested,
+                        COALESCE(SUM(pnl),0) as total_pnl,
+                        COALESCE(SUM(CASE WHEN pnl>0 THEN 1 ELSE 0 END),0) as wins,
+                        COALESCE(SUM(CASE WHEN pnl<0 THEN 1 ELSE 0 END),0) as losses,
+                        COUNT(DISTINCT target_wallet) as unique_targets
+                    FROM copy_trades ct
+                    WHERE EXISTS (SELECT 1 FROM copy_targets cta
+                                  WHERE cta.wallet_address=ct.target_wallet AND cta.user_id=$1)
+                """, user_id)
+                if not row:
+                    return {}
+                total = int(row["wins"] or 0) + int(row["losses"] or 0)
+                return {
+                    "total_trades": int(row["total_trades"] or 0),
+                    "open_trades": int(row["open_trades"] or 0),
+                    "total_invested": round(float(row["total_invested"] or 0), 2),
+                    "total_pnl": round(float(row["total_pnl"] or 0), 2),
+                    "wins": int(row["wins"] or 0),
+                    "losses": int(row["losses"] or 0),
+                    "win_rate": round(int(row["wins"] or 0) / max(total,1) * 100, 1),
+                    "unique_targets": int(row["unique_targets"] or 0),
+                }
+        except Exception as e:
+            print(f"[DB] get_copy_trading_stats error: {e}", flush=True)
+            return {}
+
+    # ── v11: AI Analysis ─────────────────────────────────────────────
+
+    async def save_ai_analysis(self, **kwargs) -> int:
+        """Guardar análisis AI de un mercado."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    INSERT INTO ai_analysis (market_id, market_question, ai_probability,
+                                              market_price, edge_pct, reasoning, confidence, model)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+                """, kwargs.get("market_id",""), kwargs.get("market_question",""),
+                    kwargs.get("ai_probability"), kwargs.get("market_price",0),
+                    kwargs.get("edge_pct",0), kwargs.get("reasoning",""),
+                    kwargs.get("confidence","baja"), kwargs.get("model",""))
+                return row["id"] if row else 0
+        except Exception as e:
+            print(f"[DB] save_ai_analysis error: {e}", flush=True)
+            return 0
+
+    async def get_ai_analyses(self, hours: int = 24, min_edge: float = 0,
+                               limit: int = 50) -> list[dict]:
+        """Obtener análisis AI recientes."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT DISTINCT ON (market_id)
+                        id, market_id, market_question, ai_probability,
+                        market_price, edge_pct, reasoning, confidence, model, created_at
+                    FROM ai_analysis
+                    WHERE created_at >= NOW() - make_interval(hours => $1)
+                      AND ABS(edge_pct) >= $2
+                    ORDER BY market_id, created_at DESC
+                """, hours, min_edge)
+                result = [dict(r) for r in rows]
+                result.sort(key=lambda x: abs(x.get("edge_pct",0)), reverse=True)
+                return result[:limit]
+        except Exception as e:
+            print(f"[DB] get_ai_analyses error: {e}", flush=True)
+            return []
+
+    # ── v11: Price Spikes ────────────────────────────────────────────
+
+    async def save_price_spike(self, data: dict) -> int:
+        """Guardar spike de precio detectado."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    INSERT INTO price_spikes (market_id, market_question, old_price, new_price,
+                                               pct_change, direction, timeframe_min,
+                                               whale_trades_correlated, whale_volume_correlated)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id
+                """, data.get("market_id",""), data.get("market_question",""),
+                    data.get("old_price",0), data.get("new_price",0),
+                    data.get("pct_change",0), data.get("direction",""),
+                    data.get("timeframe_min",5),
+                    data.get("whale_trades_correlated",0),
+                    data.get("whale_volume_correlated",0))
+                return row["id"] if row else 0
+        except Exception as e:
+            print(f"[DB] save_price_spike error: {e}", flush=True)
+            return 0
+
+    async def get_price_spikes(self, hours: int = 24, min_pct: float = 0,
+                                limit: int = 100) -> list[dict]:
+        """Obtener spikes de precio recientes."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT * FROM price_spikes
+                    WHERE created_at >= NOW() - make_interval(hours => $1)
+                      AND ABS(pct_change) >= $2
+                    ORDER BY created_at DESC
+                    LIMIT $3
+                """, hours, min_pct, limit)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_price_spikes error: {e}", flush=True)
+            return []
+
+    async def get_whale_trades_for_spike(self, market_id: str, minutes: int = 60) -> dict:
+        """Obtener whale trades recientes en un mercado para correlacionar con spike."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT wallet_address, side, size, outcome, created_at
+                    FROM whale_trades
+                    WHERE market_id = $1 AND created_at >= NOW() - make_interval(mins => $2)
+                    ORDER BY created_at DESC
+                """, market_id, minutes)
+                trades = [dict(r) for r in rows]
+                return {
+                    "count": len(trades),
+                    "total_volume": sum(t.get("size",0) for t in trades),
+                    "trades": trades,
+                }
+        except Exception as e:
+            return {"count": 0, "total_volume": 0, "trades": []}
+
+    # ── v11: Smart Score ─────────────────────────────────────────────
+
+    async def get_wallet_trades_for_score(self, wallet_address: str, limit: int = 100) -> list[dict]:
+        """Obtener trades detallados de una wallet para calcular smart score."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT market_id, side, outcome, size, price,
+                           paper_pnl as pnl, created_at
+                    FROM alerts
+                    WHERE wallet_address = $1 AND paper_pnl IS NOT NULL
+                    ORDER BY created_at DESC
+                    LIMIT $2
+                """, wallet_address, limit)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            return []
+
+    async def update_wallet_smart_score(self, wallet_address: str, score: float,
+                                         is_market_maker: bool = False) -> None:
+        """Actualizar smart score de una wallet."""
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE wallets SET smart_money_score = $2
+                    WHERE address = $1
+                """, wallet_address, score)
+        except Exception as e:
+            print(f"[DB] update_wallet_smart_score error: {e}", flush=True)
+
+    # ── v11: Spread Analysis (Market Making) ─────────────────────────
+
+    async def get_spread_opportunities(self, limit: int = 50) -> list[dict]:
+        """Obtener mercados con spreads amplios para market making analysis."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT mt.condition_id as market_id, mt.question, mt.category,
+                           mt.end_date,
+                           COALESCE(
+                               (SELECT COUNT(*) FROM trades t
+                                WHERE t.market_id = mt.condition_id
+                                  AND t.timestamp >= NOW() - INTERVAL '24 hours'), 0
+                           ) as trades_24h,
+                           COALESCE(
+                               (SELECT SUM(t.size) FROM trades t
+                                WHERE t.market_id = mt.condition_id
+                                  AND t.timestamp >= NOW() - INTERVAL '24 hours'), 0
+                           ) as volume_24h
+                    FROM markets_tracked mt
+                    WHERE mt.resolved = FALSE
+                    ORDER BY volume_24h DESC
+                    LIMIT $1
+                """, limit)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_spread_opportunities error: {e}", flush=True)
+            return []
 
     async def get_paper_recent_trades(self, limit: int = 50, user_id: int = 1) -> list[dict]:
         """Trades recientes del paper trading (alertas BUY con PnL info)."""

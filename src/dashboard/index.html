@@ -116,15 +116,19 @@
         <div onclick="showTab('markets')" id="nav-markets" class="sidebar-nav-item"><span class="nav-icon">🏪</span>Mercados</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Trading</span></div>
         <div onclick="showTab('crypto')" id="nav-crypto" class="sidebar-nav-item"><span class="nav-icon">₿</span>Crypto Arb</div>
-        <div onclick="showTab('alerttrading')" id="nav-alerttrading" class="sidebar-nav-item"><span class="nav-icon">⚡</span>Alert Trading</div>
+        <div onclick="showTab('spikes')" id="nav-spikes" class="sidebar-nav-item"><span class="nav-icon">⚡</span>Spikes</div>
+        <div onclick="showTab('alerttrading')" id="nav-alerttrading" class="sidebar-nav-item"><span class="nav-icon">📊</span>Alert Trading</div>
         <div onclick="showTab('alertpnl')" id="nav-alertpnl" class="sidebar-nav-item"><span class="nav-icon">💰</span>PnL Alertas</div>
         <div onclick="showTab('wallettracker')" id="nav-wallettracker" class="sidebar-nav-item"><span class="nav-icon">🏆</span>Top Wallets</div>
         <div onclick="showTab('whales')" id="nav-whales" class="sidebar-nav-item"><span class="nav-icon">🐋</span>Whale Trades</div>
+        <div onclick="showTab('copytrading')" id="nav-copytrading" class="sidebar-nav-item"><span class="nav-icon">🤖</span>Copy Trading</div>
         <div onclick="showTab('backtester')" id="nav-backtester" class="sidebar-nav-item"><span class="nav-icon">📈</span>Backtester</div>
         <div onclick="showTab('complementarb')" id="nav-complementarb" class="sidebar-nav-item"><span class="nav-icon">🔄</span>Complement Arb</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Herramientas</span></div>
         <div onclick="showTab('heatmap')" id="nav-heatmap" class="sidebar-nav-item"><span class="nav-icon">🗺️</span>Heatmap</div>
         <div onclick="showTab('feed')" id="nav-feed" class="sidebar-nav-item"><span class="nav-icon">📡</span>Feed</div>
+        <div onclick="showTab('news')" id="nav-news" class="sidebar-nav-item"><span class="nav-icon">📰</span>Noticias</div>
+        <div onclick="showTab('aianalyst')" id="nav-aianalyst" class="sidebar-nav-item"><span class="nav-icon">🧠</span>AI Analyst</div>
         <div onclick="showTab('coordination')" id="nav-coordination" class="sidebar-nav-item"><span class="nav-icon">🔗</span>Coordinación</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Sistema</span></div>
         <div onclick="showTab('config')" id="nav-config" class="sidebar-nav-item"><span class="nav-icon">⚙️</span>Configuración</div>
@@ -2270,6 +2274,7 @@
                     <div class="flex gap-2">
                         <button onclick="showWhaleView('feed')" id="whale-btn-feed" class="px-3 py-1 bg-cyan-600/40 text-cyan-300 rounded text-xs font-semibold">Feed</button>
                         <button onclick="showWhaleView('ranking')" id="whale-btn-ranking" class="px-3 py-1 bg-gray-700/40 text-gray-400 rounded text-xs">Ranking</button>
+                        <button onclick="showWhaleView('insider')" id="whale-btn-insider" class="px-3 py-1 bg-gray-700/40 text-gray-400 rounded text-xs">🔍 Insider</button>
                         <button onclick="loadWhaleData()" class="px-3 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-400 rounded text-xs">Actualizar</button>
                     </div>
                 </div>
@@ -2379,6 +2384,157 @@
                         </table>
                     </div>
                 </div>
+                <!-- Insider View -->
+                <div id="whale-view-insider" class="hidden">
+                    <div class="overflow-x-auto"><table class="w-full text-xs">
+                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                            <th class="text-left p-2">Fecha</th><th class="text-left p-2">Wallet</th>
+                            <th class="text-left p-2">Mercado</th><th class="text-right p-2">Tamaño</th>
+                            <th class="text-center p-2">Probabilidad</th><th class="text-center p-2">Nivel</th>
+                            <th class="text-left p-2">Patrones</th>
+                        </tr></thead>
+                        <tbody id="insider-body"><tr><td colspan="7" class="text-center text-gray-600 p-6">Cargando insider flags...</td></tr></tbody>
+                    </table></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ v11: Spikes Panel ═══ -->
+        <div id="panel-spikes" class="hidden space-y-4">
+            <div class="glass glow rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-yellow-400 uppercase tracking-wider">⚡ Price Spikes</h3>
+                        <p class="text-[10px] text-gray-500">Movimientos bruscos de precio correlacionados con actividad de ballenas</p>
+                    </div>
+                    <button onclick="loadSpikes()" class="px-3 py-1 bg-yellow-600/30 hover:bg-yellow-600/50 text-yellow-400 rounded text-xs">Actualizar</button>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Spikes 24h</div><div class="text-lg font-bold text-yellow-400" id="sp-total">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Con Whales</div><div class="text-lg font-bold text-cyan-400" id="sp-with-whales">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Mayor Spike</div><div class="text-lg font-bold text-white" id="sp-max">0%</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Vol. Whales</div><div class="text-lg font-bold text-green-400" id="sp-whale-vol">$0</div></div>
+                </div>
+                <div class="overflow-x-auto"><table class="w-full text-xs">
+                    <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                        <th class="text-left p-2">Hora</th><th class="text-left p-2">Mercado</th>
+                        <th class="text-center p-2">Dirección</th><th class="text-right p-2">Cambio</th>
+                        <th class="text-right p-2">Precio</th><th class="text-center p-2">🐋 Whales</th>
+                        <th class="text-right p-2">Vol. Whales</th>
+                    </tr></thead>
+                    <tbody id="spikes-body"><tr><td colspan="7" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
+                </table></div>
+            </div>
+        </div>
+
+        <!-- ═══ v11: Copy Trading Panel ═══ -->
+        <div id="panel-copytrading" class="hidden space-y-4">
+            <div class="glass glow rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-emerald-400 uppercase tracking-wider">🤖 Copy Trading Simulado</h3>
+                        <p class="text-[10px] text-gray-500">Sigue a ballenas y simula copy trading con PnL tracking</p>
+                    </div>
+                    <button onclick="loadCopyTrading()" class="px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400 rounded text-xs">Actualizar</button>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Targets</div><div class="text-lg font-bold text-emerald-400" id="ct-targets">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Trades</div><div class="text-lg font-bold text-white" id="ct-trades">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Abiertos</div><div class="text-lg font-bold text-cyan-400" id="ct-open">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">PnL Total</div><div class="text-lg font-bold" id="ct-pnl">$0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Win Rate</div><div class="text-lg font-bold" id="ct-wr">0%</div></div>
+                </div>
+                <!-- Targets -->
+                <div class="mb-4">
+                    <h4 class="text-xs font-semibold text-gray-400 mb-2">Wallets Seguidas</h4>
+                    <div class="overflow-x-auto"><table class="w-full text-xs">
+                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                            <th class="text-left p-2">Wallet</th><th class="text-center p-2">Score</th>
+                            <th class="text-center p-2">Escala</th><th class="text-right p-2">Máx/Trade</th>
+                            <th class="text-center p-2">Estado</th><th class="text-center p-2">Acción</th>
+                        </tr></thead>
+                        <tbody id="ct-targets-body"><tr><td colspan="6" class="text-center text-gray-600 p-4">Sin targets. Agrega desde Whale Ranking.</td></tr></tbody>
+                    </table></div>
+                </div>
+                <!-- Copy Trades -->
+                <h4 class="text-xs font-semibold text-gray-400 mb-2">Trades Copiados</h4>
+                <div class="overflow-x-auto"><table class="w-full text-xs">
+                    <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                        <th class="text-left p-2">Fecha</th><th class="text-left p-2">Target</th>
+                        <th class="text-left p-2">Mercado</th><th class="text-center p-2">Side</th>
+                        <th class="text-right p-2">Original</th><th class="text-right p-2">Simulado</th>
+                        <th class="text-right p-2">Entrada</th><th class="text-right p-2">Actual</th>
+                        <th class="text-right p-2">PnL</th><th class="text-center p-2">Estado</th>
+                    </tr></thead>
+                    <tbody id="ct-trades-body"><tr><td colspan="10" class="text-center text-gray-600 p-6">Sin trades copiados aún</td></tr></tbody>
+                </table></div>
+            </div>
+        </div>
+
+        <!-- ═══ v11: News Panel ═══ -->
+        <div id="panel-news" class="hidden space-y-4">
+            <div class="glass glow rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-blue-400 uppercase tracking-wider">📰 Noticias</h3>
+                        <p class="text-[10px] text-gray-500">Feed de noticias relevantes y análisis de sentimiento por mercado</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="showNewsView('feed')" id="news-btn-feed" class="px-3 py-1 bg-blue-600/40 text-blue-300 rounded text-xs font-semibold">Feed</button>
+                        <button onclick="showNewsView('sentiment')" id="news-btn-sentiment" class="px-3 py-1 bg-gray-700/40 text-gray-400 rounded text-xs">Sentimiento</button>
+                        <button onclick="loadNewsData()" class="px-3 py-1 bg-blue-600/30 hover:bg-blue-600/50 text-blue-400 rounded text-xs">Actualizar</button>
+                    </div>
+                </div>
+                <!-- Feed View -->
+                <div id="news-view-feed">
+                    <div class="overflow-x-auto"><table class="w-full text-xs">
+                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                            <th class="text-left p-2">Fecha</th><th class="text-left p-2">Titular</th>
+                            <th class="text-left p-2">Fuente</th><th class="text-left p-2">Mercado</th>
+                            <th class="text-center p-2">Sentimiento</th>
+                        </tr></thead>
+                        <tbody id="news-feed-body"><tr><td colspan="5" class="text-center text-gray-600 p-6">Cargando noticias...</td></tr></tbody>
+                    </table></div>
+                </div>
+                <!-- Sentiment View -->
+                <div id="news-view-sentiment" class="hidden">
+                    <div class="overflow-x-auto"><table class="w-full text-xs">
+                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                            <th class="text-left p-2">Mercado</th><th class="text-center p-2">Score</th>
+                            <th class="text-center p-2">Menciones</th><th class="text-center p-2">👍</th>
+                            <th class="text-center p-2">👎</th><th class="text-center p-2">😐</th>
+                            <th class="text-left p-2">Actualizado</th>
+                        </tr></thead>
+                        <tbody id="news-sentiment-body"><tr><td colspan="7" class="text-center text-gray-600 p-6">Cargando sentimiento...</td></tr></tbody>
+                    </table></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ v11: AI Analyst Panel ═══ -->
+        <div id="panel-aianalyst" class="hidden space-y-4">
+            <div class="glass glow rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-violet-400 uppercase tracking-wider">🧠 AI Analyst</h3>
+                        <p class="text-[10px] text-gray-500">Análisis de mercados con inteligencia artificial. Requiere OPENAI_API_KEY.</p>
+                    </div>
+                    <button onclick="loadAiAnalyses()" class="px-3 py-1 bg-violet-600/30 hover:bg-violet-600/50 text-violet-400 rounded text-xs">Actualizar</button>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Mercados Analizados</div><div class="text-lg font-bold text-violet-400" id="ai-total">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Oportunidades</div><div class="text-lg font-bold text-green-400" id="ai-opportunities">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Mayor Edge</div><div class="text-lg font-bold text-yellow-400" id="ai-max-edge">0%</div></div>
+                </div>
+                <div class="overflow-x-auto"><table class="w-full text-xs">
+                    <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                        <th class="text-left p-2">Mercado</th><th class="text-center p-2">Precio</th>
+                        <th class="text-center p-2">AI Prob.</th><th class="text-center p-2">Edge</th>
+                        <th class="text-center p-2">Confianza</th><th class="text-left p-2">Razonamiento</th>
+                        <th class="text-left p-2">Modelo</th><th class="text-left p-2">Fecha</th>
+                    </tr></thead>
+                    <tbody id="ai-body"><tr><td colspan="8" class="text-center text-gray-600 p-6">Cargando análisis AI...</td></tr></tbody>
+                </table></div>
             </div>
         </div>
 
@@ -2909,9 +3065,9 @@ function polyProfile(addr){return`https://polymarket.com/profile/${addr}`}
 function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
 // ── Sidebar Navigation ──
-const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',whales:'Whale Trades',backtester:'Backtester',complementarb:'Complement Arb',heatmap:'Heatmap',config:'Configuración'};
+const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',spikes:'Spikes',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',whales:'Whale Trades',copytrading:'Copy Trading',backtester:'Backtester',complementarb:'Complement Arb',news:'Noticias',aianalyst:'AI Analyst',heatmap:'Heatmap',config:'Configuración'};
 function showTab(t){
-    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','alerttrading','alertpnl','wallettracker','whales','backtester','complementarb','heatmap'];
+    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','spikes','alerttrading','alertpnl','wallettracker','whales','copytrading','backtester','complementarb','news','aianalyst','heatmap'];
     // Ocultar todos los paneles
     panels.forEach(id=>{
         const panel=document.getElementById('panel-'+id);
@@ -2944,6 +3100,10 @@ function showTab(t){
     if(t==='backtester')loadBacktesterDefaults();
     if(t==='complementarb')loadComplementArb();
     if(t==='heatmap')loadHeatmap();
+    if(t==='spikes')loadSpikes();
+    if(t==='copytrading')loadCopyTrading();
+    if(t==='news')loadNewsData();
+    if(t==='aianalyst')loadAiAnalyses();
     // Cerrar sidebar en mobile
     document.getElementById('sidebar').classList.remove('open');
 }
@@ -5235,8 +5395,10 @@ function showWhaleView(v){
     _whaleView=v;
     document.getElementById('whale-view-feed').classList.toggle('hidden',v!=='feed');
     document.getElementById('whale-view-ranking').classList.toggle('hidden',v!=='ranking');
+    document.getElementById('whale-view-insider').classList.toggle('hidden',v!=='insider');
     document.getElementById('whale-btn-feed').className='px-3 py-1 rounded text-xs '+(v==='feed'?'bg-cyan-600/40 text-cyan-300 font-semibold':'bg-gray-700/40 text-gray-400');
     document.getElementById('whale-btn-ranking').className='px-3 py-1 rounded text-xs '+(v==='ranking'?'bg-cyan-600/40 text-cyan-300 font-semibold':'bg-gray-700/40 text-gray-400');
+    document.getElementById('whale-btn-insider').className='px-3 py-1 rounded text-xs '+(v==='insider'?'bg-red-600/40 text-red-300 font-semibold':'bg-gray-700/40 text-gray-400');
     // Mostrar/ocultar filtros específicos de cada vista
     document.getElementById('wh-filter-side-wrap').classList.toggle('hidden',v!=='feed');
     document.getElementById('wh-filter-hours-wrap').classList.toggle('hidden',v!=='feed');
@@ -5258,6 +5420,7 @@ async function loadWhaleData(){
         document.getElementById('ws-sell-pct').textContent=(stats.sell_pct||0)+'%';
     }
     if(_whaleView==='feed') await loadWhaleFeed(minSize);
+    else if(_whaleView==='insider') await loadInsiderFlags();
     else await loadWhaleRanking(minSize);
 }
 async function loadWhaleFeed(minSize){
@@ -5338,6 +5501,243 @@ async function whaleToggleWatchlist(addr,el){
         const data=await res.json();
         el.className='p-2 text-center cursor-pointer '+(data.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400');
     }catch(e){console.error('whaleToggleWatchlist error',e);}
+}
+
+// ── v11: Insider Detection ──
+async function loadInsiderFlags(){
+    const tbody=document.getElementById('insider-body');
+    tbody.innerHTML='<tr><td colspan="7" class="text-center text-cyan-400 p-6">Cargando insider flags...</td></tr>';
+    try{
+        const res=await fetch('/api/insider/flags?hours=48&min_prob=15',{headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await res.json();
+        const flags=data.flags||[];
+        if(!flags.length){tbody.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-6">Sin actividad sospechosa detectada en 48h</td></tr>';return;}
+        tbody.innerHTML=flags.map(f=>{
+            const ts=f.created_at?new Date(f.created_at).toLocaleDateString('es-CL',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+            const addr=f.wallet_address||'';
+            const name=f.wallet_name||addr.slice(0,6)+'...'+addr.slice(-4);
+            const q=(f.market_question||'').slice(0,50);
+            const prob=f.probability||0;
+            const probC=prob>=60?'text-red-400 font-bold':prob>=35?'text-yellow-400 font-bold':'text-gray-400';
+            const lvl=f.level||'none';
+            const lvlC=lvl==='high'?'bg-red-900/40 text-red-400':lvl==='medium'?'bg-yellow-900/40 text-yellow-400':lvl==='low'?'bg-gray-700/40 text-gray-300':'bg-gray-800/40 text-gray-500';
+            const flagsText=(f.flags||'').replace(/\|/g,'<br>');
+            return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                <td class="p-2 text-gray-400">${ts}</td>
+                <td class="p-2"><a href="${polyProfile(addr)}" target="_blank" class="text-cyan-400 hover:underline">${name}</a></td>
+                <td class="p-2 text-gray-300" title="${(f.market_question||'').replace(/"/g,'&quot;')}">${q}</td>
+                <td class="p-2 text-right font-mono text-white">$${(f.trade_size||0).toLocaleString()}</td>
+                <td class="p-2 text-center ${probC}">${prob}%</td>
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] ${lvlC}">${lvl.toUpperCase()}</span></td>
+                <td class="p-2 text-gray-400 text-[10px]">${flagsText}</td>
+            </tr>`;
+        }).join('');
+    }catch(e){console.error('loadInsiderFlags error',e);tbody.innerHTML='<tr><td colspan="7" class="text-center text-red-400 p-6">Error al cargar</td></tr>';}
+}
+
+// ── v11: Spikes ──
+async function loadSpikes(){
+    try{
+        const res=await fetch('/api/spikes?hours=24',{headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await res.json();
+        const spikes=data.spikes||[];
+        document.getElementById('sp-total').textContent=spikes.length;
+        const withWhales=spikes.filter(s=>(s.whale_trades_correlated||0)>0);
+        document.getElementById('sp-with-whales').textContent=withWhales.length;
+        const maxSpike=spikes.length?Math.max(...spikes.map(s=>Math.abs(s.pct_change||0))):0;
+        document.getElementById('sp-max').textContent=maxSpike.toFixed(1)+'%';
+        const totalWhaleVol=spikes.reduce((a,s)=>a+(s.whale_volume_correlated||0),0);
+        document.getElementById('sp-whale-vol').textContent='$'+totalWhaleVol.toLocaleString();
+        const tbody=document.getElementById('spikes-body');
+        if(!spikes.length){tbody.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-6">Sin spikes detectados en 24h</td></tr>';return;}
+        tbody.innerHTML=spikes.map(s=>{
+            const d=s.direction==='up'?'🟢 UP':'🔴 DOWN';
+            const dc=s.direction==='up'?'text-green-400':'text-red-400';
+            const wc=s.whale_trades_correlated>0?'text-cyan-400 font-bold':'text-gray-500';
+            const ts=s.created_at?new Date(s.created_at).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'—';
+            const q=(s.market_question||'').slice(0,60);
+            return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                <td class="p-2 text-gray-400">${ts}</td>
+                <td class="p-2 text-gray-300" title="${(s.market_question||'').replace(/"/g,'&quot;')}">${q}</td>
+                <td class="p-2 text-center ${dc}">${d}</td>
+                <td class="p-2 text-right font-mono font-bold ${dc}">${(s.pct_change||0).toFixed(1)}%</td>
+                <td class="p-2 text-right font-mono text-gray-300">${(s.new_price||0).toFixed(2)}</td>
+                <td class="p-2 text-center ${wc}">${s.whale_trades_correlated||0}</td>
+                <td class="p-2 text-right font-mono text-gray-400">$${(s.whale_volume_correlated||0).toLocaleString()}</td>
+            </tr>`;
+        }).join('');
+    }catch(e){console.error('loadSpikes error',e);}
+}
+
+// ── v11: Copy Trading ──
+async function loadCopyTrading(){
+    try{
+        const[targetsRes,tradesRes,statsRes]=await Promise.all([
+            fetch('/api/copy-trading/targets',{headers:{'Authorization':'Bearer '+_authToken}}),
+            fetch('/api/copy-trading/trades?limit=50',{headers:{'Authorization':'Bearer '+_authToken}}),
+            fetch('/api/copy-trading/stats',{headers:{'Authorization':'Bearer '+_authToken}})
+        ]);
+        const targets=(await targetsRes.json()).targets||[];
+        const trades=(await tradesRes.json()).trades||[];
+        const stats=await statsRes.json();
+        // Stats
+        document.getElementById('ct-targets').textContent=targets.length;
+        document.getElementById('ct-trades').textContent=stats.total_trades||0;
+        document.getElementById('ct-open').textContent=stats.open_trades||0;
+        const pnl=stats.total_pnl||0;
+        const pnlEl=document.getElementById('ct-pnl');
+        pnlEl.textContent='$'+pnl.toFixed(2);
+        pnlEl.className='text-lg font-bold '+(pnl>=0?'text-green-400':'text-red-400');
+        const wr=stats.win_rate||0;
+        const wrEl=document.getElementById('ct-wr');
+        wrEl.textContent=wr.toFixed(1)+'%';
+        wrEl.className='text-lg font-bold '+(wr>=50?'text-green-400':'text-red-400');
+        // Targets table
+        const tBody=document.getElementById('ct-targets-body');
+        if(!targets.length){tBody.innerHTML='<tr><td colspan="6" class="text-center text-gray-600 p-4">Sin targets. Agrega desde Whale Ranking con el boton ★</td></tr>';}
+        else{tBody.innerHTML=targets.map(t=>{
+            const name=t.display_name||t.wallet_name||t.wallet_address.slice(0,10)+'...';
+            const sc=t.smart_money_score||0;
+            return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                <td class="p-2"><a href="${polyProfile(t.wallet_address)}" target="_blank" class="text-emerald-400 hover:underline">${name}</a></td>
+                <td class="p-2 text-center font-mono">${sc}</td>
+                <td class="p-2 text-center">${t.scale_pct||1}%</td>
+                <td class="p-2 text-right font-mono">$${(t.max_per_trade||100).toFixed(0)}</td>
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] ${t.enabled?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">${t.enabled?'Activo':'Pausado'}</span></td>
+                <td class="p-2 text-center">
+                    <button onclick="toggleCopyTarget('${t.wallet_address}')" class="text-gray-400 hover:text-yellow-400 text-xs">${t.enabled?'⏸':'▶'}</button>
+                    <button onclick="removeCopyTarget('${t.wallet_address}')" class="text-gray-400 hover:text-red-400 text-xs ml-1">✕</button>
+                </td>
+            </tr>`;
+        }).join('');}
+        // Trades table
+        const trBody=document.getElementById('ct-trades-body');
+        if(!trades.length){trBody.innerHTML='<tr><td colspan="10" class="text-center text-gray-600 p-6">Sin trades copiados aún</td></tr>';}
+        else{trBody.innerHTML=trades.map(t=>{
+            const ts=t.created_at?new Date(t.created_at).toLocaleDateString('es-CL',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+            const name=t.target_name||t.target_wallet.slice(0,10)+'...';
+            const q=(t.market_question||t.market_slug||'').slice(0,40);
+            const sc=t.side==='BUY'?'text-green-400':'text-red-400';
+            const pnl=t.pnl||0;
+            const pc=pnl>=0?'text-green-400':'text-red-400';
+            const stC=t.status==='open'?'bg-cyan-900/40 text-cyan-400':'bg-gray-700/40 text-gray-400';
+            return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                <td class="p-2 text-gray-400">${ts}</td>
+                <td class="p-2 text-emerald-400">${name}</td>
+                <td class="p-2 text-gray-300" title="${(t.market_question||'').replace(/"/g,'&quot;')}">${q}</td>
+                <td class="p-2 text-center ${sc}">${t.side||''}</td>
+                <td class="p-2 text-right font-mono text-gray-400">$${(t.original_size||0).toLocaleString()}</td>
+                <td class="p-2 text-right font-mono text-white">$${(t.sim_size||0).toFixed(2)}</td>
+                <td class="p-2 text-right font-mono">${(t.entry_price||0).toFixed(2)}</td>
+                <td class="p-2 text-right font-mono">${(t.current_price||0).toFixed(2)}</td>
+                <td class="p-2 text-right font-mono font-bold ${pc}">$${pnl.toFixed(2)}</td>
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] ${stC}">${t.status}</span></td>
+            </tr>`;
+        }).join('');}
+    }catch(e){console.error('loadCopyTrading error',e);}
+}
+async function toggleCopyTarget(addr){
+    try{await fetch('/api/copy-trading/targets/'+addr+'/toggle',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});loadCopyTrading();}catch(e){console.error(e);}
+}
+async function removeCopyTarget(addr){
+    if(!confirm('Eliminar target de copy trading?'))return;
+    try{await fetch('/api/copy-trading/targets/'+addr,{method:'DELETE',headers:{'Authorization':'Bearer '+_authToken}});loadCopyTrading();}catch(e){console.error(e);}
+}
+
+// ── v11: News ──
+let _newsView='feed';
+function showNewsView(view){
+    _newsView=view;
+    document.getElementById('news-view-feed').classList.toggle('hidden',view!=='feed');
+    document.getElementById('news-view-sentiment').classList.toggle('hidden',view!=='sentiment');
+    document.getElementById('news-btn-feed').className='px-3 py-1 rounded text-xs '+(view==='feed'?'bg-blue-600/40 text-blue-300 font-semibold':'bg-gray-700/40 text-gray-400');
+    document.getElementById('news-btn-sentiment').className='px-3 py-1 rounded text-xs '+(view==='sentiment'?'bg-blue-600/40 text-blue-300 font-semibold':'bg-gray-700/40 text-gray-400');
+    loadNewsData();
+}
+async function loadNewsData(){
+    try{
+        if(_newsView==='feed'){
+            const res=await fetch('/api/news/feed?hours=48',{headers:{'Authorization':'Bearer '+_authToken}});
+            const data=await res.json();
+            const items=data.items||[];
+            const tbody=document.getElementById('news-feed-body');
+            if(!items.length){tbody.innerHTML='<tr><td colspan="5" class="text-center text-gray-600 p-6">Sin noticias recientes. Se actualizan cada 15 min.</td></tr>';return;}
+            tbody.innerHTML=items.map(n=>{
+                const ts=n.created_at?new Date(n.created_at).toLocaleDateString('es-CL',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+                const title=(n.title||'').slice(0,80);
+                const sentC=n.sentiment_label==='positive'?'text-green-400':n.sentiment_label==='negative'?'text-red-400':'text-gray-400';
+                const sentIcon=n.sentiment_label==='positive'?'👍':n.sentiment_label==='negative'?'👎':'😐';
+                const q=(n.market_question||'').slice(0,40);
+                const url=n.url||'#';
+                return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                    <td class="p-2 text-gray-500 text-[10px]">${ts}</td>
+                    <td class="p-2"><a href="${url}" target="_blank" class="text-blue-400 hover:underline" title="${(n.title||'').replace(/"/g,'&quot;')}">${title}</a></td>
+                    <td class="p-2 text-gray-400">${n.source||''}</td>
+                    <td class="p-2 text-gray-500 text-[10px]" title="${(n.market_question||'').replace(/"/g,'&quot;')}">${q}</td>
+                    <td class="p-2 text-center ${sentC}">${sentIcon} ${n.sentiment_score||0}</td>
+                </tr>`;
+            }).join('');
+        }else{
+            const res=await fetch('/api/news/sentiment',{headers:{'Authorization':'Bearer '+_authToken}});
+            const data=await res.json();
+            const markets=data.markets||[];
+            const tbody=document.getElementById('news-sentiment-body');
+            if(!markets.length){tbody.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-6">Sin datos de sentimiento aún</td></tr>';return;}
+            tbody.innerHTML=markets.map(m=>{
+                const sc=m.sentiment_score||0;
+                const scC=sc>15?'text-green-400 font-bold':sc<-15?'text-red-400 font-bold':'text-gray-400';
+                const q=(m.market_question||'').slice(0,60);
+                const ts=m.updated_at?new Date(m.updated_at).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'—';
+                return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                    <td class="p-2 text-gray-300" title="${(m.market_question||'').replace(/"/g,'&quot;')}">${q}</td>
+                    <td class="p-2 text-center ${scC}">${sc>0?'+':''}${sc}</td>
+                    <td class="p-2 text-center font-mono text-white">${m.mention_count||0}</td>
+                    <td class="p-2 text-center text-green-400">${m.positive||0}</td>
+                    <td class="p-2 text-center text-red-400">${m.negative||0}</td>
+                    <td class="p-2 text-center text-gray-400">${m.neutral||0}</td>
+                    <td class="p-2 text-gray-500">${ts}</td>
+                </tr>`;
+            }).join('');
+        }
+    }catch(e){console.error('loadNewsData error',e);}
+}
+
+// ── v11: AI Analyst ──
+async function loadAiAnalyses(){
+    try{
+        const res=await fetch('/api/ai/analyses?hours=48',{headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await res.json();
+        if(data.error){
+            document.getElementById('ai-body').innerHTML=`<tr><td colspan="8" class="text-center text-yellow-400 p-6">${data.error}</td></tr>`;
+            return;
+        }
+        const items=data.analyses||[];
+        document.getElementById('ai-total').textContent=items.length;
+        const opps=items.filter(a=>Math.abs(a.edge_pct||0)>=5);
+        document.getElementById('ai-opportunities').textContent=opps.length;
+        const maxEdge=items.length?Math.max(...items.map(a=>Math.abs(a.edge_pct||0))):0;
+        document.getElementById('ai-max-edge').textContent=maxEdge.toFixed(1)+'%';
+        const tbody=document.getElementById('ai-body');
+        if(!items.length){tbody.innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-6">Sin análisis AI. Configura OPENAI_API_KEY para activar.</td></tr>';return;}
+        tbody.innerHTML=items.map(a=>{
+            const q=(a.market_question||'').slice(0,50);
+            const edge=a.edge_pct||0;
+            const edgeC=edge>5?'text-green-400 font-bold':edge<-5?'text-red-400 font-bold':'text-gray-400';
+            const confC=a.confidence==='alta'?'text-green-400':a.confidence==='media'?'text-yellow-400':'text-gray-500';
+            const ts=a.created_at?new Date(a.created_at).toLocaleDateString('es-CL',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+            const reason=(a.reasoning||'').slice(0,80);
+            return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                <td class="p-2 text-gray-300" title="${(a.market_question||'').replace(/"/g,'&quot;')}">${q}</td>
+                <td class="p-2 text-center font-mono">${(a.market_price||0).toFixed(2)}</td>
+                <td class="p-2 text-center font-mono text-violet-400 font-bold">${a.ai_probability!=null?(a.ai_probability*100).toFixed(0)+'%':'—'}</td>
+                <td class="p-2 text-center font-mono ${edgeC}">${edge>0?'+':''}${edge.toFixed(1)}%</td>
+                <td class="p-2 text-center ${confC}">${a.confidence||'—'}</td>
+                <td class="p-2 text-gray-400 text-[10px]" title="${(a.reasoning||'').replace(/"/g,'&quot;')}">${reason}</td>
+                <td class="p-2 text-gray-500 text-[10px]">${a.model||''}</td>
+                <td class="p-2 text-gray-500 text-[10px]">${ts}</td>
+            </tr>`;
+        }).join('');
+    }catch(e){console.error('loadAiAnalyses error',e);}
 }
 
 // ── v10: Backtester ──
