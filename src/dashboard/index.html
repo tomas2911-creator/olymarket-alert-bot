@@ -4982,12 +4982,20 @@ async function loadAlertPnl(){
 // ── Wallet Tracker ──
 let _wtData=[];
 async function loadWalletTracker(){
+    const tb=document.getElementById('wt-table-body');
+    tb.innerHTML='<tr><td colspan="11" class="text-center text-yellow-400 p-6">Cargando wallets...</td></tr>';
     const minTrades=document.getElementById('wt-min-trades')?.value||3;
     const minWr=document.getElementById('wt-min-winrate')?.value||0;
     const sortBy=document.getElementById('wt-sort')?.value||'pnl';
     const watchOnly=document.getElementById('wt-watchlist-only')?.checked||false;
+    console.log('[WalletTracker] Fetching:',`/api/wallet-tracker?min_trades=${minTrades}&min_winrate=${minWr}&sort_by=${sortBy}`);
     const data=await fetchJson(`/api/wallet-tracker?min_trades=${minTrades}&min_winrate=${minWr}&sort_by=${sortBy}`);
-    if(!data)return;
+    if(!data){
+        tb.innerHTML='<tr><td colspan="11" class="text-center text-red-400 p-6">Error al cargar datos — revisa logs del servidor</td></tr>';
+        console.error('[WalletTracker] fetchJson retornó null');
+        return;
+    }
+    console.log('[WalletTracker] Respuesta:',data.total,'wallets');
     let wallets=data.wallets||[];
     if(watchOnly)wallets=wallets.filter(w=>w.is_watchlisted);
     _wtData=wallets;
@@ -5004,7 +5012,6 @@ async function loadWalletTracker(){
     document.getElementById('wt-avg-wr').textContent=avgWr.toFixed(1)+'%';
     document.getElementById('wt-watchlisted').textContent=watchlisted;
     // Tabla
-    const tb=document.getElementById('wt-table-body');
     if(wallets.length===0){
         tb.innerHTML='<tr><td colspan="11" class="text-center text-gray-600 p-6">No hay wallets con esos filtros</td></tr>';
         return;
