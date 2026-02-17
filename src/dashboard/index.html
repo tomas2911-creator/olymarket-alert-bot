@@ -2173,7 +2173,7 @@
                 <div class="overflow-x-auto mb-4">
                     <table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                            <th class="text-left p-2">Wallet</th><th class="text-center p-2">Score</th><th class="text-center p-2">W/L</th><th class="text-center p-2">Win%</th><th class="text-right p-2">PnL</th><th class="text-right p-2">Vol</th>
+                            <th class="text-left p-2">Wallet</th><th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('apw','score',render_apw)">Score <span id="si-apw-score" data-sg="apw" class="text-cyan-400 hidden text-[9px]"></span></th><th class="text-center p-2">W/L</th><th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('apw','win_rate',render_apw)">Win% <span id="si-apw-win_rate" data-sg="apw" class="text-cyan-400 hidden text-[9px]"></span></th><th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('apw','total_pnl',render_apw)">PnL <span id="si-apw-total_pnl" data-sg="apw" class="text-cyan-400 hidden text-[9px]"></span></th><th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('apw','volume',render_apw)">Vol <span id="si-apw-volume" data-sg="apw" class="text-cyan-400 hidden text-[9px]"></span></th>
                         </tr></thead>
                         <tbody id="apnl-wallets-body"><tr><td colspan="6" class="text-center text-gray-600 p-4">Cargando...</td></tr></tbody>
                     </table>
@@ -2183,7 +2183,7 @@
                 <div class="overflow-x-auto">
                     <table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                            <th class="text-left p-2">Fecha</th><th class="text-left p-2">Mercado</th><th class="text-center p-2">Outcome</th><th class="text-right p-2">$ Inv</th><th class="text-right p-2">Entry</th><th class="text-center p-2">Estado</th><th class="text-right p-2">Actual/Exit</th><th class="text-right p-2">PnL</th>
+                            <th class="text-left p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('apt','created_at',render_apt)">Fecha <span id="si-apt-created_at" data-sg="apt" class="text-cyan-400 hidden text-[9px]"></span></th><th class="text-left p-2">Mercado</th><th class="text-center p-2">Outcome</th><th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('apt','size',render_apt)">$ Inv <span id="si-apt-size" data-sg="apt" class="text-cyan-400 hidden text-[9px]"></span></th><th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('apt','price',render_apt)">Entry <span id="si-apt-price" data-sg="apt" class="text-cyan-400 hidden text-[9px]"></span></th><th class="text-center p-2">Estado</th><th class="text-right p-2">Actual/Exit</th><th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('apt','_pnl_val',render_apt)">PnL <span id="si-apt-_pnl_val" data-sg="apt" class="text-cyan-400 hidden text-[9px]"></span></th>
                         </tr></thead>
                         <tbody id="apnl-trades-body"><tr><td colspan="8" class="text-center text-gray-600 p-4">Cargando...</td></tr></tbody>
                     </table>
@@ -2251,14 +2251,14 @@
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
                             <th class="text-center p-2 w-8"></th>
                             <th class="text-left p-2">Wallet</th>
-                            <th class="text-center p-2">Trades</th>
+                            <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('wtt','total_trades',render_wtt)">Trades <span id="si-wtt-total_trades" data-sg="wtt" class="text-cyan-400 hidden text-[9px]"></span></th>
                             <th class="text-center p-2">W/L</th>
-                            <th class="text-center p-2">Win%</th>
-                            <th class="text-right p-2">PnL Total</th>
-                            <th class="text-right p-2">ROI</th>
-                            <th class="text-center p-2">Score</th>
-                            <th class="text-right p-2">Vol Wallet</th>
-                            <th class="text-center p-2">Abiertas</th>
+                            <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('wtt','win_rate',render_wtt)">Win% <span id="si-wtt-win_rate" data-sg="wtt" class="text-cyan-400 hidden text-[9px]"></span></th>
+                            <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('wtt','total_pnl',render_wtt)">PnL Total <span id="si-wtt-total_pnl" data-sg="wtt" class="text-cyan-400 hidden text-[9px]"></span></th>
+                            <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('wtt','roi_pct',render_wtt)">ROI <span id="si-wtt-roi_pct" data-sg="wtt" class="text-cyan-400 hidden text-[9px]"></span></th>
+                            <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('wtt','smart_money_score',render_wtt)">Score <span id="si-wtt-smart_money_score" data-sg="wtt" class="text-cyan-400 hidden text-[9px]"></span></th>
+                            <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('wtt','wallet_volume',render_wtt)">Vol Wallet <span id="si-wtt-wallet_volume" data-sg="wtt" class="text-cyan-400 hidden text-[9px]"></span></th>
+                            <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('wtt','open_trades',render_wtt)">Abiertas <span id="si-wtt-open_trades" data-sg="wtt" class="text-cyan-400 hidden text-[9px]"></span></th>
                             <th class="text-center p-2 w-8"></th>
                         </tr></thead>
                         <tbody id="wt-table-body"><tr><td colspan="11" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
@@ -2369,18 +2369,18 @@
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs">
                             <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                                <th class="text-left p-2">Hora</th>
-                                <th class="text-left p-2">Mercado</th>
+                                <th class="text-left p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','created_at',render_whf)">Hora <span id="si-whf-created_at" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-left p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','market_question',render_whf)">Mercado <span id="si-whf-market_question" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-left p-2">Wallet</th>
-                                <th class="text-center p-2">Side</th>
-                                <th class="text-right p-2">Monto</th>
-                                <th class="text-right p-2">Precio</th>
-                                <th class="text-right p-2">PnL</th>
-                                <th class="text-center p-2">Estado</th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','side',render_whf)">Side <span id="si-whf-side" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','size',render_whf)">Monto <span id="si-whf-size" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','price',render_whf)">Precio <span id="si-whf-price" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','pnl',render_whf)">PnL <span id="si-whf-pnl" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','status',render_whf)">Estado <span id="si-whf-status" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-center p-2">Badges</th>
-                                <th class="text-center p-2">Win%</th>
-                                <th class="text-center p-2">Score</th>
-                                <th class="text-center p-2">Cierre</th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','win_rate',render_whf)">Win% <span id="si-whf-win_rate" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','score',render_whf)">Score <span id="si-whf-score" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','time_to_close_hours',render_whf)">Cierre <span id="si-whf-time_to_close_hours" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-center p-2 w-8"></th>
                             </tr></thead>
                             <tbody id="whale-feed-body"><tr><td colspan="13" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
@@ -2392,18 +2392,18 @@
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs">
                             <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                                <th class="text-center p-2 w-8"></th>
+                                <th class="text-center p-2 w-8">#</th>
                                 <th class="text-left p-2">Wallet</th>
-                                <th class="text-center p-2">Whale Trades</th>
-                                <th class="text-right p-2">Vol Whale</th>
-                                <th class="text-right p-2">Avg Size</th>
-                                <th class="text-right p-2">Max Trade</th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whr','whale_trades',render_whr)">Trades <span id="si-whr-whale_trades" data-sg="whr" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whr','whale_volume',render_whr)">Vol <span id="si-whr-whale_volume" data-sg="whr" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whr','avg_size',render_whr)">Avg <span id="si-whr-avg_size" data-sg="whr" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whr','max_trade',render_whr)">Max <span id="si-whr-max_trade" data-sg="whr" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-center p-2">W/L</th>
-                                <th class="text-center p-2">Win%</th>
-                                <th class="text-right p-2">PnL</th>
-                                <th class="text-right p-2">ROI</th>
-                                <th class="text-center p-2">Score</th>
-                                <th class="text-center p-2">Mercados</th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whr','win_rate',render_whr)">Win% <span id="si-whr-win_rate" data-sg="whr" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whr','total_pnl',render_whr)">PnL <span id="si-whr-total_pnl" data-sg="whr" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whr','roi_pct',render_whr)">ROI <span id="si-whr-roi_pct" data-sg="whr" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whr','smart_money_score',render_whr)">Score <span id="si-whr-smart_money_score" data-sg="whr" class="text-cyan-400 hidden text-[9px]"></span></th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whr','markets',render_whr)">Mercados <span id="si-whr-markets" data-sg="whr" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-center p-2 w-8"></th>
                             </tr></thead>
                             <tbody id="whale-rank-body"><tr><td colspan="13" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
@@ -3010,6 +3010,7 @@ let _currentUser = null;
 // ── State ──
 let alertsChart=null, scoresChart=null, catChart=null;
 let allAlerts = [];
+
 const ALL_CATEGORIES = ['politics','sports','nba','nfl','nhl','mlb','mls','soccer','esports','crypto-prices','crypto-price','updown','entertainment','science','technology','business','culture','pop-culture'];
 
 // ── Auth Functions ──
@@ -5282,50 +5283,57 @@ async function loadAlertPnl(){
         }).join('');
     }else{sg.innerHTML='<div class="text-gray-600 text-xs col-span-5">Sin datos de score aún</div>';}
     // Wallet ranking
-    const wallets=data.wallet_ranking||[];
-    const wb=document.getElementById('apnl-wallets-body');
-    if(wallets.length===0){wb.innerHTML='<tr><td colspan="6" class="text-center text-gray-600 p-4">Sin datos</td></tr>';
-    }else{
-        wb.innerHTML=wallets.map(w=>`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
-            <td class="p-2"><a href="${polyProfile(w.address||'')}" target="_blank" class="text-purple-400 hover:text-purple-300">${w.name||w.address?.slice(0,10)||'?'}</a></td>
-            <td class="p-2 text-center">${(w.score||0).toFixed(0)}</td>
-            <td class="p-2 text-center">${w.wins||0}/${w.losses||0}</td>
-            <td class="p-2 text-center">${(w.win_rate||0).toFixed(0)}%</td>
-            <td class="p-2 text-right font-mono ${(w.total_pnl||0)>=0?'text-green-400':'text-red-400'}">$${(w.total_pnl||0).toFixed(2)}</td>
-            <td class="p-2 text-right text-gray-500">$${fmt(w.volume||0)}</td>
-        </tr>`).join('');
-    }
+    _apwData=data.wallet_ranking||[];
+    if(_apwData.length===0){document.getElementById('apnl-wallets-body').innerHTML='<tr><td colspan="6" class="text-center text-gray-600 p-4">Sin datos</td></tr>';
+    }else{render_apw();}
     // Recent trades (paper)
-    const trades=data.recent_trades||[];
+    _aptData=(data.recent_trades||[]).slice(0,30);
+    // Pre-compute _pnl_val for sorting
+    _aptData.forEach(t=>{const isOpen=!t.exit_type&&!t.resolved;t._pnl_val=isOpen?t.unrealized_pnl:t.paper_pnl;});
+    if(_aptData.length===0){document.getElementById('apnl-trades-body').innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-4">Sin señales aún — aparecerán cuando el bot genere alertas BUY</td></tr>';
+    }else{render_apt();}
+}
+let _apwData=[], _aptData=[];
+function render_apw(){
+    const wb=document.getElementById('apnl-wallets-body');
+    const wallets=sortedData('apw',_apwData,(w,col)=>w[col]??null);
+    wb.innerHTML=wallets.map(w=>`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+        <td class="p-2"><a href="${polyProfile(w.address||'')}" target="_blank" class="text-purple-400 hover:text-purple-300">${w.name||w.address?.slice(0,10)||'?'}</a></td>
+        <td class="p-2 text-center">${(w.score||0).toFixed(0)}</td>
+        <td class="p-2 text-center">${w.wins||0}/${w.losses||0}</td>
+        <td class="p-2 text-center">${(w.win_rate||0).toFixed(0)}%</td>
+        <td class="p-2 text-right font-mono ${(w.total_pnl||0)>=0?'text-green-400':'text-red-400'}">$${(w.total_pnl||0).toFixed(2)}</td>
+        <td class="p-2 text-right text-gray-500">$${fmt(w.volume||0)}</td>
+    </tr>`).join('');
+}
+function render_apt(){
     const tb=document.getElementById('apnl-trades-body');
-    if(trades.length===0){tb.innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-4">Sin señales aún — aparecerán cuando el bot genere alertas BUY</td></tr>';
-    }else{
-        tb.innerHTML=trades.slice(0,30).map(t=>{
-            const isOpen=!t.exit_type&&!t.resolved;
-            const pnlVal=isOpen?t.unrealized_pnl:t.paper_pnl;
-            let statusBadge;
-            if(t.exit_type==='resolution'){
-                statusBadge=t.was_correct?'<span class="text-green-400">Win</span>':'<span class="text-red-400">Loss</span>';
-            }else if(t.exit_type==='wallet_exit'){
-                statusBadge='<span class="text-purple-400">Exit</span>';
-            }else{
-                statusBadge='<span class="text-yellow-400">Abierta</span>';
-            }
-            let exitP,exitLabel;
-            if(t.exit_type){exitP=t.exit_price!=null?t.exit_price.toFixed(2):'-';exitLabel='';
-            }else{exitP=t.current_price!=null?t.current_price.toFixed(2):(t.price_latest!=null?t.price_latest.toFixed(2):'-');exitLabel='';}
-            return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
-                <td class="p-2 text-gray-400 text-[10px]">${fmtDate(t.created_at)}</td>
-                <td class="p-2 max-w-[200px] truncate">${(t.market_question||t.market_slug||'').slice(0,45)}</td>
-                <td class="p-2 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] ${t.outcome==='Yes'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">${t.outcome||''}</span></td>
-                <td class="p-2 text-right font-mono">$${(t.size||0).toFixed(0)}</td>
-                <td class="p-2 text-right font-mono">${(t.price||0).toFixed(2)}</td>
-                <td class="p-2 text-center">${statusBadge}</td>
-                <td class="p-2 text-right font-mono text-gray-400">${exitLabel}${exitP}</td>
-                <td class="p-2 text-right font-mono ${pnlVal!=null?(pnlVal>=0?'text-green-400':'text-red-400'):'text-gray-600'}">${pnlVal!=null?'$'+pnlVal.toFixed(2):'-'}</td>
-            </tr>`;
-        }).join('');
-    }
+    const trades=sortedData('apt',_aptData,(t,col)=>col==='created_at'?new Date(t[col]||0).getTime():(t[col]??null));
+    tb.innerHTML=trades.map(t=>{
+        const isOpen=!t.exit_type&&!t.resolved;
+        const pnlVal=t._pnl_val;
+        let statusBadge;
+        if(t.exit_type==='resolution'){
+            statusBadge=t.was_correct?'<span class="text-green-400">Win</span>':'<span class="text-red-400">Loss</span>';
+        }else if(t.exit_type==='wallet_exit'){
+            statusBadge='<span class="text-purple-400">Exit</span>';
+        }else{
+            statusBadge='<span class="text-yellow-400">Abierta</span>';
+        }
+        let exitP,exitLabel;
+        if(t.exit_type){exitP=t.exit_price!=null?t.exit_price.toFixed(2):'-';exitLabel='';
+        }else{exitP=t.current_price!=null?t.current_price.toFixed(2):(t.price_latest!=null?t.price_latest.toFixed(2):'-');exitLabel='';}
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="p-2 text-gray-400 text-[10px]">${fmtDate(t.created_at)}</td>
+            <td class="p-2 max-w-[200px] truncate">${(t.market_question||t.market_slug||'').slice(0,45)}</td>
+            <td class="p-2 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] ${t.outcome==='Yes'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">${t.outcome||''}</span></td>
+            <td class="p-2 text-right font-mono">$${(t.size||0).toFixed(0)}</td>
+            <td class="p-2 text-right font-mono">${(t.price||0).toFixed(2)}</td>
+            <td class="p-2 text-center">${statusBadge}</td>
+            <td class="p-2 text-right font-mono text-gray-400">${exitLabel}${exitP}</td>
+            <td class="p-2 text-right font-mono ${pnlVal!=null?(pnlVal>=0?'text-green-400':'text-red-400'):'text-gray-600'}">${pnlVal!=null?'$'+pnlVal.toFixed(2):'-'}</td>
+        </tr>`;
+    }).join('');
 }
 
 // ── Wallet Tracker ──
@@ -5365,6 +5373,11 @@ async function loadWalletTracker(){
         tb.innerHTML='<tr><td colspan="11" class="text-center text-gray-600 p-6">No hay wallets con esos filtros</td></tr>';
         return;
     }
+    render_wtt();
+}
+function render_wtt(){
+    const tb=document.getElementById('wt-table-body');
+    const wallets=sortedData('wtt',_wtData,(w,col)=>w[col]??null);
     tb.innerHTML=wallets.map((w,i)=>{
         const pC=w.total_pnl>=0?'text-green-400':'text-red-400';
         const rC=w.roi_pct>=0?'text-green-400':'text-red-400';
@@ -5372,7 +5385,8 @@ async function loadWalletTracker(){
         const star=w.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400';
         const scoreC=w.smart_money_score>=60?'text-green-400':w.smart_money_score>=30?'text-yellow-400':'text-gray-500';
         const name=w.name||w.address?.slice(0,10)||'?';
-        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20 cursor-pointer" onclick="showWalletDetail('${w.address}',${i})">
+        const origIdx=_wtData.indexOf(w);
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20 cursor-pointer" onclick="showWalletDetail('${w.address}',${origIdx})">
             <td class="p-2 text-center text-sm cursor-pointer" onclick="event.stopPropagation();toggleWatchlist('${w.address}',this)"><span class="${star}">&#9733;</span></td>
             <td class="p-2"><a href="${polyProfile(w.address||'')}" target="_blank" class="text-purple-400 hover:text-purple-300" onclick="event.stopPropagation()">${name}</a><div class="text-[9px] text-gray-600">${w.address?.slice(0,8)}...${w.address?.slice(-4)}</div></td>
             <td class="p-2 text-center">${w.total_trades}<span class="text-[9px] text-gray-600"> (${w.closed_trades}c)</span></td>
@@ -5487,6 +5501,7 @@ async function loadWhaleData(){
     else if(_whaleView==='insider') await loadInsiderFlags();
     else await loadWhaleRanking(minSize);
 }
+let _whfData=[];
 async function loadWhaleFeed(minSize){
     const fb=document.getElementById('whale-feed-body');
     fb.innerHTML='<tr><td colspan="13" class="text-center text-cyan-400 p-6">Cargando whale trades...</td></tr>';
@@ -5494,9 +5509,14 @@ async function loadWhaleFeed(minSize){
     const hours=document.getElementById('wh-hours')?.value||24;
     const data=await fetchJson(`/api/whales/feed?min_size=${minSize}&hours=${hours}&side=${side}&limit=200`);
     if(!data){fb.innerHTML='<tr><td colspan="13" class="text-center text-red-400 p-6">Error al cargar</td></tr>';return;}
-    const trades=data.trades||[];
-    document.getElementById('wh-total').textContent=trades.length;
-    if(!trades.length){fb.innerHTML='<tr><td colspan="13" class="text-center text-gray-600 p-6">No hay whale trades en este período</td></tr>';return;}
+    _whfData=data.trades||[];
+    document.getElementById('wh-total').textContent=_whfData.length;
+    if(!_whfData.length){fb.innerHTML='<tr><td colspan="13" class="text-center text-gray-600 p-6">No hay whale trades en este período</td></tr>';return;}
+    render_whf();
+}
+function render_whf(){
+    const fb=document.getElementById('whale-feed-body');
+    const trades=sortedData('whf',_whfData,(t,col)=>col==='created_at'?new Date(t[col]||0).getTime():(t[col]??null));
     fb.innerHTML=trades.map(t=>{
         const d=t.created_at?new Date(t.created_at):null;
         const timeStr=d?d.toLocaleString('es-CL',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
@@ -5561,6 +5581,7 @@ async function loadWhaleFeed(minSize){
         </tr>`;
     }).join('');
 }
+let _whrData=[];
 async function loadWhaleRanking(minSize){
     const rb=document.getElementById('whale-rank-body');
     rb.innerHTML='<tr><td colspan="13" class="text-center text-cyan-400 p-6">Cargando ranking ballenas...</td></tr>';
@@ -5569,9 +5590,14 @@ async function loadWhaleRanking(minSize){
     const minWr=document.getElementById('wh-min-wr')?.value||0;
     const data=await fetchJson(`/api/whales/ranking?min_size=${minSize}&min_trades=${minTrades}&min_winrate=${minWr}&sort_by=${sortBy}`);
     if(!data){rb.innerHTML='<tr><td colspan="13" class="text-center text-red-400 p-6">Error al cargar</td></tr>';return;}
-    const wallets=data.wallets||[];
-    document.getElementById('wh-total').textContent=wallets.length;
-    if(!wallets.length){rb.innerHTML='<tr><td colspan="13" class="text-center text-gray-600 p-6">No hay ballenas con esos filtros</td></tr>';return;}
+    _whrData=data.wallets||[];
+    document.getElementById('wh-total').textContent=_whrData.length;
+    if(!_whrData.length){rb.innerHTML='<tr><td colspan="13" class="text-center text-gray-600 p-6">No hay ballenas con esos filtros</td></tr>';return;}
+    render_whr();
+}
+function render_whr(){
+    const rb=document.getElementById('whale-rank-body');
+    const wallets=sortedData('whr',_whrData,(w,col)=>w[col]??null);
     rb.innerHTML=wallets.map((w,i)=>{
         const pC=w.total_pnl>=0?'text-green-400':'text-red-400';
         const rC=w.roi_pct>=0?'text-green-400':'text-red-400';
