@@ -970,7 +970,27 @@ class Database:
                 total_closed = int(row["wins"] or 0) + int(row["losses"] or 0)
                 win_rate = (int(row["wins"] or 0) / total_closed * 100) if total_closed > 0 else 0
                 total_invested = float(row["total_invested"] or 0)
-                total_pnl = float(row["total_pnl"] or 0)
+                realized_pnl = float(row["total_pnl"] or 0)
+
+                # Calcular unrealized PnL de posiciones abiertas
+                open_rows = await conn.fetch("""
+                    SELECT outcome, size, price, price_latest, price_at_alert
+                    FROM alerts
+                    WHERE side = 'BUY' AND resolved = FALSE
+                      AND exit_type IS NULL AND user_id = $1
+                      AND price > 0
+                """, user_id)
+                unrealized_pnl = 0.0
+                for orow in open_rows:
+                    entry_p = float(orow["price"] or 0)
+                    latest_p = float(orow["price_latest"] or orow["price_at_alert"] or 0)
+                    if entry_p > 0 and latest_p > 0:
+                        shares = float(orow["size"] or 0) / entry_p
+                        outcome = orow.get("outcome", "Yes")
+                        current_p = latest_p if outcome == "Yes" else (1.0 - latest_p)
+                        unrealized_pnl += shares * (current_p - entry_p)
+
+                total_pnl = realized_pnl + unrealized_pnl
                 roi = (total_pnl / total_invested * 100) if total_invested > 0 else 0
                 return {
                     "total_alerts": int(row["total_alerts"] or 0),
@@ -981,6 +1001,8 @@ class Database:
                     "losses": int(row["losses"] or 0),
                     "win_rate": round(win_rate, 1),
                     "total_pnl": round(total_pnl, 2),
+                    "realized_pnl": round(realized_pnl, 2),
+                    "unrealized_pnl": round(unrealized_pnl, 2),
                     "total_invested": round(total_invested, 2),
                     "roi_pct": round(roi, 1),
                     "best_trade": round(float(row["best_trade"] or 0), 2),
@@ -1086,7 +1108,23 @@ class Database:
                     ORDER BY a.created_at DESC
                     LIMIT $1
                 """, limit, user_id)
-                return [_serialize_row(r) for r in rows]
+                result = []
+                for r in rows:
+                    row = _serialize_row(r)
+                    # Para posiciones abiertas, calcular unrealized PnL
+                    if r["exit_type"] is None and not r["resolved"]:
+                        entry_p = float(r["price"] or 0)
+                        latest_p = float(r["price_latest"] or r["price_at_alert"] or 0)
+                        outcome = r.get("outcome", "Yes")
+                        size = float(r["size"] or 0)
+                        if entry_p > 0 and latest_p > 0:
+                            shares = size / entry_p
+                            current_p = latest_p if outcome == "Yes" else (1.0 - latest_p)
+                            row["unrealized_pnl"] = round(shares * (current_p - entry_p), 2)
+                            row["current_price"] = round(current_p, 4)
+                            row["paper_shares"] = round(shares, 2)
+                    result.append(row)
+                return result
         except Exception as e:
             print(f"[DB] get_paper_recent_trades error: {e}", flush=True)
             return []

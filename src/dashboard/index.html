@@ -2126,11 +2126,12 @@
                     </div>
                 </div>
                 <!-- Exits breakdown -->
-                <div class="flex gap-4 text-[10px] text-gray-500 mb-3">
+                <div class="flex gap-4 text-[10px] text-gray-500 mb-2">
                     <span>Cerradas por resolución: <b class="text-cyan-400" id="apnl-res-exits">0</b></span>
                     <span>Cerradas por wallet exit: <b class="text-purple-400" id="apnl-wal-exits">0</b></span>
                     <span>PnL Promedio: <b class="text-gray-300" id="apnl-avg">$0</b></span>
                 </div>
+                <div class="mb-3"><span id="apnl-unrealized" class="text-[10px] text-gray-500"></span></div>
                 <!-- PnL Chart -->
                 <div class="bg-gray-800/30 rounded-lg p-3 mb-4" style="height:220px">
                     <canvas id="apnl-chart-canvas"></canvas>
@@ -2153,7 +2154,7 @@
                 <div class="overflow-x-auto">
                     <table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                            <th class="text-left p-2">Fecha</th><th class="text-left p-2">Mercado</th><th class="text-center p-2">Outcome</th><th class="text-right p-2">$ Inv</th><th class="text-right p-2">Entry</th><th class="text-center p-2">Estado</th><th class="text-right p-2">Exit</th><th class="text-right p-2">PnL</th>
+                            <th class="text-left p-2">Fecha</th><th class="text-left p-2">Mercado</th><th class="text-center p-2">Outcome</th><th class="text-right p-2">$ Inv</th><th class="text-right p-2">Entry</th><th class="text-center p-2">Estado</th><th class="text-right p-2">Actual/Exit</th><th class="text-right p-2">PnL</th>
                         </tr></thead>
                         <tbody id="apnl-trades-body"><tr><td colspan="8" class="text-center text-gray-600 p-4">Cargando...</td></tr></tbody>
                     </table>
@@ -4809,6 +4810,10 @@ async function loadAlertPnl(){
     document.getElementById('apnl-res-exits').textContent=s.resolution_exits||0;
     document.getElementById('apnl-wal-exits').textContent=s.wallet_exits||0;
     document.getElementById('apnl-avg').textContent='$'+(s.avg_pnl||0).toFixed(2);
+    const uPnl=s.unrealized_pnl||0;
+    const rPnl=s.realized_pnl||0;
+    const unrealEl=document.getElementById('apnl-unrealized');
+    if(unrealEl){unrealEl.textContent='Unrealized: $'+uPnl.toFixed(2)+' | Realized: $'+rPnl.toFixed(2);unrealEl.className='text-[10px] '+(uPnl>=0?'text-green-400':'text-red-400');}
     // PnL Chart
     const hist=data.pnl_history||[];
     if(hist.length>0){
@@ -4850,16 +4855,19 @@ async function loadAlertPnl(){
     if(trades.length===0){tb.innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-4">Sin señales aún — aparecerán cuando el bot genere alertas BUY</td></tr>';
     }else{
         tb.innerHTML=trades.slice(0,30).map(t=>{
-            const pnlVal=t.paper_pnl;
+            const isOpen=!t.exit_type&&!t.resolved;
+            const pnlVal=isOpen?t.unrealized_pnl:t.paper_pnl;
             let statusBadge;
             if(t.exit_type==='resolution'){
-                statusBadge=t.was_correct?'<span class="text-green-400">✅ Win</span>':'<span class="text-red-400">❌ Loss</span>';
+                statusBadge=t.was_correct?'<span class="text-green-400">Win</span>':'<span class="text-red-400">Loss</span>';
             }else if(t.exit_type==='wallet_exit'){
-                statusBadge='<span class="text-purple-400">🔄 Exit</span>';
+                statusBadge='<span class="text-purple-400">Exit</span>';
             }else{
-                statusBadge='<span class="text-yellow-400">⏳ Abierta</span>';
+                statusBadge='<span class="text-yellow-400">Abierta</span>';
             }
-            const exitP=t.exit_price!=null?t.exit_price.toFixed(2):(t.price_latest!=null?t.price_latest.toFixed(2):'-');
+            let exitP,exitLabel;
+            if(t.exit_type){exitP=t.exit_price!=null?t.exit_price.toFixed(2):'-';exitLabel='';
+            }else{exitP=t.current_price!=null?t.current_price.toFixed(2):(t.price_latest!=null?t.price_latest.toFixed(2):'-');exitLabel='';}
             return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
                 <td class="p-2 text-gray-400 text-[10px]">${fmtDate(t.created_at)}</td>
                 <td class="p-2 max-w-[200px] truncate">${(t.market_question||t.market_slug||'').slice(0,45)}</td>
@@ -4867,7 +4875,7 @@ async function loadAlertPnl(){
                 <td class="p-2 text-right font-mono">$${(t.size||0).toFixed(0)}</td>
                 <td class="p-2 text-right font-mono">${(t.price||0).toFixed(2)}</td>
                 <td class="p-2 text-center">${statusBadge}</td>
-                <td class="p-2 text-right font-mono text-gray-400">${exitP}</td>
+                <td class="p-2 text-right font-mono text-gray-400">${exitLabel}${exitP}</td>
                 <td class="p-2 text-right font-mono ${pnlVal!=null?(pnlVal>=0?'text-green-400':'text-red-400'):'text-gray-600'}">${pnlVal!=null?'$'+pnlVal.toFixed(2):'-'}</td>
             </tr>`;
         }).join('');
