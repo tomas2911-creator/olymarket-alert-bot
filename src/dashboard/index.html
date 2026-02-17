@@ -2306,7 +2306,7 @@
                     <div>
                         <label class="text-[10px] text-gray-500 block mb-1">Min Size ($)</label>
                         <select id="wh-min-size" class="bg-gray-800/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="loadWhaleData()">
-                            <option value="10000">$10K+</option><option value="25000">$25K+</option><option value="50000" selected>$50K+</option><option value="100000">$100K+</option><option value="250000">$250K+</option><option value="500000">$500K+</option>
+                            <option value="10000" selected>$10K+</option><option value="25000">$25K+</option><option value="50000">$50K+</option><option value="100000">$100K+</option><option value="250000">$250K+</option><option value="500000">$500K+</option>
                         </select>
                     </div>
                     <div id="wh-filter-side-wrap">
@@ -5408,7 +5408,7 @@ function showWhaleView(v){
     loadWhaleData();
 }
 async function loadWhaleData(){
-    const minSize=document.getElementById('wh-min-size')?.value||50000;
+    const minSize=document.getElementById('wh-min-size')?.value||10000;
     // Cargar stats
     const stats=await fetchJson(`/api/whales/stats?min_size=${minSize}&hours=24`);
     if(stats){
@@ -5441,7 +5441,8 @@ async function loadWhaleFeed(minSize){
         const addr=t.wallet_address||'';
         const name=t.wallet_name||addr.slice(0,6)+'...'+addr.slice(-4);
         const wrC=t.win_rate>=60?'text-green-400':t.win_rate>=40?'text-yellow-400':'text-gray-500';
-        const scC=t.smart_score>=60?'text-green-400':t.smart_score>=30?'text-yellow-400':'text-gray-500';
+        const sc=t.score||0;
+        const scC=sc>=8?'text-green-400':sc>=5?'text-yellow-400':'text-gray-500';
         const star=t.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400';
         const mq=(t.market_question||'').length>50?t.market_question.slice(0,50)+'…':t.market_question||'';
         const mqSafe=(t.market_question||'').replace(/"/g,'&quot;');
@@ -5454,7 +5455,7 @@ async function loadWhaleFeed(minSize){
             <td class="p-2 text-center"><span class="px-1 py-0.5 rounded text-[10px] ${outC}">${t.outcome||''}</span></td>
             <td class="p-2 text-right font-mono text-gray-400">${(t.price||0).toFixed(2)}</td>
             <td class="p-2 text-center ${wrC}">${t.win_rate>0?t.win_rate+'%':'-'}</td>
-            <td class="p-2 text-center ${scC}">${t.smart_score>0?t.smart_score:'-'}</td>
+            <td class="p-2 text-center ${scC}">${sc>0?sc:'-'}</td>
             <td class="p-2 text-center cursor-pointer ${star}" onclick="whaleToggleWatchlist('${addr}',this)">★</td>
         </tr>`;
     }).join('');

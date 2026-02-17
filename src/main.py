@@ -823,6 +823,13 @@ class PolymarketAlertBot:
         is_copy = trade.wallet_address.lower() in self._watchlist
         should_alert = self.analyzer.should_alert(candidate) or is_copy
 
+        # Escribir score en whale_trades si el trade es whale-sized
+        if trade.size >= (config.WHALE_TRACKER_MIN_SIZE if config.WHALE_TRACKER_ENABLED else 0):
+            try:
+                await self.db.update_whale_trade_score(trade.transaction_hash, candidate.score)
+            except Exception:
+                pass
+
         self._debug["scored"] += 1
         self._debug["last_scores"] = (self._debug["last_scores"] + [{
             "score": candidate.score, "size": trade.size,

@@ -304,7 +304,7 @@ async def get_wallet_tracker_trades(request: Request, address: str):
 # ── Whale Trades ─────────────────────────────────────────────────────
 
 @router.get("/api/whales/feed")
-async def get_whale_feed(request: Request, min_size: float = 50000,
+async def get_whale_feed(request: Request, min_size: float = 10000,
                           hours: int = 24, side: str = "", limit: int = 200):
     db = request.app.state.db
     trades = await db.get_whale_feed(min_size=min_size, hours=hours, side=side, limit=limit)
@@ -312,7 +312,7 @@ async def get_whale_feed(request: Request, min_size: float = 50000,
 
 
 @router.get("/api/whales/ranking")
-async def get_whale_ranking(request: Request, min_size: float = 50000,
+async def get_whale_ranking(request: Request, min_size: float = 10000,
                              min_trades: int = 1, min_winrate: float = 0,
                              sort_by: str = "volume"):
     db = request.app.state.db
@@ -322,7 +322,7 @@ async def get_whale_ranking(request: Request, min_size: float = 50000,
 
 
 @router.get("/api/whales/stats")
-async def get_whale_stats(request: Request, hours: int = 24, min_size: float = 50000):
+async def get_whale_stats(request: Request, hours: int = 24, min_size: float = 10000):
     db = request.app.state.db
     stats = await db.get_whale_stats(hours=hours, min_size=min_size)
     return stats
