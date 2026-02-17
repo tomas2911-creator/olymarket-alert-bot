@@ -27,8 +27,8 @@ _CAT_TITLE_PATTERNS = {
     "crypto-price": r'price of|above \$|below \$|close above|close below|all-time high|ATH',
     "updown": r'Up or Down|updown',
 }
-# Patrones extra siempre activos (no son categorías, son formatos basura)
-_ALWAYS_EXCLUDE_RE = re.compile(r'\d+[AP]M.*ET', re.IGNORECASE)
+# Nota: se eliminó _ALWAYS_EXCLUDE_RE (\d+[AP]M.*ET) porque mataba
+# todos los trades crypto up/down cuyos títulos tienen timestamps ET
 
 
 def _build_exclude_regex(excluded_cats: set) -> re.Pattern | None:
@@ -169,12 +169,6 @@ class PolymarketClient:
                                 filtered_cat += 1
                                 continue
 
-                        # Filtrar formato basura (timestamps ET, etc.)
-                        title_check = item.get("title", "")
-                        if title_check and _ALWAYS_EXCLUDE_RE.search(title_check):
-                            filtered_cat += 1
-                            continue
-
                         trade = self._parse_trade(item)
                         if trade:
                             trades.append(trade)
@@ -184,8 +178,13 @@ class PolymarketClient:
                     except Exception as e:
                         logger.warning("error_parseando_trade", error=str(e))
 
-                # Si no hay cursor o ya tenemos suficientes, salir
-                if not cursor or len(trades) >= limit:
+                # Si ya tenemos suficientes, salir
+                if len(trades) >= limit:
+                    break
+                # Sin cursor = sin paginación, pero seguir si hay más páginas por offset
+                if not cursor:
+                    # Data API sin cursor: usar offset manual
+                    cursor = None  # salir del loop
                     break
 
             # Stats del pipeline
