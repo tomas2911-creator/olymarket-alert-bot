@@ -857,33 +857,34 @@ class PolymarketAlertBot:
                 print("[PaperPnL] No hay alertas abiertas para mark-to-market", flush=True)
                 return
 
-            # Agrupar por market_id para no hacer requests duplicados
-            market_ids = list({a["market_id"] for a in open_alerts if a.get("market_id")})
-            if not market_ids:
+            # Agrupar por (market_id, outcome) para obtener precio correcto por token
+            pairs = list({(a["market_id"], a.get("outcome", "Yes")) for a in open_alerts if a.get("market_id")})
+            if not pairs:
                 print("[PaperPnL] Alertas abiertas sin market_id", flush=True)
                 return
 
-            print(f"[PaperPnL] Mark-to-market: {len(open_alerts)} alertas, {len(market_ids)} mercados", flush=True)
+            print(f"[PaperPnL] Mark-to-market: {len(open_alerts)} alertas, {len(pairs)} pares (mercado+outcome)", flush=True)
             updated = 0
             failed = 0
             async with PolymarketClient() as client:
-                for mid in market_ids[:30]:  # Max 30 mercados por ciclo
+                for mid, outcome in pairs[:50]:  # Max 50 pares por ciclo
                     try:
-                        price = await client.get_market_price(mid, "Yes")
+                        price = await client.get_market_price(mid, outcome)
                         if price is not None:
                             async with self.db._pool.acquire() as conn:
                                 await conn.execute("""
                                     UPDATE alerts SET price_latest = $1, price_latest_at = NOW()
-                                    WHERE market_id = $2 AND resolved = FALSE AND exit_type IS NULL
-                                """, price, mid)
+                                    WHERE market_id = $2 AND outcome = $3
+                                      AND resolved = FALSE AND exit_type IS NULL
+                                """, price, mid, outcome)
                                 updated += 1
                         else:
                             failed += 1
                     except Exception as e:
                         failed += 1
-                        print(f"[PaperPnL] Error precio {mid[:12]}: {e}", flush=True)
+                        print(f"[PaperPnL] Error precio {mid[:12]}({outcome}): {e}", flush=True)
 
-            print(f"[PaperPnL] Mark-to-market: {updated} OK, {failed} fallidos de {len(market_ids)}", flush=True)
+            print(f"[PaperPnL] Mark-to-market: {updated} OK, {failed} fallidos de {len(pairs)}", flush=True)
         except Exception as e:
             print(f"[PaperPnL] Error update_paper_prices: {e}", flush=True)
 

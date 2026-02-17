@@ -986,9 +986,8 @@ class Database:
                     latest_p = float(orow["price_latest"] or orow["price_at_alert"] or 0)
                     if entry_p > 0 and latest_p > 0:
                         shares = float(orow["size"] or 0) / entry_p
-                        outcome = orow.get("outcome", "Yes")
-                        current_p = latest_p if outcome == "Yes" else (1.0 - latest_p)
-                        unrealized_pnl += shares * (current_p - entry_p)
+                        # price_latest ya contiene el precio del token específico (outcome)
+                        unrealized_pnl += shares * (latest_p - entry_p)
 
                 total_pnl = realized_pnl + unrealized_pnl
                 roi = (total_pnl / total_invested * 100) if total_invested > 0 else 0
@@ -1115,13 +1114,12 @@ class Database:
                     if r["exit_type"] is None and not r["resolved"]:
                         entry_p = float(r["price"] or 0)
                         latest_p = float(r["price_latest"] or r["price_at_alert"] or 0)
-                        outcome = r.get("outcome", "Yes")
                         size = float(r["size"] or 0)
                         if entry_p > 0 and latest_p > 0:
                             shares = size / entry_p
-                            current_p = latest_p if outcome == "Yes" else (1.0 - latest_p)
-                            row["unrealized_pnl"] = round(shares * (current_p - entry_p), 2)
-                            row["current_price"] = round(current_p, 4)
+                            # price_latest ya contiene el precio del token específico (outcome)
+                            row["unrealized_pnl"] = round(shares * (latest_p - entry_p), 2)
+                            row["current_price"] = round(latest_p, 4)
                             row["paper_shares"] = round(shares, 2)
                     result.append(row)
                 return result
@@ -1151,16 +1149,13 @@ class Database:
                     # Calcular unrealized PnL con price_latest
                     entry_p = float(r["price"] or 0)
                     latest_p = float(r["price_latest"] or r["price_at_alert"] or 0)
-                    outcome = r.get("outcome", "Yes")
                     size = float(r["size"] or 0)
                     if entry_p > 0 and latest_p > 0:
                         shares = size / entry_p
-                        # price_latest es siempre el precio de Yes
-                        # Si outcome = No, precio actual del No = 1.0 - yes_price
-                        current_p = latest_p if outcome == "Yes" else (1.0 - latest_p)
+                        # price_latest ya contiene el precio del token específico (outcome)
                         row["paper_shares"] = round(shares, 2)
-                        row["unrealized_pnl"] = round(shares * (current_p - entry_p), 2)
-                        row["current_price"] = round(current_p, 4)
+                        row["unrealized_pnl"] = round(shares * (latest_p - entry_p), 2)
+                        row["current_price"] = round(latest_p, 4)
                     result.append(row)
                 return result
         except Exception as e:
