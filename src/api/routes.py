@@ -147,6 +147,17 @@ async def get_stats(request: Request):
             ws_stats = bot.ws_client.get_stats()
             stats["ws_trades"] = ws_stats.get("trades_received", 0)
             stats["ws_connected"] = ws_stats.get("connected", False)
+        # Pipeline stats del último ciclo
+        if bot._pipeline_stats:
+            stats["pipeline"] = bot._pipeline_stats
+        # Debug counters
+        stats["debug"] = {
+            "too_small": bot._debug.get("too_small", 0),
+            "scored": bot._debug.get("scored", 0),
+            "low_score": bot._debug.get("low_score", 0),
+            "excluded_cat": bot._debug.get("excluded_cat", 0),
+            "cooldown": bot._debug.get("cooldown", 0),
+        }
     return stats
 
 

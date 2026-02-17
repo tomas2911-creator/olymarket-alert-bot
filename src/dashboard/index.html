@@ -555,6 +555,13 @@
             <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Watchlist</div><div class="text-2xl font-bold mt-1 text-yellow-400" id="stat-watchlist">-</div></div>
             <div class="glass glow rounded-xl p-3"><div class="text-gray-400 text-xs uppercase tracking-wider">Sesion</div><div class="text-lg font-bold mt-1" id="stat-session">-</div></div>
         </div>
+        <!-- Pipeline de trades -->
+        <div class="glass rounded-lg px-3 py-2 mt-2 flex flex-wrap gap-4 items-center">
+            <span class="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Pipeline</span>
+            <span class="text-xs text-cyan-400 font-mono hidden" id="stat-pipeline">-</span>
+            <span class="text-[10px] text-gray-500 uppercase tracking-wider font-semibold ml-auto">Filtros</span>
+            <span class="text-xs text-yellow-400 font-mono hidden" id="stat-debug">-</span>
+        </div>
         <div class="grid grid-cols-3 gap-3 mt-3">
             <div class="glass glow rounded-lg p-3">
                 <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Alertas/Dia</h3>
@@ -2963,6 +2970,20 @@ async function loadStats(){
     const sessAlerts=s.alerts_this_session||0;
     const wsInfo=s.ws_trades?` +${fmt(s.ws_trades)}ws`:'';
     document.getElementById('stat-session').textContent=`${fmt(sessTrades)} trades${wsInfo} / ${fmt(sessAlerts)} alertas`;
+    // Pipeline stats
+    const pEl=document.getElementById('stat-pipeline');
+    if(pEl && s.pipeline){
+        const p=s.pipeline;
+        pEl.textContent=`Raw:${fmt(p.raw_fetched||0)} → Cat:-${fmt(p.filtered_category||0)} → Parsed:${fmt(p.parsed||0)} (${p.pages||1}pag)`;
+        pEl.classList.remove('hidden');
+    }
+    // Debug counters
+    const dEl=document.getElementById('stat-debug');
+    if(dEl && s.debug){
+        const d=s.debug;
+        dEl.textContent=`Chicos:${fmt(d.too_small||0)} | Scored:${fmt(d.scored||0)} | BajoScore:${fmt(d.low_score||0)} | ExclCat:${fmt(d.excluded_cat||0)} | Cooldown:${fmt(d.cooldown||0)}`;
+        dEl.classList.remove('hidden');
+    }
     document.getElementById('last-update').textContent='Actualizado: '+new Date().toLocaleTimeString('es');
 }
 

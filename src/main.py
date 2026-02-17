@@ -72,6 +72,7 @@ class PolymarketAlertBot:
         self._watchlist: set[str] = set()
         self._excluded_categories: set[str] = set()
         self._last_markets = []  # Cache de mercados para spike detector
+        self._pipeline_stats = {}  # Stats del pipeline de trades para dashboard
         # Crypto Arb (inicializado solo si feature está habilitada)
         self.binance_feed = None
         self.crypto_detector = None
@@ -506,7 +507,14 @@ class PolymarketAlertBot:
             # Pre-cargar cache de mercados para enriquecer trades
             self._last_markets = await client.get_markets(limit=config.MAX_MARKETS) or []
 
-            trades = await client.get_recent_trades(limit=1000)
+            # Pasar categorías excluidas del dashboard al filtro dinámico
+            trades = await client.get_recent_trades(
+                limit=2000,
+                excluded_categories=self._excluded_categories,
+            )
+
+            # Guardar stats del pipeline para el dashboard
+            self._pipeline_stats = client.get_pipeline_stats()
 
             if not trades:
                 print("Trades obtenidos: 0", flush=True)

@@ -278,7 +278,7 @@ QUEUE_WORKERS = 2
 
 # -- Rate Limiting (Infrastructure) --
 FEATURE_RATE_LIMITING = True  # Siempre activo — protección contra bans de API
-RATE_LIMIT_MAX_PER_MIN = 30  # requests máx por minuto a Polymarket
+RATE_LIMIT_MAX_PER_MIN = 60  # requests máx por minuto a Polymarket
 RATE_LIMIT_BACKOFF_BASE = 1.5  # base exponencial para backoff
 
 # -- Bankroll Tracking (Risk) --

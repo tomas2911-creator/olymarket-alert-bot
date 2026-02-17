@@ -12,36 +12,61 @@ from src.infra.rate_limiter import get_limiter
 
 logger = structlog.get_logger()
 
-# Tags de Gamma API que excluimos (deportes, crypto precio)
-EXCLUDE_TAGS = {"sports", "nba", "nfl", "nhl", "mlb", "mls", "soccer", "esports",
-                "crypto-prices", "crypto-price", "updown"}
+# Mapeo categoría → patrones de título para filtrar por regex
+# Solo se aplica si la categoría está EXCLUIDA en el dashboard
+_CAT_TITLE_PATTERNS = {
+    "sports": r'vs\.?|Spread:|Points|Goals|win on \d{4}-\d{2}-\d{2}|Over/Under|O/U|Total Kills',
+    "nba": r'NBA|Lakers|Warriors|Celtics|Wildcats|Panthers',
+    "nfl": r'NFL|Cowboys|Eagles|Chiefs',
+    "nhl": r'NHL',
+    "mlb": r'MLB',
+    "mls": r'MLS',
+    "soccer": r'FC\b|United\b|Premier League|Champions League|La Liga|Serie A|Bundesliga|Ligue 1|World Cup|Copa America|Euro \d{4}',
+    "esports": r'Total Kills|esports',
+    "crypto-prices": r'price of|above \$|below \$|close above|close below|all-time high|ATH',
+    "crypto-price": r'price of|above \$|below \$|close above|close below|all-time high|ATH',
+    "updown": r'Up or Down|updown',
+}
+# Patrones extra siempre activos (no son categorías, son formatos basura)
+_ALWAYS_EXCLUDE_RE = re.compile(r'\d+[AP]M.*ET', re.IGNORECASE)
 
-# Regex de respaldo para filtrar por título
-EXCLUDE_TITLE_RE = re.compile(
-    r'\b(?:vs\.?|Spread:|Points|Goals|NBA|NFL|NHL|MLB|MLS|'
-    r'Up or Down|updown|price of|above \$|below \$|close above|close below|'
-    r'all-time high|ATH|Over/Under|O/U|Total Kills|'
-    r'win on \d{4}-\d{2}-\d{2}|FC\b|United\b|Wildcats|Panthers|'
-    r'Lakers|Warriors|Celtics|Cowboys|Eagles|Chiefs|'
-    r'Premier League|Champions League|La Liga|Serie A|Bundesliga|'
-    r'Ligue 1|World Cup|Copa America|Euro \d{4}|UFC|'
-    r'Grand Prix|Formula 1|F1\b|ATP|WTA|Open \d{4})\b'
-    r'|\d+[AP]M.*ET',
-    re.IGNORECASE,
-)
+
+def _build_exclude_regex(excluded_cats: set) -> re.Pattern | None:
+    """Construir regex dinámico basado en categorías excluidas del dashboard."""
+    if not excluded_cats:
+        return None
+    parts = []
+    for cat in excluded_cats:
+        pattern = _CAT_TITLE_PATTERNS.get(cat)
+        if pattern:
+            parts.append(pattern)
+    if not parts:
+        return None
+    combined = r'\b(?:' + '|'.join(parts) + r')\b'
+    return re.compile(combined, re.IGNORECASE)
 
 
-def is_insider_relevant(title: str, tags: list[str] | None = None) -> bool:
-    """Verifica si el mercado es relevante para insider info."""
-    if not title:
-        return False
+def is_category_excluded(title: str, tags: list[str] | None,
+                         excluded_cats: set, exclude_re: re.Pattern | None = None) -> bool:
+    """Verifica si un trade debe ser excluido según las categorías del dashboard.
+    Si excluded_cats está vacío → NO filtra nada → todos los trades pasan."""
+    if not excluded_cats:
+        return False  # nada excluido = todo pasa
+    # Filtrar por tag del mercado
     if tags:
         lower_tags = {t.lower() for t in tags}
-        if lower_tags & EXCLUDE_TAGS:
-            return False
-    if EXCLUDE_TITLE_RE.search(title):
-        return False
-    return True
+        if lower_tags & excluded_cats:
+            return True
+    # Filtrar por regex de título (solo patrones de categorías excluidas)
+    if exclude_re and title and exclude_re.search(title):
+        return True
+    return False
+
+
+# Retrocompatibilidad: mantener is_insider_relevant como wrapper
+def is_insider_relevant(title: str, tags: list[str] | None = None) -> bool:
+    """Retrocompatibilidad — ahora usa categorías dinámicas. Sin categorías excluidas = todo pasa."""
+    return True  # Sin filtro hardcodeado — el filtro real está en get_recent_trades
 
 
 class PolymarketClient:
@@ -79,58 +104,104 @@ class PolymarketClient:
 
     # ── Trades ────────────────────────────────────────────────────────
 
-    async def get_recent_trades(self, limit: int = 200) -> list[Trade]:
-        """Obtener trades recientes, filtrados y enriquecidos."""
+    async def get_recent_trades(self, limit: int = 200,
+                                excluded_categories: set | None = None) -> list[Trade]:
+        """Obtener trades recientes con paginación y filtrado dinámico por categorías.
+        Si excluded_categories está vacío o None → NO filtra nada → todos los trades pasan."""
+        excluded = excluded_categories or set()
+        exclude_re = _build_exclude_regex(excluded)
+
+        trades: list[Trade] = []
+        filtered_cat = 0
+        no_id = 0
+        raw_total = 0
+        pages_fetched = 0
+        page_size = 1000  # trades por página
+        max_pages = 3     # máximo 3 páginas = 3000 trades raw
+        cursor = None
+
         try:
-            fetch_limit = min(limit * 3, 3000)  # Máx 3000 trades raw por ciclo
-            response = await self._rate_limited_get(
-                f"{config.DATA_API_URL}/trades",
-                params={"limit": fetch_limit},
-            )
-            response.raise_for_status()
-            data = response.json()
+            while pages_fetched < max_pages and len(trades) < limit:
+                params = {"limit": page_size}
+                if cursor:
+                    params["next_cursor"] = cursor
 
-            trades: list[Trade] = []
-            filtered_cat = 0
-            size_skip = 0
-            no_id = 0
+                response = await self._rate_limited_get(
+                    f"{config.DATA_API_URL}/trades",
+                    params=params,
+                )
+                response.raise_for_status()
+                data = response.json()
+                pages_fetched += 1
 
-            for item in data:
-                try:
-                    # Trades no tienen title/tags — buscar en market cache
-                    cid = item.get("conditionId", item.get("market", item.get("condition_id", "")))
-                    if not cid:
-                        no_id += 1
-                        continue
+                # Si la respuesta es un dict con next_cursor (paginación)
+                items = data
+                if isinstance(data, dict):
+                    items = data.get("data", data.get("trades", []))
+                    cursor = data.get("next_cursor")
+                else:
+                    cursor = None  # lista plana, sin paginación
 
-                    # Filtrar por categoría usando market cache o título del trade
-                    market_data = self._market_cache.get(cid)
-                    filter_title = ""
-                    filter_tags = []
-                    if market_data:
-                        filter_title = market_data.get("question", "")
-                        cat = market_data.get("category", "")
-                        filter_tags = [cat] if cat else []
-                    else:
-                        # Sin cache: usar título directo del trade (Data API lo incluye)
-                        filter_title = item.get("title", "")
-                    if filter_title and not is_insider_relevant(filter_title, filter_tags):
-                        filtered_cat += 1
-                        continue
+                if not items:
+                    break
 
-                    trade = self._parse_trade(item)
-                    if trade:
-                        trades.append(trade)
+                raw_total += len(items)
 
-                    if len(trades) >= limit:
-                        break
-                except Exception as e:
-                    logger.warning("error_parseando_trade", error=str(e))
+                for item in items:
+                    try:
+                        cid = item.get("conditionId", item.get("market", item.get("condition_id", "")))
+                        if not cid:
+                            no_id += 1
+                            continue
+
+                        # Filtrar por categorías EXCLUIDAS del dashboard (dinámico)
+                        if excluded:
+                            market_data = self._market_cache.get(cid)
+                            filter_title = ""
+                            filter_tags = []
+                            if market_data:
+                                filter_title = market_data.get("question", "")
+                                cat = market_data.get("category", "")
+                                filter_tags = [cat] if cat else []
+                            else:
+                                filter_title = item.get("title", "")
+                            if is_category_excluded(filter_title, filter_tags, excluded, exclude_re):
+                                filtered_cat += 1
+                                continue
+
+                        # Filtrar formato basura (timestamps ET, etc.)
+                        title_check = item.get("title", "")
+                        if title_check and _ALWAYS_EXCLUDE_RE.search(title_check):
+                            filtered_cat += 1
+                            continue
+
+                        trade = self._parse_trade(item)
+                        if trade:
+                            trades.append(trade)
+
+                        if len(trades) >= limit:
+                            break
+                    except Exception as e:
+                        logger.warning("error_parseando_trade", error=str(e))
+
+                # Si no hay cursor o ya tenemos suficientes, salir
+                if not cursor or len(trades) >= limit:
+                    break
+
+            # Stats del pipeline
+            self._last_pipeline_stats = {
+                "raw_fetched": raw_total,
+                "pages": pages_fetched,
+                "filtered_category": filtered_cat,
+                "no_id": no_id,
+                "parsed": len(trades),
+                "excluded_cats_count": len(excluded),
+            }
 
             print(
-                f"Trades: {len(trades)} parseados, "
-                f"{filtered_cat} filtrados (categoría), {size_skip} filtrados (size), "
-                f"{no_id} sin ID",
+                f"Trades: {len(trades)} parseados de {raw_total} raw ({pages_fetched} pag), "
+                f"{filtered_cat} filtrados (categoría), {no_id} sin ID | "
+                f"Excluidas: {len(excluded)} cats",
                 flush=True,
             )
             return trades
@@ -138,6 +209,10 @@ class PolymarketClient:
         except httpx.HTTPError as e:
             logger.error("error_obteniendo_trades", error=str(e))
             return []
+
+    def get_pipeline_stats(self) -> dict:
+        """Devolver stats del último ciclo de trades."""
+        return getattr(self, '_last_pipeline_stats', {})
 
     # ── Markets ───────────────────────────────────────────────────────
 
