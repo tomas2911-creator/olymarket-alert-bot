@@ -553,6 +553,9 @@ class ConfigUpdate(BaseModel):
     sniper_min_cluster: int | None = None
     sniper_min_size: int | None = None
     sniper_points: int | None = None
+    # Whale Tracker
+    whale_tracker_min_size: int | None = None
+    whale_tracker_enabled: bool | None = None
     # Smart Money
     smart_wallet_min_winrate: float | None = None
     cooldown_hours: int | None = None
@@ -599,6 +602,8 @@ _CONFIG_MAP = {
     "sniper_min_cluster": ("sniper_min_cluster", "SNIPER_MIN_CLUSTER_SIZE"),
     "sniper_min_size": ("sniper_min_size", "SNIPER_MIN_TRADE_SIZE"),
     "sniper_points": ("sniper_points", "SNIPER_POINTS"),
+    "whale_tracker_min_size": ("whale_tracker_min_size", "WHALE_TRACKER_MIN_SIZE"),
+    "whale_tracker_enabled": ("whale_tracker_enabled", "WHALE_TRACKER_ENABLED"),
     "smart_wallet_min_winrate": ("smart_wallet_min_winrate", "SMART_WALLET_MIN_WINRATE"),
     "cooldown_hours": ("cooldown_hours", "COOLDOWN_HOURS"),
 }
@@ -669,6 +674,9 @@ async def get_config(request: Request):
         "sniper_min_cluster": _v("sniper_min_cluster", config.SNIPER_MIN_CLUSTER_SIZE),
         "sniper_min_size": _v("sniper_min_size", config.SNIPER_MIN_TRADE_SIZE),
         "sniper_points": _v("sniper_points", config.SNIPER_POINTS),
+        # Whale Tracker
+        "whale_tracker_min_size": _v("whale_tracker_min_size", config.WHALE_TRACKER_MIN_SIZE),
+        "whale_tracker_enabled": _v("whale_tracker_enabled", config.WHALE_TRACKER_ENABLED),
         # Smart Money
         "smart_wallet_min_winrate": _v("smart_wallet_min_winrate", config.SMART_WALLET_MIN_WINRATE),
         "cooldown_hours": _v("cooldown_hours", config.COOLDOWN_HOURS),
