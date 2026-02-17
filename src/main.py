@@ -461,6 +461,13 @@ class PolymarketAlertBot:
                     except Exception as e:
                         print(f"Error bankroll: {e}", flush=True)
 
+                # Cada 10 ciclos: mark-to-market de alertas paper abiertas
+                if cycle % 10 == 0:
+                    try:
+                        await self.update_paper_prices()
+                    except Exception as e:
+                        print(f"Error mark-to-market paper: {e}", flush=True)
+
                 # Cada 120 ciclos (~2h): ML retrain
                 if cycle % 120 == 0:
                     try:
@@ -548,6 +555,19 @@ class PolymarketAlertBot:
         await self.db.record_trade(trade)
         await self.db.update_wallet_stats(trade)
         self.trades_processed += 1
+
+        # Paper Trading: detectar si wallet cierra posición (SELL = exit)
+        if trade.side == "SELL" and trade.market_id and trade.price > 0:
+            try:
+                closed = await self.db.check_wallet_exit(
+                    trade.wallet_address, trade.market_id,
+                    trade.outcome, trade.price,
+                )
+                if closed > 0:
+                    print(f"[PaperPnL] Wallet {trade.wallet_address[:10]} cerró {closed} posición(es) "
+                          f"en {trade.market_slug} a ${trade.price:.2f}", flush=True)
+            except Exception as e:
+                print(f"[PaperPnL] Error check_wallet_exit: {e}", flush=True)
 
         # v10: Volume tracking para spike detection
         if self.alert_autotrader and trade.market_id:
@@ -826,6 +846,40 @@ class PolymarketAlertBot:
         if not clusters:
             return 0
         return max(len(c) for c in clusters)
+
+    # ── Paper Trading: Mark-to-Market ────────────────────────────────
+
+    async def update_paper_prices(self):
+        """Actualizar precio actual de alertas abiertas (mark-to-market)."""
+        try:
+            open_alerts = await self.db.get_open_paper_alerts()
+            if not open_alerts:
+                return
+
+            # Agrupar por market_id para no hacer requests duplicados
+            market_ids = list({a["market_id"] for a in open_alerts if a.get("market_id")})
+            if not market_ids:
+                return
+
+            updated = 0
+            async with PolymarketClient() as client:
+                for mid in market_ids[:20]:  # Max 20 mercados por ciclo
+                    try:
+                        price = await client.get_market_price(mid, "Yes")
+                        if price is not None:
+                            async with self.db._pool.acquire() as conn:
+                                await conn.execute("""
+                                    UPDATE alerts SET price_latest = $1, price_latest_at = NOW()
+                                    WHERE market_id = $2 AND resolved = FALSE AND exit_type IS NULL
+                                """, price, mid)
+                                updated += 1
+                    except Exception:
+                        pass
+
+            if updated > 0:
+                print(f"[PaperPnL] Mark-to-market: {updated} mercados actualizados", flush=True)
+        except Exception as e:
+            print(f"[PaperPnL] Error update_paper_prices: {e}", flush=True)
 
     # ── Baselines ─────────────────────────────────────────────────────
 

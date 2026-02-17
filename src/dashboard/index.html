@@ -2086,54 +2086,76 @@
             </div>
         </div>
 
-        <!-- ═══ v10: Alert PnL Panel ═══ -->
+        <!-- ═══ Paper Trading PnL Panel ═══ -->
         <div id="panel-alertpnl" class="hidden space-y-4">
             <div class="glass glow rounded-xl p-4">
-                <h3 class="text-sm font-semibold text-green-400 uppercase tracking-wider mb-3">PnL de Alert Trading</h3>
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-                    <div class="bg-gray-800/40 rounded-lg p-3 text-center">
-                        <div class="text-gray-500 text-[10px] uppercase">Total Trades</div>
+                <h3 class="text-sm font-semibold text-green-400 uppercase tracking-wider mb-1">Paper Trading — Señales del Bot</h3>
+                <p class="text-[10px] text-gray-500 mb-3">Tracking automático: PnL calculado por resolución de mercado o cuando la wallet cierra posición</p>
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
+                    <div class="bg-gray-800/40 rounded-lg p-2.5 text-center">
+                        <div class="text-gray-500 text-[10px] uppercase">Alertas BUY</div>
                         <div class="text-lg font-bold" id="apnl-total">0</div>
                     </div>
-                    <div class="bg-gray-800/40 rounded-lg p-3 text-center">
+                    <div class="bg-gray-800/40 rounded-lg p-2.5 text-center">
+                        <div class="text-gray-500 text-[10px] uppercase">Cerradas</div>
+                        <div class="text-lg font-bold text-cyan-400" id="apnl-closed">0</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2.5 text-center">
+                        <div class="text-gray-500 text-[10px] uppercase">Abiertas</div>
+                        <div class="text-lg font-bold text-yellow-400" id="apnl-open">0</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2.5 text-center">
                         <div class="text-gray-500 text-[10px] uppercase">Win Rate</div>
                         <div class="text-lg font-bold text-green-400" id="apnl-winrate">-</div>
                     </div>
-                    <div class="bg-gray-800/40 rounded-lg p-3 text-center">
+                    <div class="bg-gray-800/40 rounded-lg p-2.5 text-center">
                         <div class="text-gray-500 text-[10px] uppercase">PnL Total</div>
                         <div class="text-lg font-bold" id="apnl-pnl">$0</div>
                     </div>
-                    <div class="bg-gray-800/40 rounded-lg p-3 text-center">
-                        <div class="text-gray-500 text-[10px] uppercase">Mejor Trade</div>
+                    <div class="bg-gray-800/40 rounded-lg p-2.5 text-center">
+                        <div class="text-gray-500 text-[10px] uppercase">ROI</div>
+                        <div class="text-lg font-bold" id="apnl-roi">-</div>
+                    </div>
+                    <div class="bg-gray-800/40 rounded-lg p-2.5 text-center">
+                        <div class="text-gray-500 text-[10px] uppercase">Mejor</div>
                         <div class="text-lg font-bold text-green-400" id="apnl-best">-</div>
                     </div>
-                    <div class="bg-gray-800/40 rounded-lg p-3 text-center">
-                        <div class="text-gray-500 text-[10px] uppercase">Peor Trade</div>
+                    <div class="bg-gray-800/40 rounded-lg p-2.5 text-center">
+                        <div class="text-gray-500 text-[10px] uppercase">Peor</div>
                         <div class="text-lg font-bold text-red-400" id="apnl-worst">-</div>
                     </div>
+                </div>
+                <!-- Exits breakdown -->
+                <div class="flex gap-4 text-[10px] text-gray-500 mb-3">
+                    <span>Cerradas por resolución: <b class="text-cyan-400" id="apnl-res-exits">0</b></span>
+                    <span>Cerradas por wallet exit: <b class="text-purple-400" id="apnl-wal-exits">0</b></span>
+                    <span>PnL Promedio: <b class="text-gray-300" id="apnl-avg">$0</b></span>
                 </div>
                 <!-- PnL Chart -->
                 <div class="bg-gray-800/30 rounded-lg p-3 mb-4" style="height:220px">
                     <canvas id="apnl-chart-canvas"></canvas>
                 </div>
+                <!-- PnL by Score -->
+                <h4 class="text-xs text-gray-500 uppercase tracking-wider mb-2">PnL por Rango de Score</h4>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4" id="apnl-score-grid"></div>
                 <!-- Wallet Ranking -->
-                <h4 class="text-xs text-gray-500 uppercase tracking-wider mb-2">Top Wallets Copiadas</h4>
+                <h4 class="text-xs text-gray-500 uppercase tracking-wider mb-2">Top Wallets Alertadas</h4>
                 <div class="overflow-x-auto mb-4">
                     <table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                            <th class="text-left p-2">Wallet</th><th class="text-center p-2">Score</th><th class="text-center p-2">Win Rate</th><th class="text-right p-2">PnL</th><th class="text-right p-2">Vol</th>
+                            <th class="text-left p-2">Wallet</th><th class="text-center p-2">Score</th><th class="text-center p-2">W/L</th><th class="text-center p-2">Win%</th><th class="text-right p-2">PnL</th><th class="text-right p-2">Vol</th>
                         </tr></thead>
-                        <tbody id="apnl-wallets-body"><tr><td colspan="5" class="text-center text-gray-600 p-4">Cargando...</td></tr></tbody>
+                        <tbody id="apnl-wallets-body"><tr><td colspan="6" class="text-center text-gray-600 p-4">Cargando...</td></tr></tbody>
                     </table>
                 </div>
                 <!-- Recent Trades -->
-                <h4 class="text-xs text-gray-500 uppercase tracking-wider mb-2">Trades Recientes</h4>
+                <h4 class="text-xs text-gray-500 uppercase tracking-wider mb-2">Señales Recientes (Paper)</h4>
                 <div class="overflow-x-auto">
                     <table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                            <th class="text-left p-2">Fecha</th><th class="text-left p-2">Mercado</th><th class="text-center p-2">Side</th><th class="text-right p-2">$ Inv</th><th class="text-right p-2">Precio</th><th class="text-center p-2">Estado</th><th class="text-right p-2">PnL</th>
+                            <th class="text-left p-2">Fecha</th><th class="text-left p-2">Mercado</th><th class="text-center p-2">Outcome</th><th class="text-right p-2">$ Inv</th><th class="text-right p-2">Entry</th><th class="text-center p-2">Estado</th><th class="text-right p-2">Exit</th><th class="text-right p-2">PnL</th>
                         </tr></thead>
-                        <tbody id="apnl-trades-body"><tr><td colspan="7" class="text-center text-gray-600 p-4">Cargando...</td></tr></tbody>
+                        <tbody id="apnl-trades-body"><tr><td colspan="8" class="text-center text-gray-600 p-4">Cargando...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -4765,61 +4787,88 @@ async function loadKalshiArb(){
     }).join('');
 }
 
-// ── v10: Alert PnL ──
+// ── v10: Alert PnL (Paper Trading) ──
 let _apnlChart=null;
 async function loadAlertPnl(){
     const data=await fetchJson('/api/alert-pnl');
     if(!data)return;
     const s=data.stats||{};
-    document.getElementById('apnl-total').textContent=s.total_trades||0;
+    document.getElementById('apnl-total').textContent=s.buy_alerts||0;
+    document.getElementById('apnl-closed').textContent=s.closed_alerts||0;
+    document.getElementById('apnl-open').textContent=s.open_positions||0;
     const wr=s.win_rate;
     document.getElementById('apnl-winrate').textContent=wr!=null?wr.toFixed(1)+'%':'-';
     const pnl=s.total_pnl||0;
     document.getElementById('apnl-pnl').textContent='$'+pnl.toFixed(2);
     document.getElementById('apnl-pnl').className='text-lg font-bold '+(pnl>=0?'text-green-400':'text-red-400');
+    const roi=s.roi_pct||0;
+    document.getElementById('apnl-roi').textContent=roi.toFixed(1)+'%';
+    document.getElementById('apnl-roi').className='text-lg font-bold '+(roi>=0?'text-green-400':'text-red-400');
     document.getElementById('apnl-best').textContent=s.best_trade!=null?'$'+s.best_trade.toFixed(2):'-';
     document.getElementById('apnl-worst').textContent=s.worst_trade!=null?'$'+s.worst_trade.toFixed(2):'-';
+    document.getElementById('apnl-res-exits').textContent=s.resolution_exits||0;
+    document.getElementById('apnl-wal-exits').textContent=s.wallet_exits||0;
+    document.getElementById('apnl-avg').textContent='$'+(s.avg_pnl||0).toFixed(2);
     // PnL Chart
     const hist=data.pnl_history||[];
     if(hist.length>0){
         const ctx=document.getElementById('apnl-chart-canvas').getContext('2d');
         if(_apnlChart)_apnlChart.destroy();
-        let cumPnl=0;
-        const cumData=hist.map(h=>{cumPnl+=h.pnl||0;return cumPnl;});
-        _apnlChart=new Chart(ctx,{type:'line',data:{labels:hist.map(h=>h.date||''),datasets:[{label:'PnL Acumulado',data:cumData,borderColor:'#6c5ce7',backgroundColor:'rgba(108,92,231,0.1)',fill:true,tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6b7280',maxTicksLimit:10}},y:{ticks:{color:'#6b7280',callback:v=>'$'+v}}}}});
+        _apnlChart=new Chart(ctx,{type:'line',data:{labels:hist.map(h=>h.date||''),datasets:[{label:'PnL Acumulado',data:hist.map(h=>h.cumulative_pnl||0),borderColor:'#6c5ce7',backgroundColor:'rgba(108,92,231,0.1)',fill:true,tension:0.3,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6b7280',maxTicksLimit:10}},y:{ticks:{color:'#6b7280',callback:v=>'$'+v}}}}});
     }
+    // PnL by Score
+    const scores=data.pnl_by_score||[];
+    const sg=document.getElementById('apnl-score-grid');
+    if(scores.length>0){
+        sg.innerHTML=scores.map(sc=>{
+            const c=sc.total_pnl>=0?'text-green-400':'text-red-400';
+            return`<div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                <div class="text-[10px] text-gray-500">Score ${sc.score_range}</div>
+                <div class="text-sm font-bold ${c}">$${sc.total_pnl.toFixed(0)}</div>
+                <div class="text-[10px] text-gray-500">${sc.wins}W/${sc.losses}L (${sc.win_rate.toFixed(0)}%)</div>
+                <div class="text-[10px] text-gray-600">avg $${sc.avg_pnl.toFixed(2)}</div>
+            </div>`;
+        }).join('');
+    }else{sg.innerHTML='<div class="text-gray-600 text-xs col-span-5">Sin datos de score aún</div>';}
     // Wallet ranking
     const wallets=data.wallet_ranking||[];
     const wb=document.getElementById('apnl-wallets-body');
-    if(wallets.length===0){wb.innerHTML='<tr><td colspan="5" class="text-center text-gray-600 p-4">Sin datos</td></tr>';
+    if(wallets.length===0){wb.innerHTML='<tr><td colspan="6" class="text-center text-gray-600 p-4">Sin datos</td></tr>';
     }else{
         wb.innerHTML=wallets.map(w=>`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
             <td class="p-2"><a href="${polyProfile(w.address||'')}" target="_blank" class="text-purple-400 hover:text-purple-300">${w.name||w.address?.slice(0,10)||'?'}</a></td>
             <td class="p-2 text-center">${(w.score||0).toFixed(0)}</td>
+            <td class="p-2 text-center">${w.wins||0}/${w.losses||0}</td>
             <td class="p-2 text-center">${(w.win_rate||0).toFixed(0)}%</td>
             <td class="p-2 text-right font-mono ${(w.total_pnl||0)>=0?'text-green-400':'text-red-400'}">$${(w.total_pnl||0).toFixed(2)}</td>
             <td class="p-2 text-right text-gray-500">$${fmt(w.volume||0)}</td>
         </tr>`).join('');
     }
-    // Recent trades
+    // Recent trades (paper)
     const trades=data.recent_trades||[];
     const tb=document.getElementById('apnl-trades-body');
-    if(trades.length===0){tb.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-4">Sin trades</td></tr>';
+    if(trades.length===0){tb.innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-4">Sin señales aún — aparecerán cuando el bot genere alertas BUY</td></tr>';
     }else{
         tb.innerHTML=trades.slice(0,30).map(t=>{
-            const pnlVal=t.pnl||0;
-            const statusBadge=t.status==='filled'?(t.resolved?
-                (t.result==='win'?'<span class="text-green-400">✅ Win</span>':'<span class="text-red-400">❌ Loss</span>')
-                :'<span class="text-yellow-400">⏳ Abierto</span>')
-                :'<span class="text-gray-500">'+t.status+'</span>';
+            const pnlVal=t.paper_pnl;
+            let statusBadge;
+            if(t.exit_type==='resolution'){
+                statusBadge=t.was_correct?'<span class="text-green-400">✅ Win</span>':'<span class="text-red-400">❌ Loss</span>';
+            }else if(t.exit_type==='wallet_exit'){
+                statusBadge='<span class="text-purple-400">🔄 Exit</span>';
+            }else{
+                statusBadge='<span class="text-yellow-400">⏳ Abierta</span>';
+            }
+            const exitP=t.exit_price!=null?t.exit_price.toFixed(2):(t.price_latest!=null?t.price_latest.toFixed(2):'-');
             return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
                 <td class="p-2 text-gray-400 text-[10px]">${fmtDate(t.created_at)}</td>
-                <td class="p-2 max-w-[200px] truncate">${(t.market_question||t.market_slug||'').slice(0,40)}</td>
+                <td class="p-2 max-w-[200px] truncate">${(t.market_question||t.market_slug||'').slice(0,45)}</td>
                 <td class="p-2 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] ${t.outcome==='Yes'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">${t.outcome||''}</span></td>
-                <td class="p-2 text-right font-mono">$${(t.size_usd||0).toFixed(2)}</td>
+                <td class="p-2 text-right font-mono">$${(t.size||0).toFixed(0)}</td>
                 <td class="p-2 text-right font-mono">${(t.price||0).toFixed(2)}</td>
                 <td class="p-2 text-center">${statusBadge}</td>
-                <td class="p-2 text-right font-mono ${pnlVal>=0?'text-green-400':'text-red-400'}">${pnlVal?'$'+pnlVal.toFixed(2):'-'}</td>
+                <td class="p-2 text-right font-mono text-gray-400">${exitP}</td>
+                <td class="p-2 text-right font-mono ${pnlVal!=null?(pnlVal>=0?'text-green-400':'text-red-400'):'text-gray-600'}">${pnlVal!=null?'$'+pnlVal.toFixed(2):'-'}</td>
             </tr>`;
         }).join('');
     }

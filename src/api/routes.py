@@ -2365,24 +2365,28 @@ async def trigger_complement_scan(request: Request):
 
 @router.get("/api/alert-pnl")
 async def get_alert_pnl(request: Request):
-    """Obtener PnL de alertas (simulado basado en price impact)."""
+    """Paper Trading PnL — trackea todas las alertas BUY como posiciones virtuales.
+    PnL se calcula por resolución del mercado o por wallet exit (SELL detectado)."""
     user_id = await get_user_id(request)
     db = request.app.state.db
 
-    # Estadísticas de alert autotrades
-    stats = await db.get_alert_autotrade_stats(user_id)
+    # Estadísticas generales de paper trading
+    stats = await db.get_paper_trading_stats(user_id)
 
-    # Historial de PnL por día
-    pnl_history = await db.get_alert_pnl_history(days=30, user_id=user_id)
+    # Historial de PnL por día (para gráfico de curva)
+    pnl_history = await db.get_paper_pnl_history(days=60, user_id=user_id)
 
-    # Ranking de wallets por profit
-    wallet_ranking = await db.get_alert_wallet_ranking(limit=15)
+    # Ranking de wallets alertadas por profit
+    wallet_ranking = await db.get_paper_wallet_ranking(limit=15, user_id=user_id)
 
-    # Trades abiertos
-    open_trades = await db.get_open_alert_autotrades(user_id)
+    # Posiciones abiertas (alertas BUY sin resolver ni cerrar)
+    open_trades = await db.get_open_paper_alerts(user_id)
 
-    # Trades recientes
-    recent_trades = await db.get_alert_autotrades(hours=168, limit=50, user_id=user_id)
+    # Trades cerrados recientes
+    recent_trades = await db.get_paper_recent_trades(limit=50, user_id=user_id)
+
+    # PnL por rango de score (análisis de calidad de señales)
+    pnl_by_score = await db.get_paper_pnl_by_score(user_id)
 
     return {
         "stats": stats,
@@ -2390,6 +2394,7 @@ async def get_alert_pnl(request: Request):
         "wallet_ranking": wallet_ranking,
         "open_trades": open_trades,
         "recent_trades": recent_trades,
+        "pnl_by_score": pnl_by_score,
     }
 
 

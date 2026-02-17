@@ -207,6 +207,12 @@ class Database:
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS pnl_calculated BOOLEAN DEFAULT FALSE",
                 # Alerts: resolved_at para backtest
                 "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ",
+                # Paper Trading PnL
+                "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS paper_pnl DOUBLE PRECISION",
+                "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS paper_shares DOUBLE PRECISION",
+                "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS exit_price DOUBLE PRECISION",
+                "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS exit_type TEXT",  # 'resolution' o 'wallet_exit'
+                "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS exit_at TIMESTAMPTZ",
             ]
             for m in migrations:
                 try:
@@ -796,7 +802,43 @@ class Database:
                 WHERE condition_id = $2
             """, resolution, condition_id)
 
-            # Actualizar alertas de este mercado (BUY: outcome=resolution, SELL: outcome!=resolution)
+            # Actualizar alertas de este mercado con was_correct + paper PnL
+            # PnL formula: shares = size / price, won → shares*(1-price), lost → -size
+            await conn.execute("""
+                UPDATE alerts SET resolved = TRUE, resolution = $1,
+                    resolved_at = NOW(),
+                    exit_type = COALESCE(exit_type, 'resolution'),
+                    was_correct = CASE
+                        WHEN side = 'BUY' THEN (outcome = $1)
+                        WHEN side = 'SELL' THEN (outcome != $1)
+                        ELSE FALSE
+                    END,
+                    paper_shares = CASE WHEN COALESCE(price, 0) > 0
+                        THEN size / price ELSE 0 END,
+                    exit_price = CASE
+                        WHEN side = 'BUY' AND outcome = $1 THEN 1.0
+                        WHEN side = 'BUY' AND outcome != $1 THEN 0.0
+                        WHEN side = 'SELL' AND outcome != $1 THEN 1.0
+                        WHEN side = 'SELL' AND outcome = $1 THEN 0.0
+                        ELSE 0.0 END,
+                    exit_at = NOW(),
+                    paper_pnl = CASE WHEN COALESCE(price, 0) > 0 THEN
+                        CASE
+                            WHEN side = 'BUY' AND outcome = $1
+                                THEN (size / price) * (1.0 - price)
+                            WHEN side = 'BUY' AND outcome != $1
+                                THEN -size
+                            WHEN side = 'SELL' AND outcome != $1
+                                THEN (size / price) * (1.0 - price)
+                            WHEN side = 'SELL' AND outcome = $1
+                                THEN -size
+                            ELSE 0 END
+                        ELSE 0 END
+                WHERE market_id = $2 AND resolved = FALSE
+                    AND exit_type IS NULL  -- no sobreescribir wallet_exit
+            """, resolution, condition_id)
+
+            # Resolver alertas ya cerradas por wallet (actualizar was_correct pero no PnL)
             await conn.execute("""
                 UPDATE alerts SET resolved = TRUE, resolution = $1,
                     was_correct = CASE
@@ -805,6 +847,7 @@ class Database:
                         ELSE FALSE
                     END
                 WHERE market_id = $2 AND resolved = FALSE
+                    AND exit_type = 'wallet_exit'
             """, resolution, condition_id)
 
             # Actualizar win/loss de wallets (solo alertas)
@@ -863,6 +906,256 @@ class Database:
                         correct_markets = COALESCE(correct_markets, 0) + $3
                     WHERE address = $4
                 """, pnl_sum, cost_sum, correct_inc, addr)
+
+    # ── Paper Trading PnL ────────────────────────────────────────────
+
+    async def check_wallet_exit(self, wallet: str, market_id: str,
+                                outcome: str, exit_price: float) -> int:
+        """Marcar alertas abiertas de esta wallet como cerradas por wallet exit.
+        Retorna cantidad de alertas cerradas."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT id, size, price FROM alerts
+                WHERE wallet_address = $1 AND market_id = $2
+                  AND outcome = $3 AND side = 'BUY'
+                  AND resolved = FALSE AND exit_type IS NULL
+            """, wallet.lower(), market_id, outcome)
+
+            closed = 0
+            for r in rows:
+                entry_price = r["price"] or 0
+                if entry_price <= 0:
+                    continue
+                shares = r["size"] / entry_price
+                pnl = shares * (exit_price - entry_price)
+                await conn.execute("""
+                    UPDATE alerts SET
+                        exit_type = 'wallet_exit',
+                        exit_price = $1,
+                        exit_at = NOW(),
+                        paper_shares = $2,
+                        paper_pnl = $3
+                    WHERE id = $4
+                """, exit_price, shares, pnl, r["id"])
+                closed += 1
+            return closed
+
+    async def get_paper_trading_stats(self, user_id: int = 1) -> dict:
+        """Estadísticas de paper trading basadas en alertas."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT
+                        COUNT(*) as total_alerts,
+                        COUNT(*) FILTER (WHERE side = 'BUY') as buy_alerts,
+                        COUNT(*) FILTER (WHERE paper_pnl IS NOT NULL) as closed_alerts,
+                        COUNT(*) FILTER (WHERE paper_pnl IS NOT NULL AND paper_pnl > 0) as wins,
+                        COUNT(*) FILTER (WHERE paper_pnl IS NOT NULL AND paper_pnl <= 0) as losses,
+                        COUNT(*) FILTER (WHERE resolved = FALSE AND exit_type IS NULL AND side = 'BUY') as open_positions,
+                        COALESCE(SUM(paper_pnl) FILTER (WHERE paper_pnl IS NOT NULL), 0) as total_pnl,
+                        COALESCE(SUM(size) FILTER (WHERE side = 'BUY'), 0) as total_invested,
+                        COALESCE(MAX(paper_pnl) FILTER (WHERE paper_pnl IS NOT NULL), 0) as best_trade,
+                        COALESCE(MIN(paper_pnl) FILTER (WHERE paper_pnl IS NOT NULL), 0) as worst_trade,
+                        COALESCE(AVG(paper_pnl) FILTER (WHERE paper_pnl IS NOT NULL), 0) as avg_pnl,
+                        COUNT(*) FILTER (WHERE exit_type = 'wallet_exit') as wallet_exits,
+                        COUNT(*) FILTER (WHERE exit_type = 'resolution') as resolution_exits
+                    FROM alerts WHERE user_id = $1
+                """, user_id)
+                if not row:
+                    return {}
+                total_closed = int(row["wins"] or 0) + int(row["losses"] or 0)
+                win_rate = (int(row["wins"] or 0) / total_closed * 100) if total_closed > 0 else 0
+                total_invested = float(row["total_invested"] or 0)
+                total_pnl = float(row["total_pnl"] or 0)
+                roi = (total_pnl / total_invested * 100) if total_invested > 0 else 0
+                return {
+                    "total_alerts": int(row["total_alerts"] or 0),
+                    "buy_alerts": int(row["buy_alerts"] or 0),
+                    "closed_alerts": total_closed,
+                    "open_positions": int(row["open_positions"] or 0),
+                    "wins": int(row["wins"] or 0),
+                    "losses": int(row["losses"] or 0),
+                    "win_rate": round(win_rate, 1),
+                    "total_pnl": round(total_pnl, 2),
+                    "total_invested": round(total_invested, 2),
+                    "roi_pct": round(roi, 1),
+                    "best_trade": round(float(row["best_trade"] or 0), 2),
+                    "worst_trade": round(float(row["worst_trade"] or 0), 2),
+                    "avg_pnl": round(float(row["avg_pnl"] or 0), 2),
+                    "wallet_exits": int(row["wallet_exits"] or 0),
+                    "resolution_exits": int(row["resolution_exits"] or 0),
+                }
+        except Exception as e:
+            print(f"[DB] get_paper_trading_stats error: {e}", flush=True)
+            return {}
+
+    async def get_paper_pnl_history(self, days: int = 30, user_id: int = 1) -> list[dict]:
+        """Historial diario de paper PnL para gráfico."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT DATE(COALESCE(exit_at, resolved_at)) as date,
+                           SUM(paper_pnl) as daily_pnl,
+                           COUNT(*) as trades,
+                           SUM(CASE WHEN paper_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                           SUM(CASE WHEN paper_pnl <= 0 THEN 1 ELSE 0 END) as losses
+                    FROM alerts
+                    WHERE paper_pnl IS NOT NULL
+                      AND COALESCE(exit_at, resolved_at) > NOW() - INTERVAL '1 day' * $1
+                      AND user_id = $2
+                    GROUP BY DATE(COALESCE(exit_at, resolved_at))
+                    ORDER BY date ASC
+                """, days, user_id)
+                result = []
+                cumulative = 0
+                for r in rows:
+                    daily = float(r["daily_pnl"] or 0)
+                    cumulative += daily
+                    result.append({
+                        "date": r["date"].isoformat() if r["date"] else "",
+                        "pnl": round(daily, 2),
+                        "cumulative_pnl": round(cumulative, 2),
+                        "trades": int(r["trades"] or 0),
+                        "wins": int(r["wins"] or 0),
+                        "losses": int(r["losses"] or 0),
+                    })
+                return result
+        except Exception as e:
+            print(f"[DB] get_paper_pnl_history error: {e}", flush=True)
+            return []
+
+    async def get_paper_wallet_ranking(self, limit: int = 20, user_id: int = 1) -> list[dict]:
+        """Ranking de wallets alertadas por paper PnL."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        a.wallet_address as address,
+                        COALESCE(w.name, w.pseudonym) as name,
+                        COUNT(*) as total_trades,
+                        AVG(a.score) as avg_score,
+                        SUM(CASE WHEN a.paper_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                        SUM(CASE WHEN a.paper_pnl <= 0 THEN 1 ELSE 0 END) as losses,
+                        COALESCE(SUM(a.paper_pnl), 0) as total_pnl,
+                        COALESCE(SUM(a.size), 0) as volume
+                    FROM alerts a
+                    LEFT JOIN wallets w ON a.wallet_address = w.address
+                    WHERE a.paper_pnl IS NOT NULL AND a.user_id = $2
+                    GROUP BY a.wallet_address, w.name, w.pseudonym
+                    ORDER BY SUM(a.paper_pnl) DESC
+                    LIMIT $1
+                """, limit, user_id)
+                result = []
+                for r in rows:
+                    total = int(r["wins"] or 0) + int(r["losses"] or 0)
+                    result.append({
+                        "address": r["address"],
+                        "name": r["name"],
+                        "total_trades": int(r["total_trades"] or 0),
+                        "score": round(float(r["avg_score"] or 0), 1),
+                        "wins": int(r["wins"] or 0),
+                        "losses": int(r["losses"] or 0),
+                        "win_rate": round(int(r["wins"] or 0) / max(total, 1) * 100, 1),
+                        "total_pnl": round(float(r["total_pnl"] or 0), 2),
+                        "volume": round(float(r["volume"] or 0), 0),
+                    })
+                return result
+        except Exception as e:
+            print(f"[DB] get_paper_wallet_ranking error: {e}", flush=True)
+            return []
+
+    async def get_paper_recent_trades(self, limit: int = 50, user_id: int = 1) -> list[dict]:
+        """Trades recientes del paper trading (alertas BUY con PnL info)."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        a.id, a.created_at, a.market_question, a.market_slug,
+                        a.wallet_address, a.side, a.outcome, a.size, a.price,
+                        a.score, a.resolved, a.was_correct, a.paper_pnl,
+                        a.paper_shares, a.exit_price, a.exit_type, a.exit_at,
+                        a.price_at_alert, a.price_latest,
+                        COALESCE(w.name, w.pseudonym) as wallet_name
+                    FROM alerts a
+                    LEFT JOIN wallets w ON a.wallet_address = w.address
+                    WHERE a.side = 'BUY' AND a.user_id = $2
+                    ORDER BY a.created_at DESC
+                    LIMIT $1
+                """, limit, user_id)
+                return [_serialize_row(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_paper_recent_trades error: {e}", flush=True)
+            return []
+
+    async def get_open_paper_alerts(self, user_id: int = 1) -> list[dict]:
+        """Alertas BUY abiertas (posiciones paper sin cerrar)."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        a.id, a.created_at, a.market_question, a.market_slug,
+                        a.market_id, a.wallet_address, a.outcome, a.size, a.price,
+                        a.score, a.price_at_alert, a.price_latest,
+                        COALESCE(w.name, w.pseudonym) as wallet_name
+                    FROM alerts a
+                    LEFT JOIN wallets w ON a.wallet_address = w.address
+                    WHERE a.side = 'BUY' AND a.resolved = FALSE
+                      AND a.exit_type IS NULL AND a.user_id = $1
+                    ORDER BY a.created_at DESC
+                """, user_id)
+                result = []
+                for r in rows:
+                    row = _serialize_row(r)
+                    # Calcular unrealized PnL con price_latest
+                    entry_p = float(r["price"] or 0)
+                    current_p = float(r["price_latest"] or r["price_at_alert"] or entry_p)
+                    size = float(r["size"] or 0)
+                    if entry_p > 0:
+                        shares = size / entry_p
+                        row["paper_shares"] = round(shares, 2)
+                        row["unrealized_pnl"] = round(shares * (current_p - entry_p), 2)
+                        row["current_price"] = round(current_p, 4)
+                    result.append(row)
+                return result
+        except Exception as e:
+            print(f"[DB] get_open_paper_alerts error: {e}", flush=True)
+            return []
+
+    async def get_paper_pnl_by_score(self, user_id: int = 1) -> list[dict]:
+        """PnL promedio agrupado por rango de score (para análisis de señales)."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT
+                        CASE
+                            WHEN score >= 15 THEN '15+'
+                            WHEN score >= 12 THEN '12-14'
+                            WHEN score >= 9 THEN '9-11'
+                            WHEN score >= 6 THEN '6-8'
+                            ELSE '3-5'
+                        END as score_range,
+                        COUNT(*) as count,
+                        AVG(paper_pnl) as avg_pnl,
+                        SUM(paper_pnl) as total_pnl,
+                        SUM(CASE WHEN paper_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                        SUM(CASE WHEN paper_pnl <= 0 THEN 1 ELSE 0 END) as losses
+                    FROM alerts
+                    WHERE paper_pnl IS NOT NULL AND side = 'BUY' AND user_id = $1
+                    GROUP BY score_range
+                    ORDER BY MIN(score) DESC
+                """, user_id)
+                return [{
+                    "score_range": r["score_range"],
+                    "count": int(r["count"] or 0),
+                    "avg_pnl": round(float(r["avg_pnl"] or 0), 2),
+                    "total_pnl": round(float(r["total_pnl"] or 0), 2),
+                    "wins": int(r["wins"] or 0),
+                    "losses": int(r["losses"] or 0),
+                    "win_rate": round(int(r["wins"] or 0) / max(int(r["count"] or 1), 1) * 100, 1),
+                } for r in rows]
+        except Exception as e:
+            print(f"[DB] get_paper_pnl_by_score error: {e}", flush=True)
+            return []
 
     # ── Clustering ────────────────────────────────────────────────────
 
