@@ -760,11 +760,15 @@ class Database:
                 (wallet_address, market_id, market_question, market_slug,
                  side, outcome, size, price, score, triggers,
                  cluster_wallets, days_to_close, wallet_hit_rate, user_id,
-                 created_at, price_at_alert, is_copy_trade, result, pnl)
+                 created_at, price_at_alert, is_copy_trade, result, pnl,
+                 resolved, resolution, was_correct, resolved_at,
+                 paper_pnl, paper_shares, exit_price, exit_type, exit_at)
                 SELECT wallet_address, market_id, market_question, market_slug,
                        side, outcome, size, price, score, triggers,
                        cluster_wallets, days_to_close, wallet_hit_rate, $1,
-                       created_at, price_at_alert, is_copy_trade, result, pnl
+                       created_at, price_at_alert, is_copy_trade, result, pnl,
+                       resolved, resolution, was_correct, resolved_at,
+                       paper_pnl, paper_shares, exit_price, exit_type, exit_at
                 FROM alerts WHERE user_id = 1
             """, new_user_id)
             copied = await conn.fetchval(
@@ -1108,10 +1112,14 @@ class Database:
                     row = _serialize_row(r)
                     # Calcular unrealized PnL con price_latest
                     entry_p = float(r["price"] or 0)
-                    current_p = float(r["price_latest"] or r["price_at_alert"] or entry_p)
+                    latest_p = float(r["price_latest"] or r["price_at_alert"] or 0)
+                    outcome = r.get("outcome", "Yes")
                     size = float(r["size"] or 0)
-                    if entry_p > 0:
+                    if entry_p > 0 and latest_p > 0:
                         shares = size / entry_p
+                        # price_latest es siempre el precio de Yes
+                        # Si outcome = No, precio actual del No = 1.0 - yes_price
+                        current_p = latest_p if outcome == "Yes" else (1.0 - latest_p)
                         row["paper_shares"] = round(shares, 2)
                         row["unrealized_pnl"] = round(shares * (current_p - entry_p), 2)
                         row["current_price"] = round(current_p, 4)
