@@ -328,6 +328,13 @@ async def get_whale_stats(request: Request, hours: int = 24, min_size: float = 1
     return stats
 
 
+@router.get("/api/whales/wallet/{address}/history")
+async def get_whale_wallet_history(request: Request, address: str, limit: int = 50):
+    db = request.app.state.db
+    data = await db.get_whale_wallet_history(address=address, limit=limit)
+    return data
+
+
 # ── v11: News Feed ────────────────────────────────────────────────────
 
 @router.get("/api/news/feed")

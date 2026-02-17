@@ -2374,13 +2374,16 @@
                                 <th class="text-left p-2">Wallet</th>
                                 <th class="text-center p-2">Side</th>
                                 <th class="text-right p-2">Monto</th>
-                                <th class="text-center p-2">Outcome</th>
                                 <th class="text-right p-2">Precio</th>
+                                <th class="text-right p-2">PnL</th>
+                                <th class="text-center p-2">Estado</th>
+                                <th class="text-center p-2">Badges</th>
                                 <th class="text-center p-2">Win%</th>
                                 <th class="text-center p-2">Score</th>
+                                <th class="text-center p-2">Cierre</th>
                                 <th class="text-center p-2 w-8"></th>
                             </tr></thead>
-                            <tbody id="whale-feed-body"><tr><td colspan="10" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
+                            <tbody id="whale-feed-body"><tr><td colspan="13" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -2958,6 +2961,38 @@
                     <th class="px-3 py-2 text-center">Resultado</th>
                 </tr></thead>
                 <tbody id="wm-alerts-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Whale Wallet History Modal -->
+<div id="whale-hist-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="bg-gray-900 border border-cyan-800/50 rounded-xl shadow-2xl w-[90vw] max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b border-gray-800/50">
+            <div>
+                <h3 class="text-sm font-semibold text-cyan-400 uppercase tracking-wider">Historial Whale</h3>
+                <p class="text-[10px] text-gray-500" id="wh-hist-name">-</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="grid grid-cols-4 gap-2 text-center">
+                    <div><div class="text-[9px] text-gray-500">Trades</div><div class="text-xs font-bold text-gray-300" id="wh-hist-total">0</div></div>
+                    <div><div class="text-[9px] text-gray-500">PnL</div><div class="text-xs font-bold" id="wh-hist-pnl">$0</div></div>
+                    <div><div class="text-[9px] text-gray-500">Win%</div><div class="text-xs font-bold" id="wh-hist-wr">-</div></div>
+                    <div><div class="text-[9px] text-gray-500">W/L</div><div class="text-xs font-bold" id="wh-hist-wl">0/0</div></div>
+                </div>
+                <button onclick="document.getElementById('whale-hist-modal').classList.add('hidden')" class="text-gray-500 hover:text-white text-lg px-2">✕</button>
+            </div>
+        </div>
+        <div class="overflow-auto flex-1 p-4">
+            <table class="w-full text-xs">
+                <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                    <th class="text-left p-2">Fecha</th><th class="text-left p-2">Mercado</th>
+                    <th class="text-center p-2">Side</th><th class="text-right p-2">Monto</th>
+                    <th class="text-right p-2">Precio</th><th class="text-right p-2">PnL</th>
+                    <th class="text-center p-2">Estado</th>
+                </tr></thead>
+                <tbody id="wh-hist-body"><tr><td colspan="7" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -5454,37 +5489,74 @@ async function loadWhaleData(){
 }
 async function loadWhaleFeed(minSize){
     const fb=document.getElementById('whale-feed-body');
-    fb.innerHTML='<tr><td colspan="10" class="text-center text-cyan-400 p-6">Cargando whale trades...</td></tr>';
+    fb.innerHTML='<tr><td colspan="13" class="text-center text-cyan-400 p-6">Cargando whale trades...</td></tr>';
     const side=document.getElementById('wh-side')?.value||'';
     const hours=document.getElementById('wh-hours')?.value||24;
     const data=await fetchJson(`/api/whales/feed?min_size=${minSize}&hours=${hours}&side=${side}&limit=200`);
-    if(!data){fb.innerHTML='<tr><td colspan="10" class="text-center text-red-400 p-6">Error al cargar</td></tr>';return;}
+    if(!data){fb.innerHTML='<tr><td colspan="13" class="text-center text-red-400 p-6">Error al cargar</td></tr>';return;}
     const trades=data.trades||[];
     document.getElementById('wh-total').textContent=trades.length;
-    if(!trades.length){fb.innerHTML='<tr><td colspan="10" class="text-center text-gray-600 p-6">No hay whale trades en este período</td></tr>';return;}
+    if(!trades.length){fb.innerHTML='<tr><td colspan="13" class="text-center text-gray-600 p-6">No hay whale trades en este período</td></tr>';return;}
     fb.innerHTML=trades.map(t=>{
         const d=t.created_at?new Date(t.created_at):null;
         const timeStr=d?d.toLocaleString('es-CL',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
         const sideC=t.side==='BUY'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400';
-        const outC=t.outcome==='Yes'?'bg-green-900/30 text-green-400':'bg-red-900/30 text-red-400';
         const addr=t.wallet_address||'';
-        const name=t.wallet_name||addr.slice(0,6)+'...'+addr.slice(-4);
+        const nameRaw=t.wallet_name||addr.slice(0,6)+'...'+addr.slice(-4);
+        const name=nameRaw.replace(/[<>"]/g,'');
         const wrC=t.win_rate>=60?'text-green-400':t.win_rate>=40?'text-yellow-400':'text-gray-500';
         const sc=t.score||0;
         const scC=sc>=8?'text-green-400':sc>=5?'text-yellow-400':'text-gray-500';
         const star=t.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400';
-        const mq=(t.market_question||'').length>50?t.market_question.slice(0,50)+'…':t.market_question||'';
+        const mq=(t.market_question||'').length>45?t.market_question.slice(0,45)+'…':t.market_question||'';
         const mqSafe=(t.market_question||'').replace(/"/g,'&quot;');
+        // PnL
+        let pnlHtml='-';
+        if(t.pnl!==null&&t.pnl!==undefined){
+            const pC=t.pnl>=0?'text-green-400':'text-red-400';
+            const sign=t.pnl>=0?'+':'';
+            pnlHtml=`<span class="${pC} font-mono font-bold">${sign}$${Math.abs(t.pnl).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})}</span>`;
+            if(t.pnl_pct!==null)pnlHtml+=`<br><span class="text-[9px] ${pC}">${sign}${t.pnl_pct}%</span>`;
+        }
+        // Status
+        let statusHtml='<span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-700/40 text-gray-400">Open</span>';
+        if(t.status==='won')statusHtml='<span class="px-1.5 py-0.5 rounded text-[10px] bg-green-900/40 text-green-400 font-bold">WON</span>';
+        else if(t.status==='lost')statusHtml='<span class="px-1.5 py-0.5 rounded text-[10px] bg-red-900/40 text-red-400 font-bold">LOST</span>';
+        // Badges
+        let badges=[];
+        if(t.streak>=2){
+            const sIcon=t.streak_type==='win'?'🔥':'❄️';
+            const sC=t.streak_type==='win'?'text-orange-400':'text-blue-400';
+            badges.push(`<span class="${sC}" title="Racha ${t.streak} ${t.streak_type==='win'?'victorias':'derrotas'}">${sIcon}${t.streak}</span>`);
+        }
+        if(t.market_repeat_count>0)badges.push(`<span class="text-purple-400" title="Acumulación: ${t.market_repeat_count+1} trades en este mercado">🔄${t.market_repeat_count+1}</span>`);
+        if(t.alert_match){const trigs=(t.alert_triggers||'').replace(/[<>"]/g,'');badges.push(`<span class="text-yellow-400" title="Alert match: bot también detectó esta señal${trigs?' — '+trigs:''}">🎯</span>`);}
+        if(t.side_consensus_total>1){
+            const cC=t.side_consensus_pct>=80?'text-green-400':t.side_consensus_pct>=60?'text-yellow-400':'text-gray-500';
+            badges.push(`<span class="${cC}" title="${t.side_consensus_pct}% de ${t.side_consensus_total} whales en mismo side">👥${t.side_consensus_pct}%</span>`);
+        }
+        const badgesHtml=badges.length?badges.join(' '):'<span class="text-gray-700">-</span>';
+        // Cierre
+        let closeHtml='-';
+        if(t.status==='open'&&t.time_to_close_hours!==null&&t.time_to_close_hours!==undefined){
+            const h=t.time_to_close_hours;
+            if(h<1)closeHtml=`<span class="text-red-400 font-bold">${Math.round(h*60)}m</span>`;
+            else if(h<24)closeHtml=`<span class="text-yellow-400">${h.toFixed(0)}h</span>`;
+            else closeHtml=`<span class="text-gray-400">${(h/24).toFixed(0)}d</span>`;
+        }else if(t.status!=='open'){closeHtml='<span class="text-gray-600 text-[10px]">Cerrado</span>';}
         return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
             <td class="p-2 text-gray-400 whitespace-nowrap">${timeStr}</td>
-            <td class="p-2 text-gray-300 max-w-[200px] truncate" title="${mqSafe}">${mq}</td>
-            <td class="p-2"><a href="${polyProfile(addr)}" target="_blank" class="text-cyan-400 hover:underline">${name}</a></td>
+            <td class="p-2 text-gray-300 max-w-[180px] truncate" title="${mqSafe}">${mq}</td>
+            <td class="p-2"><a href="javascript:void(0)" onclick="showWhaleWalletHistory('${addr}','${name.replace(/'/g,"\\'")}')" class="text-cyan-400 hover:underline">${name}</a></td>
             <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${sideC}">${t.side}</span></td>
             <td class="p-2 text-right font-mono font-bold text-white">$${(t.size||0).toLocaleString()}</td>
-            <td class="p-2 text-center"><span class="px-1 py-0.5 rounded text-[10px] ${outC}">${t.outcome||''}</span></td>
             <td class="p-2 text-right font-mono text-gray-400">${(t.price||0).toFixed(2)}</td>
+            <td class="p-2 text-right">${pnlHtml}</td>
+            <td class="p-2 text-center">${statusHtml}</td>
+            <td class="p-2 text-center whitespace-nowrap">${badgesHtml}</td>
             <td class="p-2 text-center ${wrC}">${t.win_rate>0?t.win_rate+'%':'-'}</td>
             <td class="p-2 text-center ${scC}">${sc>0?sc:'-'}</td>
+            <td class="p-2 text-center whitespace-nowrap">${closeHtml}</td>
             <td class="p-2 text-center cursor-pointer ${star}" onclick="whaleToggleWatchlist('${addr}',this)">★</td>
         </tr>`;
     }).join('');
@@ -5522,6 +5594,48 @@ async function loadWhaleRanking(minSize){
             <td class="p-2 text-center ${scC}">${w.smart_money_score}</td>
             <td class="p-2 text-center text-gray-400">${w.markets}</td>
             <td class="p-2 text-center cursor-pointer ${star}" onclick="whaleToggleWatchlist('${addr}',this)">★</td>
+        </tr>`;
+    }).join('');
+}
+async function showWhaleWalletHistory(addr,displayName){
+    const modal=document.getElementById('whale-hist-modal');
+    modal.classList.remove('hidden');
+    document.getElementById('wh-hist-name').textContent=displayName+' — '+addr.slice(0,8)+'...'+addr.slice(-6);
+    const tbody=document.getElementById('wh-hist-body');
+    tbody.innerHTML='<tr><td colspan="7" class="text-center text-cyan-400 p-4">Cargando historial...</td></tr>';
+    const data=await fetchJson(`/api/whales/wallet/${addr}/history?limit=50`);
+    if(!data||!data.trades){tbody.innerHTML='<tr><td colspan="7" class="text-center text-red-400 p-4">Error al cargar</td></tr>';return;}
+    // Stats
+    document.getElementById('wh-hist-total').textContent=data.total_trades||0;
+    const pnlEl=document.getElementById('wh-hist-pnl');
+    pnlEl.textContent=(data.total_pnl>=0?'+':'')+' $'+Math.abs(data.total_pnl||0).toLocaleString();
+    pnlEl.className='text-xs font-bold '+(data.total_pnl>=0?'text-green-400':'text-red-400');
+    const wrEl=document.getElementById('wh-hist-wr');
+    wrEl.textContent=(data.win_rate||0)+'%';
+    wrEl.className='text-xs font-bold '+(data.win_rate>=50?'text-green-400':'text-red-400');
+    document.getElementById('wh-hist-wl').innerHTML='<span class="text-green-400">'+(data.wins||0)+'</span>/<span class="text-red-400">'+(data.losses||0)+'</span>';
+    if(!data.trades.length){tbody.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-4">Sin whale trades registrados</td></tr>';return;}
+    tbody.innerHTML=data.trades.map(t=>{
+        const d=t.created_at?new Date(t.created_at):null;
+        const ts=d?d.toLocaleString('es-CL',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+        const sC=t.side==='BUY'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400';
+        const mq=(t.market_question||'').length>50?t.market_question.slice(0,50)+'…':t.market_question||'';
+        let pnlH='-';
+        if(t.pnl!==null&&t.pnl!==undefined){
+            const pc=t.pnl>=0?'text-green-400':'text-red-400';
+            pnlH=`<span class="${pc} font-mono">${t.pnl>=0?'+':''}$${Math.abs(t.pnl).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})}</span>`;
+        }
+        let stH='<span class="text-gray-500">Open</span>';
+        if(t.status==='won')stH='<span class="text-green-400 font-bold">WON</span>';
+        else if(t.status==='lost')stH='<span class="text-red-400 font-bold">LOST</span>';
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="p-2 text-gray-400 whitespace-nowrap">${ts}</td>
+            <td class="p-2 text-gray-300 max-w-[200px] truncate" title="${(t.market_question||'').replace(/"/g,'&quot;')}">${mq}</td>
+            <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${sC}">${t.side}</span></td>
+            <td class="p-2 text-right font-mono text-white">$${(t.size||0).toLocaleString()}</td>
+            <td class="p-2 text-right font-mono text-gray-400">${(t.price||0).toFixed(2)}</td>
+            <td class="p-2 text-right">${pnlH}</td>
+            <td class="p-2 text-center">${stH}</td>
         </tr>`;
     }).join('');
 }

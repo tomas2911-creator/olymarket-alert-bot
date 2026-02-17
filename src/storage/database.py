@@ -428,6 +428,7 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_whale_trades_created ON whale_trades(created_at);
                 CREATE INDEX IF NOT EXISTS idx_whale_trades_wallet ON whale_trades(wallet_address);
                 CREATE INDEX IF NOT EXISTS idx_whale_trades_size ON whale_trades(size DESC);
+                CREATE INDEX IF NOT EXISTS idx_whale_trades_market ON whale_trades(market_id);
             """)
             # Migration: add score column if missing
             await conn.execute("""
@@ -1407,6 +1408,14 @@ class Database:
             print(f"[DB] save_whale_trade error: {e}", flush=True)
             return False
 
+    @staticmethod
+    def _trade_won(side, outcome, resolution):
+        """Determine if a trade was a winner given market resolution."""
+        if not resolution or not outcome:
+            return None
+        outcome_won = (outcome == resolution)
+        return outcome_won if side == "BUY" else not outcome_won
+
     async def update_whale_trade_score(self, transaction_hash: str, score: int):
         """Actualizar score de un whale trade después del análisis."""
         try:
@@ -1419,7 +1428,7 @@ class Database:
 
     async def get_whale_feed(self, min_size: float = 10000, hours: int = 24,
                               side: str = "", limit: int = 200) -> list[dict]:
-        """Feed cronológico de whale trades con score y win_rate enriquecidos."""
+        """Feed cronológico de whale trades con score, win_rate, PnL y métricas enriquecidas."""
         try:
             async with self._pool.acquire() as conn:
                 query = """
@@ -1429,12 +1438,19 @@ class Database:
                            w.win_count, w.loss_count,
                            COALESCE(w.smart_money_score, 0) as smart_score,
                            COALESCE(w.is_watchlisted, FALSE) as is_watchlisted,
-                           a_best.alert_score,
-                           a_stats.alert_wins, a_stats.alert_losses
+                           a_best.alert_score, a_best.alert_triggers,
+                           a_stats.alert_wins, a_stats.alert_losses,
+                           mt.resolved as market_resolved,
+                           mt.resolution as market_resolution,
+                           mt.end_date as market_end_date,
+                           COALESCE(repeat_ct.cnt, 0) as market_repeat_count,
+                           COALESCE(consensus.same_side_pct, 0) as side_consensus_pct,
+                           COALESCE(consensus.total_whales, 0) as side_consensus_total
                     FROM whale_trades wt
                     LEFT JOIN wallets w ON wt.wallet_address = w.address
+                    LEFT JOIN markets_tracked mt ON wt.market_id = mt.condition_id
                     LEFT JOIN LATERAL (
-                        SELECT a.score as alert_score
+                        SELECT a.score as alert_score, a.triggers as alert_triggers
                         FROM alerts a
                         WHERE a.wallet_address = wt.wallet_address
                           AND a.market_id = wt.market_id
@@ -1447,6 +1463,23 @@ class Database:
                         FROM alerts a2
                         WHERE a2.wallet_address = wt.wallet_address AND a2.resolved = TRUE
                     ) a_stats ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT COUNT(*) as cnt
+                        FROM whale_trades wt2
+                        WHERE wt2.wallet_address = wt.wallet_address
+                          AND wt2.market_id = wt.market_id
+                          AND wt2.id != wt.id
+                    ) repeat_ct ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            COUNT(*) as total_whales,
+                            ROUND(
+                                SUM(CASE WHEN wt3.side = wt.side THEN 1 ELSE 0 END)::numeric
+                                / GREATEST(COUNT(*), 1) * 100, 1
+                            ) as same_side_pct
+                        FROM whale_trades wt3
+                        WHERE wt3.market_id = wt.market_id AND wt3.size >= $1
+                    ) consensus ON TRUE
                     WHERE wt.size >= $1
                       AND wt.created_at >= NOW() - make_interval(hours => $2)
                 """
@@ -1458,9 +1491,42 @@ class Database:
                 params.append(limit)
 
                 rows = await conn.fetch(query, *params)
+
+                # Compute streaks per wallet from resolved whale trades
+                wallet_addrs = list(set(r["wallet_address"] for r in rows))
+                streaks = {}
+                if wallet_addrs:
+                    streak_rows = await conn.fetch("""
+                        SELECT wt.wallet_address, wt.side, wt.outcome,
+                               mt.resolution as mkt_resolution
+                        FROM whale_trades wt
+                        LEFT JOIN markets_tracked mt ON wt.market_id = mt.condition_id
+                        WHERE wt.wallet_address = ANY($1)
+                          AND mt.resolved = TRUE
+                        ORDER BY wt.wallet_address, wt.created_at DESC
+                    """, wallet_addrs)
+                    current_wallet = None
+                    streak_broken = False
+                    for sr in streak_rows:
+                        addr = sr["wallet_address"]
+                        if addr != current_wallet:
+                            current_wallet = addr
+                            streak_broken = False
+                        if streak_broken:
+                            continue
+                        won = self._trade_won(sr["side"], sr["outcome"], sr["mkt_resolution"])
+                        if won is None:
+                            continue
+                        if addr not in streaks:
+                            streaks[addr] = (1, won)
+                        elif won == streaks[addr][1]:
+                            streaks[addr] = (streaks[addr][0] + 1, won)
+                        else:
+                            streak_broken = True
+
                 result = []
                 for r in rows:
-                    # Win rate: preferir datos de alerts resueltas, fallback a wallets
+                    # Win rate
                     a_wins = int(r["alert_wins"] or 0)
                     a_losses = int(r["alert_losses"] or 0)
                     w_wins = int(r["win_count"] or 0)
@@ -1469,8 +1535,40 @@ class Database:
                     losses = a_losses if (a_wins + a_losses) > 0 else w_losses
                     total_resolved = wins + losses
                     wr = round(wins / max(total_resolved, 1) * 100, 1)
-                    # Score: preferir wt.score (directo), fallback a alert score
+                    # Score
                     score = r["score"] or r["alert_score"] or 0
+
+                    # PnL calculation
+                    size = float(r["size"] or 0)
+                    price = float(r["price"] or 0.5)
+                    pnl, pnl_pct, status = None, None, "open"
+                    market_resolved = bool(r["market_resolved"])
+                    market_resolution = r["market_resolution"]
+
+                    if market_resolved and market_resolution:
+                        outcome_won = (r["outcome"] == market_resolution)
+                        if r["side"] == "BUY":
+                            pnl = (size / max(price, 0.01) - size) if outcome_won else -size
+                            status = "won" if outcome_won else "lost"
+                        else:
+                            pnl = size if not outcome_won else (size - size / max(price, 0.01))
+                            status = "won" if not outcome_won else "lost"
+                        pnl = round(pnl, 2)
+                        pnl_pct = round(pnl / max(size, 1) * 100, 1)
+
+                    # Streak
+                    s_count, s_type = streaks.get(r["wallet_address"], (0, None))
+
+                    # Time to close
+                    end_date = r["market_end_date"]
+                    time_to_close = None
+                    if end_date and not market_resolved:
+                        now = datetime.now(timezone.utc)
+                        if end_date.tzinfo is None:
+                            end_date = end_date.replace(tzinfo=timezone.utc)
+                        diff = end_date - now
+                        time_to_close = max(round(diff.total_seconds() / 3600, 1), 0)
+
                     result.append({
                         "id": r["id"],
                         "transaction_hash": r["transaction_hash"],
@@ -1479,21 +1577,92 @@ class Database:
                         "wallet_image": r["w_image"] or r["wallet_image"],
                         "market_question": r["market_question"],
                         "market_slug": r["market_slug"],
+                        "market_id": r["market_id"],
                         "market_category": r["market_category"],
                         "side": r["side"],
                         "outcome": r["outcome"],
-                        "size": round(float(r["size"] or 0), 2),
-                        "price": round(float(r["price"] or 0), 4),
+                        "size": round(size, 2),
+                        "price": round(price, 4),
                         "score": int(score),
                         "smart_score": round(float(r["smart_score"] or 0), 1),
                         "win_rate": wr,
                         "is_watchlisted": bool(r["is_watchlisted"]),
                         "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                        "pnl": pnl,
+                        "pnl_pct": pnl_pct,
+                        "status": status,
+                        "alert_match": bool(r["alert_score"]),
+                        "alert_triggers": r["alert_triggers"],
+                        "market_repeat_count": int(r["market_repeat_count"] or 0),
+                        "side_consensus_pct": float(r["side_consensus_pct"] or 0),
+                        "side_consensus_total": int(r["side_consensus_total"] or 0),
+                        "streak": s_count,
+                        "streak_type": "win" if s_type else ("loss" if s_type is not None else None),
+                        "time_to_close_hours": time_to_close,
                     })
                 return result
         except Exception as e:
             print(f"[DB] get_whale_feed error: {e}", flush=True)
             return []
+
+    async def get_whale_wallet_history(self, address: str, limit: int = 50) -> list[dict]:
+        """Historial de whale trades de una wallet específica con PnL."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT wt.*, mt.resolved as market_resolved, mt.resolution as market_resolution
+                    FROM whale_trades wt
+                    LEFT JOIN markets_tracked mt ON wt.market_id = mt.condition_id
+                    WHERE wt.wallet_address = $1
+                    ORDER BY wt.created_at DESC
+                    LIMIT $2
+                """, address.lower(), limit)
+                result = []
+                total_pnl = 0
+                wins = 0
+                losses = 0
+                for r in rows:
+                    size = float(r["size"] or 0)
+                    price = float(r["price"] or 0.5)
+                    pnl = None
+                    status = "open"
+                    if r["market_resolved"] and r["market_resolution"]:
+                        outcome_won = (r["outcome"] == r["market_resolution"])
+                        if r["side"] == "BUY":
+                            pnl = (size / max(price, 0.01) - size) if outcome_won else -size
+                            status = "won" if outcome_won else "lost"
+                        else:
+                            pnl = size if not outcome_won else (size - size / max(price, 0.01))
+                            status = "won" if not outcome_won else "lost"
+                        pnl = round(pnl, 2)
+                        total_pnl += pnl
+                        if status == "won":
+                            wins += 1
+                        else:
+                            losses += 1
+                    result.append({
+                        "market_question": r["market_question"],
+                        "side": r["side"],
+                        "outcome": r["outcome"],
+                        "size": round(size, 2),
+                        "price": round(price, 4),
+                        "score": r["score"],
+                        "pnl": pnl,
+                        "status": status,
+                        "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    })
+                resolved = wins + losses
+                return {
+                    "trades": result,
+                    "total_pnl": round(total_pnl, 2),
+                    "wins": wins,
+                    "losses": losses,
+                    "win_rate": round(wins / max(resolved, 1) * 100, 1),
+                    "total_trades": len(result),
+                }
+        except Exception as e:
+            print(f"[DB] get_whale_wallet_history error: {e}", flush=True)
+            return {"trades": [], "total_pnl": 0, "wins": 0, "losses": 0, "win_rate": 0, "total_trades": 0}
 
     async def get_whale_ranking(self, min_size: float = 10000, min_trades: int = 1,
                                  min_winrate: float = 0, sort_by: str = "volume") -> list[dict]:
