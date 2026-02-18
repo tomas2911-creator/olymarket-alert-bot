@@ -2904,6 +2904,28 @@ class Database:
             """, threshold, min_resolved)
             return result
 
+    async def get_watchlisted_wallets_detail(self) -> list[dict]:
+        """Obtener wallets watchlisted con detalle para el panel Copy Trading."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT w.address as wallet_address,
+                           COALESCE(w.name, w.pseudonym) as display_name,
+                           w.smart_money_score,
+                           w.total_trades, w.win_count, w.loss_count,
+                           CASE WHEN (w.win_count + w.loss_count) > 0
+                                THEN ROUND(w.win_count::numeric / (w.win_count + w.loss_count) * 100, 1)
+                                ELSE 0 END as win_rate,
+                           TRUE as enabled
+                    FROM wallets w
+                    WHERE w.is_watchlisted = TRUE
+                    ORDER BY w.smart_money_score DESC NULLS LAST
+                """)
+                return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_watchlisted_wallets_detail error: {e}", flush=True)
+            return []
+
     async def get_watchlisted_wallets(self) -> set[str]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(

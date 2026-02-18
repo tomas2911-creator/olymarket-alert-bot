@@ -2506,10 +2506,10 @@
                     <div class="overflow-x-auto"><table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
                             <th class="text-left p-2">Wallet</th><th class="text-center p-2">Score</th>
-                            <th class="text-center p-2">Escala</th><th class="text-right p-2">Máx/Trade</th>
-                            <th class="text-center p-2">Estado</th><th class="text-center p-2">Acción</th>
+                            <th class="text-center p-2">Win Rate</th><th class="text-center p-2">Trades</th>
+                            <th class="text-center p-2">Acción</th>
                         </tr></thead>
-                        <tbody id="ct-targets-body"><tr><td colspan="6" class="text-center text-gray-600 p-4">Sin targets. Agrega desde Whale Ranking.</td></tr></tbody>
+                        <tbody id="ct-targets-body"><tr><td colspan="5" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr></tbody>
                     </table></div>
                 </div>
                 <!-- Copy Trades -->
@@ -3657,11 +3657,15 @@ async function toggleWlWatchlist(addr,el){
     try{
         const res=await fetch('/api/wallet-tracker/watchlist/'+addr,{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
         const data=await res.json();
-        el.className='px-4 py-2 text-center cursor-pointer '+(data.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400');
-        el.title=data.is_watchlisted?'Quitar del Copy Trade':'Agregar al Copy Trade';
+        if(el){
+            el.className='px-4 py-2 text-center cursor-pointer '+(data.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400');
+            el.title=data.is_watchlisted?'Quitar del Copy Trade':'Agregar al Copy Trade';
+        }
         // Actualizar data local
         const w=_wlData.find(x=>x.address===addr);
         if(w)w.is_watchlisted=data.is_watchlisted;
+        // Si se llama desde panel Copy Trading, recargar la tabla
+        if(!el)loadCopyTrading();
     }catch(e){console.error('toggleWlWatchlist error',e);}
 }
 
@@ -5836,19 +5840,19 @@ async function loadCopyTrading(){
         wrEl.className='text-lg font-bold '+(wr>=50?'text-green-400':'text-red-400');
         // Targets table
         const tBody=document.getElementById('ct-targets-body');
-        if(!targets.length){tBody.innerHTML='<tr><td colspan="6" class="text-center text-gray-600 p-4">Sin targets. Agrega desde Whale Ranking con el boton ★</td></tr>';}
+        if(!targets.length){tBody.innerHTML='<tr><td colspan="5" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr>';}
         else{tBody.innerHTML=targets.map(t=>{
-            const name=t.display_name||t.wallet_name||t.wallet_address.slice(0,10)+'...';
+            const name=t.display_name||t.wallet_address.slice(0,10)+'...';
             const sc=t.smart_money_score||0;
+            const wr=t.win_rate||0;
+            const trades=t.total_trades||0;
             return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
                 <td class="p-2"><a href="${polyProfile(t.wallet_address)}" target="_blank" class="text-emerald-400 hover:underline">${name}</a></td>
                 <td class="p-2 text-center font-mono">${sc}</td>
-                <td class="p-2 text-center">${t.scale_pct||1}%</td>
-                <td class="p-2 text-right font-mono">$${(t.max_per_trade||100).toFixed(0)}</td>
-                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] ${t.enabled?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'}">${t.enabled?'Activo':'Pausado'}</span></td>
+                <td class="p-2 text-center font-mono ${wr>=50?'text-green-400':'text-red-400'}">${wr}%</td>
+                <td class="p-2 text-center font-mono text-gray-400">${trades}</td>
                 <td class="p-2 text-center">
-                    <button onclick="toggleCopyTarget('${t.wallet_address}')" class="text-gray-400 hover:text-yellow-400 text-xs">${t.enabled?'⏸':'▶'}</button>
-                    <button onclick="removeCopyTarget('${t.wallet_address}')" class="text-gray-400 hover:text-red-400 text-xs ml-1">✕</button>
+                    <button onclick="toggleWlWatchlist('${t.wallet_address}')" class="text-yellow-400 hover:text-red-400 text-xs" title="Quitar de watchlist">⭐</button>
                 </td>
             </tr>`;
         }).join('');}

@@ -847,7 +847,8 @@ class PolymarketAlertBot:
             return
 
         # Filtrar por categorías excluidas (cacheadas en memoria)
-        if self._excluded_categories:
+        # Copy trades bypasean filtro de categorías — copiamos lo que la wallet haga
+        if self._excluded_categories and not is_copy:
             excluded_cats = self._excluded_categories
             market_cat = (trade.market_category or "").lower()
             if market_cat and market_cat in excluded_cats:
@@ -868,8 +869,8 @@ class PolymarketAlertBot:
                 print(f"DEBUG EXCLUDED keyword in question: {trade.market_question[:60]} score={candidate.score}", flush=True)
                 return
 
-        # Cooldown
-        if not await self.db.should_alert(trade.wallet_address, trade.market_id, config.COOLDOWN_HOURS):
+        # Cooldown — copy trades bypasean cooldown para no perder trades de wallets seguidas
+        if not is_copy and not await self.db.should_alert(trade.wallet_address, trade.market_id, config.COOLDOWN_HOURS):
             self._debug["cooldown"] += 1
             print(f"DEBUG COOLDOWN wallet={trade.wallet_address[:10]} market={trade.market_slug} score={candidate.score}", flush=True)
             return

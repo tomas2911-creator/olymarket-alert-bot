@@ -290,6 +290,14 @@ async def get_wallet_tracker(request: Request, min_trades: int = 1,
 async def toggle_watchlist(request: Request, address: str):
     db = request.app.state.db
     new_status = await db.toggle_wallet_watchlist(address)
+    # Actualizar watchlist en memoria del bot inmediatamente (no esperar 30 min)
+    bot = getattr(request.app.state, "bot", None)
+    if bot and hasattr(bot, "_watchlist"):
+        addr_lower = address.lower()
+        if new_status:
+            bot._watchlist.add(addr_lower)
+        else:
+            bot._watchlist.discard(addr_lower)
     return {"address": address, "is_watchlisted": new_status}
 
 
@@ -375,7 +383,7 @@ async def get_spikes(request: Request, hours: int = 24, min_pct: float = 0, limi
 async def get_copy_targets(request: Request):
     db = request.app.state.db
     uid = await get_user_id(request)
-    targets = await db.get_copy_targets(user_id=uid)
+    targets = await db.get_watchlisted_wallets_detail()
     return {"targets": targets, "total": len(targets)}
 
 
