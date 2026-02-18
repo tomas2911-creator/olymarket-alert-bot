@@ -1496,12 +1496,6 @@ class Database:
                         FROM whale_trades wt3
                         WHERE wt3.market_id = wt.market_id AND wt3.size >= $1
                     ) consensus ON TRUE
-                    LEFT JOIN LATERAL (
-                        SELECT COUNT(*) as wallet_total_trades
-                        FROM whale_trades wt4
-                        WHERE wt4.wallet_address = wt.wallet_address
-                          AND wt4.size >= $1
-                    ) wallet_ct ON TRUE
                     WHERE wt.size >= $1
                       AND wt.created_at >= NOW() - make_interval(hours => $2)
                 """
@@ -1514,8 +1508,20 @@ class Database:
 
                 rows = await conn.fetch(query, *params)
 
-                # Compute streaks per wallet from resolved whale trades
+                # Contar whale trades totales por wallet (batch eficiente)
                 wallet_addrs = list(set(r["wallet_address"] for r in rows))
+                wallet_trade_counts = {}
+                if wallet_addrs:
+                    wt_count_rows = await conn.fetch("""
+                        SELECT wallet_address, COUNT(*) as cnt
+                        FROM whale_trades
+                        WHERE wallet_address = ANY($1) AND size >= $2
+                        GROUP BY wallet_address
+                    """, wallet_addrs, min_size)
+                    for cr in wt_count_rows:
+                        wallet_trade_counts[cr["wallet_address"]] = int(cr["cnt"])
+
+                # Compute streaks per wallet from resolved whale trades
                 streaks = {}
                 if wallet_addrs:
                     streak_rows = await conn.fetch("""
@@ -1621,7 +1627,7 @@ class Database:
                         "streak": s_count,
                         "streak_type": "win" if s_type else ("loss" if s_type is not None else None),
                         "time_to_close_hours": time_to_close,
-                        "wallet_whale_trades": int(r["wallet_total_trades"] or 0),
+                        "wallet_whale_trades": wallet_trade_counts.get(r["wallet_address"], 0),
                     })
                 return result
         except Exception as e:
