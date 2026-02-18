@@ -3000,6 +3000,10 @@
                                 <input type="password" id="wa-cfg-passphrase" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="(se auto-genera)" readonly>
                             </div>
                         </div>
+                        <div class="mb-3">
+                            <label class="text-[10px] text-gray-500 block mb-1">Funder / Proxy Wallet Address (polymarket.com/settings → Proxy Wallet)</label>
+                            <input type="text" id="wa-cfg-funder" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="0x... (copia tu Proxy Wallet Address de Polymarket)">
+                        </div>
                         <div id="wa-wallet-info" class="text-[10px] text-gray-500 mb-3 hidden">
                             Wallet: <span id="wa-wallet-addr" class="text-gray-400 font-mono"></span> |
                             Funder: <span id="wa-funder-addr" class="text-gray-400 font-mono"></span> |
@@ -3405,6 +3409,7 @@ function enterApp(){
 function authHeaders(extra){const h={'Content-Type':'application/json'};if(_authToken)h['Authorization']='Bearer '+_authToken;return Object.assign(h,extra||{});}
 async function fetchJson(url){try{const h={};if(_authToken)h['Authorization']='Bearer '+_authToken;const r=await fetch(url,{headers:h});return r.ok?await r.json():null}catch{return null}}
 async function postJson(url,body){try{const r=await fetch(url,{method:'POST',headers:authHeaders(),body:JSON.stringify(body||{})});return r.ok?await r.json():null}catch{return null}}
+async function apiFetch(url,opts){if(!opts||(!opts.method||opts.method==='GET'))return fetchJson(url);try{const h=authHeaders();const o=Object.assign({},opts,{headers:h});const r=await fetch(url,o);return r.ok?await r.json():await r.json().catch(()=>null)}catch(e){console.error('apiFetch error:',e);return null}}
 function fmt(n){return n!=null?n.toLocaleString():'-'}
 function fmtUsd(n){return n!=null?'$'+n.toLocaleString(undefined,{maximumFractionDigits:0}):'-'}
 function shortW(a){return !a||a.length<10?a||'?':a.slice(0,6)+'...'+a.slice(-4)}
@@ -6698,6 +6703,7 @@ async function waLoadConfig(){
             setBadge('wa-secret-badge',r.api_secret_set);
             setBadge('wa-pass-badge',r.passphrase_set);
             if(r.api_key_preview)document.getElementById('wa-cfg-apikey').value=r.api_key_preview;
+            if(r.funder_address)document.getElementById('wa-cfg-funder').value=r.funder_address;
             // Info wallet/funder/balance
             const infoEl=document.getElementById('wa-wallet-info');
             if(r.wallet_address||r.funder_address){
@@ -6752,6 +6758,8 @@ async function waSaveConfig(){
         if(ak)body.api_key=ak;
         if(as2)body.api_secret=as2;
         if(ap)body.api_passphrase=ap;
+        const funder=document.getElementById('wa-cfg-funder').value.trim();
+        if(funder)body.funder_address=funder;
         await apiFetch('/api/weather-arb/autotrade-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         statusEl.textContent='Guardado!';statusEl.className='text-xs text-green-400';statusEl.classList.remove('hidden');
         setTimeout(()=>statusEl.classList.add('hidden'),3000);
@@ -6763,7 +6771,7 @@ async function waTestConnection(){
     const statusEl=document.getElementById('wa-cfg-status');
     statusEl.textContent='Probando...';statusEl.className='text-xs text-yellow-400';statusEl.classList.remove('hidden');
     try{
-        const r=await apiFetch('/api/weather-arb/test-connection',{method:'POST'});
+        const r=await apiFetch('/api/weather-arb/test-connection',{method:'POST',body:'{}'});
         if(r?.connected){
             statusEl.textContent='Conectado! Balance: $'+(r.balance||0).toFixed(2);statusEl.className='text-xs text-green-400';
         }else{
@@ -6777,7 +6785,7 @@ async function waRefreshForecasts(){
     const btn=document.getElementById('wa-refresh-btn');
     btn.textContent='Refrescando...';btn.disabled=true;
     try{
-        await apiFetch('/api/weather-arb/refresh-forecasts',{method:'POST'});
+        await apiFetch('/api/weather-arb/refresh-forecasts',{method:'POST',body:'{}'});
         await loadWeatherArb();
     }catch(e){console.error(e);}
     finally{btn.textContent='Refresh Forecasts';btn.disabled=false;}
