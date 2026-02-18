@@ -1232,19 +1232,12 @@ class AlertAutoTrader:
         # ── Config per-wallet ──
         wc = await self.db.get_wallet_copy_config(trade.wallet_address)
         if not wc:
-            print(f"[CopyTrade] ⚠️ Sin config para {trade.wallet_address[:10]}, usando defaults", flush=True)
-            wc = {"ct_enabled": True, "ct_mode": "fixed", "ct_fixed_amount": cfg.get("copy_trade_bet_size", 10),
-                  "ct_budget": 0, "ct_budget_used": 0, "ct_pct": 5, "ct_min_bet": 2, "ct_max_bet": 50,
-                  "ct_max_per_market": 0, "ct_min_trigger": 0, "ct_insider_capital": 0}
+            # Sin config → no copiar. El usuario debe marcar "Copiar" en el dashboard.
+            return
 
-        # Filtro: wallet copy trade habilitado
+        # Filtro: solo copiar si ct_enabled=TRUE (checkbox "Copiar" marcado)
         if not wc.get("ct_enabled", False):
-            # Si no tiene ct_enabled pero está en watchlist, usar config global como fallback
-            if wc.get("ct_budget", 0) == 0 and wc.get("ct_mode") == "fixed":
-                wc["ct_enabled"] = True
-                wc["ct_fixed_amount"] = cfg.get("copy_trade_bet_size", 10)
-            else:
-                return
+            return
 
         # Filtro per-wallet: min trigger (ignorar trades pequeños del insider)
         min_trigger = float(wc.get("ct_min_trigger", 0))
