@@ -1206,6 +1206,18 @@ class AlertAutoTrader:
         if self._trades_today_date != today:
             await self._load_today_trades()
 
+        # ── Auto-exit: si el insider VENDE, cerrar nuestra posición ──
+        if trade.side == "SELL":
+            if cfg.get("auto_exit_on_sell"):
+                existing = self._open_positions.get(trade.market_id)
+                if existing and existing.get("is_copy_trade"):
+                    # Verificar que la posición fue copiada de esta misma wallet
+                    pos_wallet = (existing.get("wallet_address") or "").lower()
+                    if pos_wallet == trade.wallet_address.lower():
+                        await self._auto_exit_position(trade, existing)
+            # Insider vendiendo → no abrir nueva posición (no comprar el opuesto)
+            return
+
         # Filtro: max posiciones copy trade abiertas (global)
         ct_max_pos = cfg.get("copy_trade_max_positions", 3)
         ct_open = sum(1 for p in self._open_positions.values() if p.get("is_copy_trade"))
@@ -1559,6 +1571,64 @@ class AlertAutoTrader:
         elif drawdown < max_dd * 0.8 and self._drawdown_paused:
             self._drawdown_paused = False
             print(f"[AlertTrader] ✅ Drawdown recuperado — REANUDADO", flush=True)
+
+    async def _auto_exit_position(self, insider_trade, existing_position: dict):
+        """Cerrar posición automáticamente cuando el insider vende.
+        insider_trade: trade del insider (SELL), existing_position: nuestra posición abierta."""
+        cid = insider_trade.market_id
+        token_id = existing_position.get("token_id", "")
+        shares = existing_position.get("shares", 0)
+        entry_price = existing_position.get("price", 0)
+
+        if not token_id or shares <= 0:
+            print(f"[CopyTrade] ⚠️ Auto-exit: sin token_id o shares para {cid}", flush=True)
+            return
+
+        # Obtener precio actual del mercado
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(f"{CLOB_HOST}/markets/{cid}")
+                if resp.status_code != 200:
+                    print(f"[CopyTrade] ⚠️ Auto-exit: no se pudo obtener mercado {cid}", flush=True)
+                    return
+                data = resp.json()
+                if data.get("closed"):
+                    return  # resolve_trades se encarga de mercados cerrados
+
+                tokens = data.get("tokens", [])
+                current_price = None
+                for tk in tokens:
+                    if tk.get("token_id") == token_id:
+                        current_price = float(tk.get("price", 0))
+                        break
+                    if tk.get("outcome", "").lower() == existing_position.get("outcome", "").lower():
+                        current_price = float(tk.get("price", 0))
+                        break
+
+                if not current_price or current_price <= 0:
+                    print(f"[CopyTrade] ⚠️ Auto-exit: precio actual no disponible para {cid}", flush=True)
+                    return
+
+                # Ejecutar venta
+                sell_result = await self._sell_position(existing_position, current_price)
+                if sell_result.get("success"):
+                    pnl = round(shares * current_price - shares * entry_price, 2)
+                    await self.db.resolve_alert_autotrade(cid, "auto_exit_sell", pnl)
+                    del self._open_positions[cid]
+                    self._trailing_highs.pop(cid, None)
+                    self._partial_sold.discard(cid)
+                    await self._load_today_trades()
+                    self._check_drawdown()
+                    gain_pct = ((current_price - entry_price) / entry_price * 100) if entry_price > 0 else 0
+                    print(f"[CopyTrade] 🔄 AUTO-EXIT: insider vendió → cerramos posición | "
+                          f"{insider_trade.market_slug[:35]} | "
+                          f"entrada={entry_price:.2f} → venta={current_price:.2f} "
+                          f"({gain_pct:+.1f}%) PnL=${pnl:.2f}", flush=True)
+                else:
+                    print(f"[CopyTrade] ❌ Auto-exit falló: {sell_result.get('error', '?')}", flush=True)
+
+        except Exception as e:
+            print(f"[CopyTrade] Error auto-exit: {e}", flush=True)
 
     async def _sell_position(self, trade: dict, sell_price: float) -> dict:
         """Vender una posición abierta (SELL en CLOB con slippage para asegurar fill)."""
