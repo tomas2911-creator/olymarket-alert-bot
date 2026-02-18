@@ -183,6 +183,7 @@ class Database:
                 "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS correct_markets INTEGER DEFAULT 0",
                 "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS avg_entry_price_correct DOUBLE PRECISION DEFAULT 0",
                 "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_watchlisted BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS manually_watchlisted BOOLEAN DEFAULT FALSE",
                 # Wallets: on-chain
                 "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS on_chain_first_tx TIMESTAMPTZ",
                 "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS on_chain_funded_by TEXT",
@@ -1339,7 +1340,7 @@ class Database:
             return []
 
     async def toggle_wallet_watchlist(self, address: str) -> bool:
-        """Toggle watchlist status de una wallet. Retorna el nuevo estado."""
+        """Toggle watchlist status de una wallet. Marca como manual para que no se borre."""
         try:
             addr = address.lower()
             async with self._pool.acquire() as conn:
@@ -1347,7 +1348,10 @@ class Database:
                 if not row:
                     return False
                 new_status = not bool(row["is_watchlisted"])
-                await conn.execute("UPDATE wallets SET is_watchlisted = $1 WHERE address = $2", new_status, addr)
+                await conn.execute(
+                    "UPDATE wallets SET is_watchlisted = $1, manually_watchlisted = $1 WHERE address = $2",
+                    new_status, addr,
+                )
                 return new_status
         except Exception as e:
             print(f"[DB] toggle_wallet_watchlist error: {e}", flush=True)
@@ -2532,15 +2536,18 @@ class Database:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT w.address,
+                       COALESCE(w.name, w.pseudonym) as name,
                        w.total_trades, w.total_volume, w.avg_trade_size,
                        w.win_count, w.loss_count, w.markets_traded,
+                       COALESCE(w.is_watchlisted, FALSE) as is_watchlisted,
                        COUNT(a.id) as alert_count,
                        MAX(a.score) as max_score
                 FROM wallets w
                 JOIN alerts a ON a.wallet_address = w.address
                     AND a.user_id = $2 AND a.size >= $3 AND a.score >= $4
-                GROUP BY w.address, w.total_trades, w.total_volume,
-                         w.avg_trade_size, w.win_count, w.loss_count, w.markets_traded
+                GROUP BY w.address, w.name, w.pseudonym, w.total_trades, w.total_volume,
+                         w.avg_trade_size, w.win_count, w.loss_count, w.markets_traded,
+                         w.is_watchlisted
                 ORDER BY alert_count DESC, max_score DESC
                 LIMIT $1
             """, limit, user_id, min_size, min_score)
@@ -2820,11 +2827,14 @@ class Database:
     # ── Watchlist ─────────────────────────────────────────────────────
 
     async def update_watchlist(self, threshold: float = 50, min_resolved: int = 3):
-        """Auto-actualizar watchlist basado en smart money score."""
+        """Auto-actualizar watchlist basado en smart money score.
+        NO toca wallets marcadas manualmente (manually_watchlisted = TRUE)."""
         async with self._pool.acquire() as conn:
-            # Quitar todos del watchlist
-            await conn.execute("UPDATE wallets SET is_watchlisted = FALSE WHERE is_watchlisted = TRUE")
-            # Agregar los que califican
+            # Quitar del watchlist SOLO las automáticas (no las manuales)
+            await conn.execute(
+                "UPDATE wallets SET is_watchlisted = FALSE WHERE is_watchlisted = TRUE AND manually_watchlisted = FALSE"
+            )
+            # Agregar las que califican por score
             result = await conn.execute("""
                 UPDATE wallets SET is_watchlisted = TRUE
                 WHERE smart_money_score >= $1

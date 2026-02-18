@@ -704,6 +704,7 @@
                     <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('wl','score',render_wl)">Max Score <span id="si-wl-score" data-sg="wl" class="text-purple-400 hidden"></span></th>
                     <th class="px-4 py-2 text-center cursor-pointer hover:text-purple-400 transition select-none" onclick="colSort('wl','hr',render_wl)">Hit Rate <span id="si-wl-hr" data-sg="wl" class="text-purple-400 hidden"></span></th>
                     <th class="px-4 py-2 text-center">Explorar</th>
+                    <th class="px-4 py-2 text-center" title="Copy Trade: marcar para seguir automáticamente">⭐</th>
                 </tr></thead>
                 <tbody id="wallets-body"></tbody>
             </table>
@@ -3618,8 +3619,21 @@ function render_wl(){
                 <a href="${polyProfile(w.address)}" target="_blank" class="explorer-link text-xs text-purple-400" title="Polymarket">PM</a>
                 <a href="${scanLink(w.address)}" target="_blank" class="explorer-link text-xs text-blue-400" title="Polygonscan">PS</a>
             </td>
+            <td class="px-4 py-2 text-center cursor-pointer ${w.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400'}" onclick="toggleWlWatchlist('${w.address}',this)" title="${w.is_watchlisted?'Quitar del Copy Trade':'Agregar al Copy Trade'}">★</td>
         </tr>`;
     }).join('');
+}
+
+async function toggleWlWatchlist(addr,el){
+    try{
+        const res=await fetch('/api/wallet-tracker/watchlist/'+addr,{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await res.json();
+        el.className='px-4 py-2 text-center cursor-pointer '+(data.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400');
+        el.title=data.is_watchlisted?'Quitar del Copy Trade':'Agregar al Copy Trade';
+        // Actualizar data local
+        const w=_wlData.find(x=>x.address===addr);
+        if(w)w.is_watchlisted=data.is_watchlisted;
+    }catch(e){console.error('toggleWlWatchlist error',e);}
 }
 
 // ── Load Markets ──
