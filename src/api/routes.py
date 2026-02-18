@@ -1914,7 +1914,7 @@ async def get_alert_trading_config(request: Request):
         "aat_max_category_exposure", "aat_max_drawdown",
         "aat_api_key", "aat_private_key", "aat_funder_address",
         # v10
-        "aat_orderbook_check_enabled", "aat_max_price_impact_pct",
+        "aat_orderbook_check_enabled", "aat_max_price_impact_pct", "aat_buy_price_bump",
         "aat_dca_enabled", "aat_dca_splits", "aat_dca_interval_sec",
         "aat_volume_spike_boost", "aat_smart_watchlist_boost", "aat_funding_chain_boost",
         "aat_category_scoring_enabled",
@@ -1976,6 +1976,7 @@ async def get_alert_trading_config(request: Request):
         # v10
         "orderbook_check_enabled": raw.get("aat_orderbook_check_enabled") == "true",
         "max_price_impact_pct": float(raw.get("aat_max_price_impact_pct", 3)),
+        "buy_price_bump": float(raw.get("aat_buy_price_bump", 0.02)),
         "dca_enabled": raw.get("aat_dca_enabled") == "true",
         "dca_splits": int(raw.get("aat_dca_splits", 2)),
         "dca_interval_sec": int(raw.get("aat_dca_interval_sec", 30)),
@@ -2098,6 +2099,8 @@ async def save_alert_trading_config(request: Request):
         data["aat_orderbook_check_enabled"] = "true" if body["orderbook_check_enabled"] else "false"
     if "max_price_impact_pct" in body:
         data["aat_max_price_impact_pct"] = str(body["max_price_impact_pct"])
+    if "buy_price_bump" in body:
+        data["aat_buy_price_bump"] = str(body["buy_price_bump"])
     if "dca_enabled" in body:
         data["aat_dca_enabled"] = "true" if body["dca_enabled"] else "false"
     if "dca_splits" in body:
