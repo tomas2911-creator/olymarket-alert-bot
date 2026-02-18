@@ -100,6 +100,9 @@ class AlertAutoTrader:
                 "aat_smart_watchlist_boost",
                 "aat_funding_chain_boost",
                 "aat_category_scoring_enabled",
+                # Copy Trade automático
+                "aat_copy_trade_enabled", "aat_copy_trade_bet_size",
+                "aat_copy_trade_max_positions", "aat_copy_trade_max_daily",
             ])
             pk = raw.get("aat_private_key", "")
             if pk and not pk.startswith("0x"):
@@ -166,10 +169,16 @@ class AlertAutoTrader:
                 "smart_watchlist_boost": int(raw.get("aat_smart_watchlist_boost", 3)),
                 "funding_chain_boost": int(raw.get("aat_funding_chain_boost", 2)),
                 "category_scoring_enabled": raw.get("aat_category_scoring_enabled") == "true",
+                # Copy Trade automático
+                "copy_trade_enabled": raw.get("aat_copy_trade_enabled") == "true",
+                "copy_trade_bet_size": float(raw.get("aat_copy_trade_bet_size", 10)),
+                "copy_trade_max_positions": int(raw.get("aat_copy_trade_max_positions", 3)),
+                "copy_trade_max_daily": int(raw.get("aat_copy_trade_max_daily", 10)),
             }
             self._enabled = self._config["enabled"]
 
-            if self._enabled and self._config["api_key"] and self._config["private_key"]:
+            needs_client = self._enabled or self._config.get("copy_trade_enabled")
+            if needs_client and self._config["api_key"] and self._config["private_key"]:
                 self._init_clob_client()
             else:
                 self._client = None
@@ -179,11 +188,12 @@ class AlertAutoTrader:
 
             self._initialized = True
             status = "ACTIVADO" if self._enabled and self._client else "DESACTIVADO"
+            ct_status = "ON" if self._config.get("copy_trade_enabled") and self._client else "OFF"
             reason = ""
-            if self._enabled and not self._client:
-                reason = " (sin credenciales — configura wallet en Alert Trading o Crypto Arb)"
-            print(f"[AlertTrader] {status}{reason} | bet=${self._config['bet_size']} "
-                  f"min_score>={self._config['min_score']}",
+            if needs_client and not self._client:
+                reason = " (sin credenciales — configura wallet en Alert Trading)"
+            print(f"[AlertTrader] {status}{reason} | CopyTrade={ct_status} "
+                  f"bet=${self._config['bet_size']} ct_bet=${self._config.get('copy_trade_bet_size', 10)}",
                   flush=True)
         except Exception as e:
             print(f"[AlertTrader] Error inicializando: {e}", flush=True)
@@ -1048,12 +1058,21 @@ class AlertAutoTrader:
 
     # ── Proceso completo: evaluar + ejecutar ─────────────────────────
 
-    async def process_alert(self, candidate, trade):
+    async def process_alert(self, candidate, trade, is_copy_trade: bool = False):
         """Evaluar alerta y ejecutar trade si pasa filtros.
         Llamado desde main.py después de enviar alerta a Telegram.
+        is_copy_trade=True bypasea filtros de score para wallets watchlisted.
         Si confirmación está activa, encola en vez de ejecutar.
         """
-        if not self._enabled or not self._client or not self._initialized:
+        if not self._client or not self._initialized:
+            return
+
+        # Copy Trade: ejecutar directo si está habilitado, sin filtro de score
+        if is_copy_trade:
+            await self._process_copy_trade(candidate, trade)
+            return
+
+        if not self._enabled:
             return
 
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1083,6 +1102,74 @@ class AlertAutoTrader:
                             market=trade.market_slug,
                             score=candidate.score,
                             size=trade_info["bet_size"])
+
+    async def _process_copy_trade(self, candidate, trade):
+        """Ejecutar copy trade automático de wallet watchlisted.
+        Bypasea filtros de score. Solo aplica filtros básicos de seguridad."""
+        cfg = self._config
+        if not cfg.get("copy_trade_enabled"):
+            return
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if self._trades_today_date != today:
+            await self._load_today_trades()
+
+        # Filtro: max posiciones copy trade abiertas
+        ct_max_pos = cfg.get("copy_trade_max_positions", 3)
+        ct_open = sum(1 for p in self._open_positions.values() if p.get("is_copy_trade"))
+        if ct_open >= ct_max_pos:
+            print(f"[CopyTrade] ⚠️ Max posiciones copy trade ({ct_max_pos}) alcanzado", flush=True)
+            return
+
+        # Filtro: max trades diarios copy trade
+        ct_max_daily = cfg.get("copy_trade_max_daily", 10)
+        ct_today = sum(1 for t in self._trades_today if t.get("is_copy_trade"))
+        if ct_today >= ct_max_daily:
+            print(f"[CopyTrade] ⚠️ Max trades diarios copy trade ({ct_max_daily}) alcanzado", flush=True)
+            return
+
+        # Filtro: no duplicar posición en mismo mercado
+        if trade.market_id in self._open_positions:
+            return
+
+        # Cooldown general entre trades
+        now = time.time()
+        if now - self._last_trade_time < 10:
+            return
+
+        bet_size = cfg.get("copy_trade_bet_size", 10)
+
+        trade_info = {
+            "condition_id": trade.market_id,
+            "market_slug": trade.market_slug,
+            "market_question": trade.market_question,
+            "wallet_address": trade.wallet_address,
+            "insider_side": trade.side,
+            "insider_outcome": trade.outcome,
+            "buy_outcome": trade.outcome if trade.side == "BUY" else ("No" if trade.outcome == "Yes" else "Yes"),
+            "insider_size": trade.size,
+            "insider_price": trade.price,
+            "alert_score": candidate.score,
+            "triggers": f"⭐ COPY TRADE: {trade.wallet_address[:10]}...",
+            "bet_size": bet_size,
+            "category": trade.market_category or "",
+            "is_copy_trade": True,
+        }
+
+        print(f"[CopyTrade] 🚀 Ejecutando copy trade: {trade.market_slug[:40]} | "
+              f"wallet={trade.wallet_address[:10]} | {trade.side} {trade.outcome} | "
+              f"bet=${bet_size}", flush=True)
+
+        result = await self.execute_trade(trade_info)
+        if result.get("success"):
+            logger.info("copy_trade_executed",
+                        market=trade.market_slug,
+                        wallet=trade.wallet_address[:10],
+                        side=trade.side,
+                        outcome=trade.outcome,
+                        size=bet_size)
+        else:
+            print(f"[CopyTrade] ❌ Error: {result.get('error', 'unknown')}", flush=True)
 
     async def check_pending_confirmations(self):
         """Revisar alertas pendientes de confirmación por price impact.

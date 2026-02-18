@@ -1704,6 +1704,9 @@ async def get_alert_trading_config(request: Request):
         "aat_dca_enabled", "aat_dca_splits", "aat_dca_interval_sec",
         "aat_volume_spike_boost", "aat_smart_watchlist_boost", "aat_funding_chain_boost",
         "aat_category_scoring_enabled",
+        # Copy Trade
+        "aat_copy_trade_enabled", "aat_copy_trade_bet_size",
+        "aat_copy_trade_max_positions", "aat_copy_trade_max_daily",
         "arb_complement_enabled", "arb_complement_min_edge",
         "arb_complement_scan_interval", "arb_complement_max_markets",
     ], user_id=uid)
@@ -1766,6 +1769,11 @@ async def get_alert_trading_config(request: Request):
         "smart_watchlist_boost": int(raw.get("aat_smart_watchlist_boost", 3)),
         "funding_chain_boost": int(raw.get("aat_funding_chain_boost", 2)),
         "category_scoring_enabled": raw.get("aat_category_scoring_enabled") == "true",
+        # Copy Trade
+        "copy_trade_enabled": raw.get("aat_copy_trade_enabled") == "true",
+        "copy_trade_bet_size": float(raw.get("aat_copy_trade_bet_size", 10)),
+        "copy_trade_max_positions": int(raw.get("aat_copy_trade_max_positions", 3)),
+        "copy_trade_max_daily": int(raw.get("aat_copy_trade_max_daily", 10)),
         "complement_arb_enabled": raw.get("arb_complement_enabled") == "true",
         "complement_arb_min_edge": float(raw.get("arb_complement_min_edge", 1)),
         "complement_arb_scan_interval": int(raw.get("arb_complement_scan_interval", 60)),
@@ -1890,6 +1898,15 @@ async def save_alert_trading_config(request: Request):
         data["aat_funding_chain_boost"] = str(body["funding_chain_boost"])
     if "category_scoring_enabled" in body:
         data["aat_category_scoring_enabled"] = "true" if body["category_scoring_enabled"] else "false"
+    # Copy Trade
+    if "copy_trade_enabled" in body:
+        data["aat_copy_trade_enabled"] = "true" if body["copy_trade_enabled"] else "false"
+    if "copy_trade_bet_size" in body:
+        data["aat_copy_trade_bet_size"] = str(body["copy_trade_bet_size"])
+    if "copy_trade_max_positions" in body:
+        data["aat_copy_trade_max_positions"] = str(body["copy_trade_max_positions"])
+    if "copy_trade_max_daily" in body:
+        data["aat_copy_trade_max_daily"] = str(body["copy_trade_max_daily"])
     # v10: Complement Arb
     if "complement_arb_enabled" in body:
         data["arb_complement_enabled"] = "true" if body["complement_arb_enabled"] else "false"

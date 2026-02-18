@@ -930,7 +930,7 @@ class PolymarketAlertBot:
             # Alert AutoTrader: evaluar copy-trade automático
             if self.alert_autotrader:
                 try:
-                    await self.alert_autotrader.process_alert(candidate, trade)
+                    await self.alert_autotrader.process_alert(candidate, trade, is_copy_trade=is_copy)
                 except Exception as e:
                     print(f"[AlertTrader] Error en process_alert: {e}", flush=True)
 
