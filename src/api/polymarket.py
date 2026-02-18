@@ -423,42 +423,6 @@ class PolymarketClient:
             return 0
         return (trade_size / total) * 100
 
-    # ── Wallet Portfolio Value ───────────────────────────────────────
-
-    _portfolio_cache: dict[str, tuple[float, float]] = {}  # addr → (value, timestamp)
-
-    async def get_wallet_portfolio_value(self, address: str, cache_ttl: int = 600) -> float:
-        """Obtener valor total de posiciones de una wallet via Data API /value.
-        Cachea por cache_ttl segundos (default 10 min) para no saturar la API.
-        Retorna 0 si falla."""
-        import time
-        addr = address.lower()
-        now = time.time()
-        # Check cache
-        if addr in self._portfolio_cache:
-            cached_val, cached_ts = self._portfolio_cache[addr]
-            if now - cached_ts < cache_ttl:
-                return cached_val
-        try:
-            response = await self._rate_limited_get(
-                f"{config.DATA_API_URL}/value",
-                params={"user": addr},
-            )
-            if response.status_code == 200:
-                data = response.json()
-                # Respuesta: [{"user": "0x...", "value": 123}]
-                if isinstance(data, list) and data:
-                    val = float(data[0].get("value", 0))
-                elif isinstance(data, dict):
-                    val = float(data.get("value", 0))
-                else:
-                    val = 0
-                self._portfolio_cache[addr] = (val, now)
-                return val
-        except Exception as e:
-            logger.warning("error_portfolio_value", address=addr[:10], error=str(e))
-        return 0
-
     # ── Parse ─────────────────────────────────────────────────────────
 
     def _parse_trade(self, item: dict) -> Optional[Trade]:
