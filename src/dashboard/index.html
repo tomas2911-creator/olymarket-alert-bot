@@ -5847,7 +5847,7 @@ async function loadCopyTrading(){
         wrEl.className='text-lg font-bold '+(wr>=50?'text-green-400':'text-red-400');
         // Targets table
         const tBody=document.getElementById('ct-targets-body');
-        if(!targets.length){tBody.innerHTML='<tr><td colspan="13" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr>';}
+        if(!targets.length){tBody.innerHTML='<tr><td colspan="14" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr>';}
         else{tBody.innerHTML=targets.map(t=>{
             const addr=t.wallet_address;
             const name=t.display_name||addr.slice(0,10)+'...';
@@ -5855,7 +5855,7 @@ async function loadCopyTrading(){
             const wr=t.win_rate||0;
             const en=t.ct_enabled?'checked':'';
             const mode=t.ct_mode||'fixed';
-            const amt=mode==='pct'||mode==='range'?t.ct_pct||5:t.ct_fixed_amount||5;
+            const amt=mode==='pct'||mode==='range'||mode==='proporcional'?t.ct_pct||5:t.ct_fixed_amount||5;
             const bud=t.ct_budget||0;
             const used=t.ct_budget_used||0;
             const budPct=bud>0?Math.round(used/bud*100):0;

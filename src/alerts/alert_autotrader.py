@@ -1134,7 +1134,7 @@ class AlertAutoTrader:
             if insider_capital <= 0 or budget <= 0:
                 print(f"[CopyTrade] ⚠️ Modo proporcional requiere capital insider y budget configurados", flush=True)
                 return 0
-            insider_pct = insider_size / insider_capital  # % que el insider usó
+            insider_pct = min(insider_size / insider_capital, 1.0)  # % que el insider usó (cap 100%)
             bet = insider_pct * budget  # Mismo % aplicado a mi budget
             # Aplicar min/max de seguridad
             min_bet = float(wc.get("ct_min_bet", 1))
@@ -1196,7 +1196,7 @@ class AlertAutoTrader:
             print(f"[CopyTrade] ⚠️ Sin config para {trade.wallet_address[:10]}, usando defaults", flush=True)
             wc = {"ct_enabled": True, "ct_mode": "fixed", "ct_fixed_amount": cfg.get("copy_trade_bet_size", 10),
                   "ct_budget": 0, "ct_budget_used": 0, "ct_pct": 5, "ct_min_bet": 2, "ct_max_bet": 50,
-                  "ct_max_per_market": 0, "ct_min_trigger": 0}
+                  "ct_max_per_market": 0, "ct_min_trigger": 0, "ct_insider_capital": 0}
 
         # Filtro: wallet copy trade habilitado
         if not wc.get("ct_enabled", False):
