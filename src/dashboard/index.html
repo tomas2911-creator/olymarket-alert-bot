@@ -2516,10 +2516,10 @@
                 <h4 class="text-xs font-semibold text-gray-400 mb-2">Trades Copiados</h4>
                 <div class="overflow-x-auto"><table class="w-full text-xs">
                     <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                        <th class="text-left p-2">Fecha</th><th class="text-left p-2">Target</th>
-                        <th class="text-left p-2">Mercado</th><th class="text-center p-2">Side</th>
-                        <th class="text-right p-2">Original</th><th class="text-right p-2">Simulado</th>
-                        <th class="text-right p-2">Entrada</th><th class="text-right p-2">Actual</th>
+                        <th class="text-left p-2">Fecha</th><th class="text-left p-2">Wallet</th>
+                        <th class="text-left p-2">Mercado</th><th class="text-center p-2">Outcome</th>
+                        <th class="text-right p-2">Insider$</th><th class="text-right p-2">Bet$</th>
+                        <th class="text-right p-2">Precio</th>
                         <th class="text-right p-2">PnL</th><th class="text-center p-2">Estado</th>
                     </tr></thead>
                     <tbody id="ct-trades-body"><tr><td colspan="10" class="text-center text-gray-600 p-6">Sin trades copiados aún</td></tr></tbody>
@@ -5854,26 +5854,29 @@ async function loadCopyTrading(){
         }).join('');}
         // Trades table
         const trBody=document.getElementById('ct-trades-body');
-        if(!trades.length){trBody.innerHTML='<tr><td colspan="10" class="text-center text-gray-600 p-6">Sin trades copiados aún</td></tr>';}
+        if(!trades.length){trBody.innerHTML='<tr><td colspan="9" class="text-center text-gray-600 p-6">Sin trades copiados aún. Activa Copy Trade y marca wallets con ⭐</td></tr>';}
         else{trBody.innerHTML=trades.map(t=>{
             const ts=t.created_at?new Date(t.created_at).toLocaleDateString('es-CL',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
-            const name=t.target_name||t.target_wallet.slice(0,10)+'...';
+            const name=t.target_name||(t.wallet_address||'').slice(0,10)+'...';
             const q=(t.market_question||t.market_slug||'').slice(0,40);
-            const sc=t.side==='BUY'?'text-green-400':'text-red-400';
+            const outcome=t.outcome||'';
+            const oc=outcome==='Yes'?'text-green-400':'text-red-400';
             const pnl=t.pnl||0;
             const pc=pnl>=0?'text-green-400':'text-red-400';
-            const stC=t.status==='open'?'bg-cyan-900/40 text-cyan-400':'bg-gray-700/40 text-gray-400';
+            const resolved=t.resolved;
+            const result=t.result||'';
+            const stLabel=resolved?(result==='win'?'✅ WIN':'❌ LOSS'):(t.status==='filled'?'🔵 ABIERTO':'⚪ '+t.status);
+            const stC=resolved?(result==='win'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'):'bg-cyan-900/40 text-cyan-400';
             return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
                 <td class="p-2 text-gray-400">${ts}</td>
                 <td class="p-2 text-emerald-400">${name}</td>
                 <td class="p-2 text-gray-300" title="${(t.market_question||'').replace(/"/g,'&quot;')}">${q}</td>
-                <td class="p-2 text-center ${sc}">${t.side||''}</td>
-                <td class="p-2 text-right font-mono text-gray-400">$${(t.original_size||0).toLocaleString()}</td>
-                <td class="p-2 text-right font-mono text-white">$${(t.sim_size||0).toFixed(2)}</td>
-                <td class="p-2 text-right font-mono">${(t.entry_price||0).toFixed(2)}</td>
-                <td class="p-2 text-right font-mono">${(t.current_price||0).toFixed(2)}</td>
-                <td class="p-2 text-right font-mono font-bold ${pc}">$${pnl.toFixed(2)}</td>
-                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] ${stC}">${t.status}</span></td>
+                <td class="p-2 text-center ${oc}">${outcome}</td>
+                <td class="p-2 text-right font-mono text-gray-400">$${(t.insider_size||0).toLocaleString()}</td>
+                <td class="p-2 text-right font-mono text-white">$${(t.size_usd||0).toFixed(2)}</td>
+                <td class="p-2 text-right font-mono">${(t.price||0).toFixed(2)}</td>
+                <td class="p-2 text-right font-mono font-bold ${pc}">${resolved?'$'+pnl.toFixed(2):'—'}</td>
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] ${stC}">${stLabel}</span></td>
             </tr>`;
         }).join('');}
     }catch(e){console.error('loadCopyTrading error',e);}

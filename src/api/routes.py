@@ -415,7 +415,7 @@ async def toggle_copy_target(request: Request, wallet_address: str):
 async def get_copy_trades(request: Request, limit: int = 100):
     db = request.app.state.db
     uid = await get_user_id(request)
-    trades = await db.get_copy_trades_feed(user_id=uid, limit=limit)
+    trades = await db.get_real_copy_trades(user_id=uid, limit=limit)
     return {"trades": trades, "total": len(trades)}
 
 
@@ -423,7 +423,7 @@ async def get_copy_trades(request: Request, limit: int = 100):
 async def get_copy_stats(request: Request):
     db = request.app.state.db
     uid = await get_user_id(request)
-    return await db.get_copy_trading_stats(user_id=uid)
+    return await db.get_real_copy_trading_stats(user_id=uid)
 
 
 # ── v11: AI Analysis ────────────────────────────────────────────────

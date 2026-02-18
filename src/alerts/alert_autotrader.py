@@ -785,9 +785,11 @@ class AlertAutoTrader:
                 return {"success": False, "error": f"Precio inválido: {price}"}
 
             # Filtro: odds actuales del mercado (no del insider)
+            # Copy trades bypasean este filtro — la decisión ya la tomó la wallet seguida
             cfg = self._config
-            if price > cfg["max_odds"] or price < cfg["min_odds"]:
-                return {"success": False, "error": f"Precio actual {price:.2f} fuera de rango [{cfg['min_odds']}, {cfg['max_odds']}]"}
+            if not trade_info.get("is_copy_trade"):
+                if price > cfg["max_odds"] or price < cfg["min_odds"]:
+                    return {"success": False, "error": f"Precio actual {price:.2f} fuera de rango [{cfg['min_odds']}, {cfg['max_odds']}]"}
 
             # v10: Orderbook Depth Check — verificar price impact antes de ejecutar
             if cfg.get("orderbook_check_enabled"):
@@ -932,6 +934,7 @@ class AlertAutoTrader:
             "token_id": token_id,
             "category": trade_info["category"],
             "wallet_hit_rate": trade_info["wallet_hit_rate"],
+            "is_copy_trade": trade_info.get("is_copy_trade", False),
             "status": "filled" if success else "rejected",
             "error": error_msg if not success else None,
         }
@@ -1021,6 +1024,7 @@ class AlertAutoTrader:
             "token_id": token_id,
             "category": trade_info["category"],
             "wallet_hit_rate": trade_info["wallet_hit_rate"],
+            "is_copy_trade": trade_info.get("is_copy_trade", False),
             "status": "filled",
             "error": None,
         }
@@ -1151,6 +1155,7 @@ class AlertAutoTrader:
             "insider_price": trade.price,
             "alert_score": candidate.score,
             "triggers": f"⭐ COPY TRADE: {trade.wallet_address[:10]}...",
+            "wallet_hit_rate": candidate.wallet_hit_rate or 0,
             "bet_size": bet_size,
             "category": trade.market_category or "",
             "is_copy_trade": True,

@@ -553,6 +553,7 @@ class Database:
             user_migrations = [
                 "ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
                 "ALTER TABLE alert_autotrades ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
+                "ALTER TABLE alert_autotrades ADD COLUMN IF NOT EXISTS is_copy_trade BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE autotrades ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
                 "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
                 "ALTER TABLE bankroll_history ADD COLUMN IF NOT EXISTS user_id INTEGER DEFAULT 1",
@@ -2117,6 +2118,67 @@ class Database:
             print(f"[DB] get_copy_trading_stats error: {e}", flush=True)
             return {}
 
+    # ── Copy Trades Reales (desde alert_autotrades) ──────────────────
+
+    async def get_real_copy_trades(self, user_id: int = 1, limit: int = 100) -> list[dict]:
+        """Obtener copy trades reales ejecutados (is_copy_trade=TRUE en alert_autotrades)."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT a.*,
+                           COALESCE(w.name, w.pseudonym) as target_name,
+                           w.smart_money_score
+                    FROM alert_autotrades a
+                    LEFT JOIN wallets w ON a.wallet_address = w.address
+                    WHERE a.is_copy_trade = TRUE AND a.user_id = $1
+                    ORDER BY a.created_at DESC
+                    LIMIT $2
+                """, user_id, limit)
+                result = []
+                for r in rows:
+                    d = dict(r)
+                    for k, v in d.items():
+                        if isinstance(v, datetime):
+                            d[k] = v.isoformat()
+                    result.append(d)
+                return result
+        except Exception as e:
+            print(f"[DB] get_real_copy_trades error: {e}", flush=True)
+            return []
+
+    async def get_real_copy_trading_stats(self, user_id: int = 1) -> dict:
+        """Estadísticas de copy trades reales ejecutados."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT
+                        COUNT(*) as total_trades,
+                        COUNT(CASE WHEN NOT resolved THEN 1 END) as open_trades,
+                        COALESCE(SUM(size_usd), 0) as total_invested,
+                        COALESCE(SUM(CASE WHEN resolved THEN pnl ELSE 0 END), 0) as total_pnl,
+                        COALESCE(SUM(CASE WHEN resolved AND result='win' THEN 1 ELSE 0 END), 0) as wins,
+                        COALESCE(SUM(CASE WHEN resolved AND result='loss' THEN 1 ELSE 0 END), 0) as losses,
+                        COUNT(DISTINCT wallet_address) as unique_targets
+                    FROM alert_autotrades
+                    WHERE is_copy_trade = TRUE AND user_id = $1 AND status = 'filled'
+                """, user_id)
+                if not row:
+                    return {}
+                total = int(row["wins"] or 0) + int(row["losses"] or 0)
+                return {
+                    "total_trades": int(row["total_trades"] or 0),
+                    "open_trades": int(row["open_trades"] or 0),
+                    "total_invested": round(float(row["total_invested"] or 0), 2),
+                    "total_pnl": round(float(row["total_pnl"] or 0), 2),
+                    "wins": int(row["wins"] or 0),
+                    "losses": int(row["losses"] or 0),
+                    "win_rate": round(int(row["wins"] or 0) / max(total, 1) * 100, 1),
+                    "unique_targets": int(row["unique_targets"] or 0),
+                }
+        except Exception as e:
+            print(f"[DB] get_real_copy_trading_stats error: {e}", flush=True)
+            return {}
+
     # ── v11: AI Analysis ─────────────────────────────────────────────
 
     async def save_ai_analysis(self, **kwargs) -> int:
@@ -3411,8 +3473,8 @@ class Database:
                     (condition_id, order_id, market_slug, market_question,
                      wallet_address, insider_side, insider_outcome, insider_size,
                      alert_score, triggers, side, outcome, price, size_usd,
-                     shares, token_id, category, wallet_hit_rate, status, error, user_id)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                     shares, token_id, category, wallet_hit_rate, is_copy_trade, status, error, user_id)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
             """,
                 trade.get("condition_id", ""),
                 trade.get("order_id", ""),
@@ -3432,6 +3494,7 @@ class Database:
                 trade.get("token_id", ""),
                 trade.get("category", ""),
                 trade.get("wallet_hit_rate", 0),
+                trade.get("is_copy_trade", False),
                 trade.get("status", "filled"),
                 trade.get("error"),
                 user_id,
