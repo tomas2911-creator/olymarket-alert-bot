@@ -25,6 +25,7 @@ from typing import Optional
 import httpx
 import structlog
 from src import config
+from src.models import Trade
 
 logger = structlog.get_logger()
 
@@ -65,6 +66,10 @@ class AlertAutoTrader:
         self._calibrated_at: float = 0
         # Cache de portfolio value de insiders: addr → (value, timestamp)
         self._portfolio_cache: dict[str, tuple[float, float]] = {}
+        # Scanner dedicado para wallets copy trade
+        self._ct_wallets: list[dict] = []  # wallets con ct_enabled=True
+        self._ct_wallets_updated: float = 0  # último refresh
+        self._ct_last_seen: dict[str, float] = {}  # wallet → timestamp último trade visto
 
     async def initialize(self):
         """Cargar config y crear cliente CLOB si hay credenciales."""
@@ -1193,6 +1198,152 @@ class AlertAutoTrader:
 
         # Mínimo $1 para que sea viable en CLOB
         return max(bet, 1.0) if bet > 0 else 0
+
+    # ── Scanner dedicado para wallets copy trade ───────────────────
+
+    async def _refresh_ct_wallets(self):
+        """Refrescar lista de wallets con ct_enabled=TRUE desde DB (cada 5 min)."""
+        now = time.time()
+        if now - self._ct_wallets_updated < 300:
+            return
+        self._ct_wallets_updated = now
+        try:
+            wallets = await self.db.get_watchlisted_wallets_detail()
+            self._ct_wallets = [w for w in wallets if w.get("ct_enabled")]
+            if self._ct_wallets:
+                print(f"[CopyScanner] {len(self._ct_wallets)} wallets con Copiar ☑ activas", flush=True)
+        except Exception as e:
+            print(f"[CopyScanner] Error refrescando wallets: {e}", flush=True)
+
+    async def scan_copy_wallets(self):
+        """Scanner dedicado: consultar /activity?user={wallet} para cada wallet copy trade.
+        Detecta trades nuevos y los alimenta a _process_copy_trade.
+        Llamado desde el polling loop de main.py cada ciclo."""
+        cfg = self._config
+        if not cfg.get("copy_trade_enabled") or not self._client or not self._initialized:
+            return
+
+        await self._refresh_ct_wallets()
+        if not self._ct_wallets:
+            return
+
+        now = time.time()
+        scanned = 0
+        new_trades = 0
+
+        class _MiniCandidate:
+            def __init__(self, addr, win_rate):
+                self.score = 0
+                self.triggers = [f"⭐ CopyScanner: {addr[:10]}"]
+                self.wallet_hit_rate = win_rate
+
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                for winfo in self._ct_wallets:
+                    addr = winfo.get("wallet_address", "")
+                    if not addr:
+                        continue
+
+                    try:
+                        resp = await client.get(
+                            f"{DATA_API_URL}/activity",
+                            params={"user": addr, "limit": 20},
+                        )
+                        if resp.status_code != 200:
+                            continue
+                        scanned += 1
+
+                        activities = resp.json()
+                        if not isinstance(activities, list):
+                            continue
+
+                        last_seen_ts = self._ct_last_seen.get(addr, now - 120)
+
+                        for a in activities:
+                            # Parsear timestamp
+                            ts_val = a.get("timestamp", 0)
+                            if isinstance(ts_val, str):
+                                try:
+                                    ts_val = datetime.fromisoformat(
+                                        ts_val.replace("Z", "+00:00")
+                                    ).timestamp()
+                                except Exception:
+                                    continue
+                            ts_val = float(ts_val)
+
+                            # Solo trades nuevos (después del último visto)
+                            if ts_val <= last_seen_ts:
+                                continue
+
+                            side = a.get("side", "")
+                            if side not in ("BUY", "SELL"):
+                                continue  # Ignorar redenciones y otros
+
+                            # Calcular USD value
+                            usdc_size = float(a.get("usdcSize", 0))
+                            if usdc_size <= 0:
+                                size_raw = float(a.get("size", 0))
+                                price = float(a.get("price", 0))
+                                usdc_size = size_raw * price if price > 0 else size_raw
+
+                            if usdc_size < 1:
+                                continue
+
+                            # Filtrar redenciones: "No" a $1.00 exacto no es apuesta real
+                            price = float(a.get("price", 0))
+                            if price >= 0.99 and side == "BUY":
+                                continue  # Redención, no especulación
+
+                            cid = a.get("conditionId", "")
+                            if not cid:
+                                continue
+
+                            # Crear objeto Trade-like para _process_copy_trade
+                            try:
+                                ts_dt = datetime.fromtimestamp(ts_val, tz=timezone.utc)
+                            except Exception:
+                                ts_dt = datetime.now(timezone.utc)
+
+                            trade = Trade(
+                                transaction_hash=f"ct_{addr[:8]}_{cid[:8]}_{int(ts_val)}",
+                                market_id=cid,
+                                market_question=a.get("title", ""),
+                                market_slug=a.get("eventSlug", a.get("slug", "")),
+                                wallet_address=addr,
+                                side=side,
+                                size=round(usdc_size, 2),
+                                price=price,
+                                timestamp=ts_dt,
+                                outcome=a.get("outcome", ""),
+                                market_category=a.get("category", None),
+                                trader_name=winfo.get("display_name") or None,
+                            )
+
+                            await self._process_copy_trade(
+                                _MiniCandidate(addr, winfo.get("win_rate", 0)), trade)
+                            new_trades += 1
+
+                        # Actualizar last seen al timestamp más reciente de la respuesta
+                        if activities:
+                            valid_ts = [
+                                float(a.get("timestamp", 0)) for a in activities
+                                if str(a.get("timestamp", "")).replace(".", "").isdigit()
+                            ]
+                            max_ts = max(valid_ts) if valid_ts else last_seen_ts
+                            if max_ts > last_seen_ts:
+                                self._ct_last_seen[addr] = max_ts
+
+                    except Exception as e:
+                        print(f"[CopyScanner] Error escaneando {addr[:10]}: {e}", flush=True)
+
+                    # Rate limiting: esperar entre wallets para no saturar API
+                    await asyncio.sleep(1)
+
+            if new_trades > 0:
+                print(f"[CopyScanner] Escaneadas {scanned} wallets → {new_trades} trades nuevos detectados", flush=True)
+
+        except Exception as e:
+            print(f"[CopyScanner] Error general: {e}", flush=True)
 
     async def _process_copy_trade(self, candidate, trade):
         """Ejecutar copy trade automático de wallet watchlisted.

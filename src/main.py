@@ -406,6 +406,13 @@ class PolymarketAlertBot:
                 await self.poll_cycle()
                 cycle += 1
 
+                # Cada ciclo: scanner dedicado de wallets copy trade
+                if self.alert_autotrader:
+                    try:
+                        await self.alert_autotrader.scan_copy_wallets()
+                    except Exception as e:
+                        print(f"[CopyScanner] Error: {e}", flush=True)
+
                 # Cada 5 ciclos (~5 min): price impact check + confirmaciones pendientes
                 if cycle % 5 == 0:
                     await self.check_price_impact()
