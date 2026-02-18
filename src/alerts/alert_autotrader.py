@@ -1109,7 +1109,7 @@ class AlertAutoTrader:
 
     def _calc_copy_bet_size(self, wc: dict, insider_size: float) -> float:
         """Calcular bet size según config per-wallet.
-        Modos: fixed, pct, range.
+        Modos: fixed, pct, range, proporcional.
         Retorna 0 si no debe copiar (presupuesto agotado, etc.)."""
         mode = wc.get("ct_mode", "fixed")
         budget = float(wc.get("ct_budget", 0))
@@ -1127,6 +1127,22 @@ class AlertAutoTrader:
             min_bet = float(wc.get("ct_min_bet", 2))
             max_bet = float(wc.get("ct_max_bet", 50))
             bet = max(min_bet, min(bet, max_bet))
+        elif mode == "proporcional":
+            # Mismo % que el insider usa de su capital total
+            # Ej: insider tiene $100, apuesta $22 = 22%. Yo tengo $50 → 22% = $11
+            insider_capital = float(wc.get("ct_insider_capital", 0))
+            if insider_capital <= 0 or budget <= 0:
+                print(f"[CopyTrade] ⚠️ Modo proporcional requiere capital insider y budget configurados", flush=True)
+                return 0
+            insider_pct = insider_size / insider_capital  # % que el insider usó
+            bet = insider_pct * budget  # Mismo % aplicado a mi budget
+            # Aplicar min/max de seguridad
+            min_bet = float(wc.get("ct_min_bet", 1))
+            max_bet = float(wc.get("ct_max_bet", 50))
+            if max_bet > 0:
+                bet = min(bet, max_bet)
+            if min_bet > 0:
+                bet = max(bet, min_bet)
         else:
             bet = float(wc.get("ct_fixed_amount", 5))
 

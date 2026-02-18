@@ -2512,10 +2512,11 @@
                             <th class="text-right p-2">Monto/$/%</th>
                             <th class="text-right p-2">Min</th><th class="text-right p-2">Max</th>
                             <th class="text-right p-2">Budget</th><th class="text-right p-2">Usado</th>
+                            <th class="text-right p-2">CapInsider</th>
                             <th class="text-right p-2">MinTrigger</th><th class="text-right p-2">MaxMkt</th>
                             <th class="text-center p-2">💾</th>
                         </tr></thead>
-                        <tbody id="ct-targets-body"><tr><td colspan="13" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr></tbody>
+                        <tbody id="ct-targets-body"><tr><td colspan="14" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr></tbody>
                     </table></div>
                 </div>
                 <!-- Copy Trades -->
@@ -5869,12 +5870,14 @@ async function loadCopyTrading(){
                     <option value="fixed" ${mode==='fixed'?'selected':''}>Fijo $</option>
                     <option value="pct" ${mode==='pct'?'selected':''}>% Trade</option>
                     <option value="range" ${mode==='range'?'selected':''}>Rango</option>
+                    <option value="proporcional" ${mode==='proporcional'?'selected':''}>Proporcional</option>
                 </select></td>
                 <td class="p-2 text-right"><input type="number" id="cta-${id}" value="${amt}" min="0.5" step="0.5" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
                 <td class="p-2 text-right"><input type="number" id="ctmin-${id}" value="${t.ct_min_bet||2}" min="0" step="0.5" class="w-12 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
                 <td class="p-2 text-right"><input type="number" id="ctmax-${id}" value="${t.ct_max_bet||50}" min="0" step="1" class="w-12 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
                 <td class="p-2 text-right"><input type="number" id="ctb-${id}" value="${bud}" min="0" step="10" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
                 <td class="p-2 text-right font-mono ${budColor}">${bud>0?'$'+used.toFixed(0)+' ('+budPct+'%)':'∞'}</td>
+                <td class="p-2 text-right"><input type="number" id="ctic-${id}" value="${t.ct_insider_capital||0}" min="0" step="50" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right" title="Capital estimado del insider ($)"></td>
                 <td class="p-2 text-right"><input type="number" id="ctmt-${id}" value="${t.ct_min_trigger||0}" min="0" step="10" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
                 <td class="p-2 text-right"><input type="number" id="ctmm-${id}" value="${t.ct_max_per_market||0}" min="0" step="5" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
                 <td class="p-2 text-center">
@@ -5926,6 +5929,7 @@ async function saveWalletCopyConfig(addr,id,btn){
             ct_budget:parseFloat(document.getElementById('ctb-'+id).value)||0,
             ct_min_trigger:parseFloat(document.getElementById('ctmt-'+id).value)||0,
             ct_max_per_market:parseFloat(document.getElementById('ctmm-'+id).value)||0,
+            ct_insider_capital:parseFloat(document.getElementById('ctic-'+id).value)||0,
         };
         await fetch('/api/copy-trading/targets/'+addr+'/config',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+_authToken},body:JSON.stringify(body)});
         if(btn){btn.textContent='✅';setTimeout(()=>{btn.textContent='💾';},1500);}

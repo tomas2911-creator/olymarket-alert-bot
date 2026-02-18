@@ -583,6 +583,7 @@ class Database:
                 "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_max_bet DOUBLE PRECISION DEFAULT 50",
                 "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_max_per_market DOUBLE PRECISION DEFAULT 0",
                 "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_min_trigger DOUBLE PRECISION DEFAULT 0",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_insider_capital DOUBLE PRECISION DEFAULT 0",
             ]
             for m in user_migrations:
                 try:
@@ -2937,7 +2938,8 @@ class Database:
                            COALESCE(w.ct_min_bet, 2) as ct_min_bet,
                            COALESCE(w.ct_max_bet, 50) as ct_max_bet,
                            COALESCE(w.ct_max_per_market, 0) as ct_max_per_market,
-                           COALESCE(w.ct_min_trigger, 0) as ct_min_trigger
+                           COALESCE(w.ct_min_trigger, 0) as ct_min_trigger,
+                           COALESCE(w.ct_insider_capital, 0) as ct_insider_capital
                     FROM wallets w
                     WHERE w.is_watchlisted = TRUE
                     ORDER BY w.smart_money_score DESC NULLS LAST
@@ -2962,7 +2964,8 @@ class Database:
                         ct_min_bet = $7,
                         ct_max_bet = $8,
                         ct_max_per_market = $9,
-                        ct_min_trigger = $10
+                        ct_min_trigger = $10,
+                        ct_insider_capital = $11
                     WHERE address = $1
                 """,
                     addr,
@@ -2975,6 +2978,7 @@ class Database:
                     float(config.get("ct_max_bet", 50)),
                     float(config.get("ct_max_per_market", 0)),
                     float(config.get("ct_min_trigger", 0)),
+                    float(config.get("ct_insider_capital", 0)),
                 )
                 return True
         except Exception as e:
@@ -2996,7 +3000,8 @@ class Database:
                            COALESCE(ct_min_bet, 2) as ct_min_bet,
                            COALESCE(ct_max_bet, 50) as ct_max_bet,
                            COALESCE(ct_max_per_market, 0) as ct_max_per_market,
-                           COALESCE(ct_min_trigger, 0) as ct_min_trigger
+                           COALESCE(ct_min_trigger, 0) as ct_min_trigger,
+                           COALESCE(ct_insider_capital, 0) as ct_insider_capital
                     FROM wallets WHERE address = $1
                 """, addr)
                 return dict(row) if row else {}
