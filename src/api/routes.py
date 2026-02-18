@@ -457,7 +457,7 @@ async def wallet_scan(request: Request, address: str):
             pass
 
         # 4. Calcular métricas desde posiciones
-        total_realized_pnl = 0
+        total_cash_pnl = 0
         total_initial_value = 0
         open_positions = []
 
@@ -469,16 +469,14 @@ async def wallet_scan(request: Request, address: str):
                 initial_val = float(p.get("initialValue", 0))
                 current_val = float(p.get("currentValue", 0))
                 cash_pnl = float(p.get("cashPnl", 0))
-                realized = float(p.get("realizedPnl", 0))
                 total_b = float(p.get("totalBought", 0))
                 pct_pnl = float(p.get("percentPnl", 0))
 
-                total_realized_pnl += realized
+                total_cash_pnl += cash_pnl
                 total_initial_value += initial_val
                 total_bought += total_b
 
                 if size > 0.01:
-                    unrealized = current_val - initial_val
                     open_positions.append({
                         "title": p.get("title", ""),
                         "slug": p.get("slug", ""),
@@ -487,29 +485,23 @@ async def wallet_scan(request: Request, address: str):
                         "cur_price": round(cur_price, 4),
                         "initial_value": round(initial_val, 2),
                         "current_value": round(current_val, 2),
-                        "unrealized_pnl": round(unrealized, 2),
-                        "realized_pnl": round(realized, 2),
+                        "cash_pnl": round(cash_pnl, 2),
                         "pnl_pct": round(pct_pnl, 2),
                         "end_date": p.get("endDate", ""),
                     })
 
-                # Win/loss count
-                if realized > 0.5:
+                # Win/loss count usando cashPnl (el PnL real)
+                if cash_pnl > 0.5:
                     wins += 1
-                elif realized < -0.5:
+                elif cash_pnl < -0.5:
                     losses += 1
 
             except (ValueError, TypeError):
                 continue
 
-        # 5. Estimar capital inicial
-        # Capital inicial ≈ portfolio actual - PnL total
-        total_pnl = total_realized_pnl + sum(
-            op["unrealized_pnl"] for op in open_positions
-        )
-        estimated_initial = max(portfolio_value - total_pnl, 0) if portfolio_value > 0 else total_initial_value
-        if estimated_initial <= 0:
-            estimated_initial = total_bought - total_pnl if total_bought > 0 else 0
+        # 5. Capital inicial = suma de initialValue de todas las posiciones
+        total_pnl = total_cash_pnl
+        estimated_initial = total_initial_value if total_initial_value > 0 else max(portfolio_value - total_pnl, 0)
 
         # ROI
         roi_pct = round(total_pnl / max(estimated_initial, 1) * 100, 2) if estimated_initial > 0 else 0
@@ -550,7 +542,7 @@ async def wallet_scan(request: Request, address: str):
             "portfolio_value": round(portfolio_value, 2),
             "estimated_initial_capital": round(estimated_initial, 2),
             "total_pnl": round(total_pnl, 2),
-            "realized_pnl": round(total_realized_pnl, 2),
+            "realized_pnl": round(total_cash_pnl, 2),
             "roi_pct": roi_pct,
             "win_rate": win_rate,
             "wins": wins,

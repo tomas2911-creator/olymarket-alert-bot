@@ -5672,10 +5672,10 @@ function renderWalletScan(d){
     document.getElementById('wscan-portfolio').textContent='$'+fmt(Math.round(d.portfolio_value));
     document.getElementById('wscan-initial').textContent='$'+fmt(Math.round(d.estimated_initial_capital));
     const pnlEl=document.getElementById('wscan-pnl');
-    pnlEl.textContent=(d.total_pnl>=0?'+':'')+`$${fmt(Math.abs(Math.round(d.total_pnl)))}`;
+    pnlEl.textContent=(d.total_pnl>=0?'+':'-')+`$${fmt(Math.abs(Math.round(d.total_pnl)))}`;
     pnlEl.className='text-lg font-bold '+(d.total_pnl>=0?'text-green-400':'text-red-400');
     const roiEl=document.getElementById('wscan-roi');
-    roiEl.textContent=(d.roi_pct>=0?'+':'')+d.roi_pct+'%';
+    roiEl.textContent=(d.roi_pct>=0?'+':'-')+Math.abs(d.roi_pct)+'%';
     roiEl.className='text-lg font-bold '+(d.roi_pct>=0?'text-green-400':'text-red-400');
     const wrEl=document.getElementById('wscan-wr');
     wrEl.textContent=d.win_rate+'%';
@@ -5685,7 +5685,7 @@ function renderWalletScan(d){
     document.getElementById('wscan-wins').textContent=d.wins;
     document.getElementById('wscan-losses').textContent=d.losses;
     const realEl=document.getElementById('wscan-realized');
-    realEl.textContent=(d.realized_pnl>=0?'+':'')+`$${fmt(Math.abs(Math.round(d.realized_pnl)))}`;
+    realEl.textContent=(d.realized_pnl>=0?'+':'-')+`$${fmt(Math.abs(Math.round(d.realized_pnl)))}`;
     realEl.className='text-sm font-bold '+(d.realized_pnl>=0?'text-green-400':'text-red-400');
     if(d.first_trade_date){
         try{const dt=new Date(d.first_trade_date);document.getElementById('wscan-first').textContent=dt.toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'});}
@@ -5700,16 +5700,17 @@ function renderWalletScan(d){
     const posBody=document.getElementById('wscan-pos-body');
     if(d.open_positions&&d.open_positions.length>0){
         posBody.innerHTML=d.open_positions.map(p=>{
-            const pC=p.unrealized_pnl>=0?'text-green-400':'text-red-400';
+            const cpnl=p.cash_pnl||0;
+            const pC=cpnl>=0?'text-green-400':'text-red-400';
             const title=(p.title||'').length>50?p.title.slice(0,50)+'…':p.title||'';
             return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
                 <td class="p-2 max-w-[200px] truncate">${p.slug?`<a href="https://polymarket.com/event/${p.slug}" target="_blank" class="text-gray-300 hover:text-violet-400">${title}</a>`:title}</td>
-                <td class="p-2 text-right font-mono">${p.size}</td>
+                <td class="p-2 text-right font-mono">${fmt(Math.round(p.size))}</td>
                 <td class="p-2 text-right font-mono text-gray-400">${p.avg_price.toFixed(2)}</td>
                 <td class="p-2 text-right font-mono text-gray-400">${p.cur_price.toFixed(2)}</td>
                 <td class="p-2 text-right font-mono">$${fmt(Math.round(p.current_value))}</td>
-                <td class="p-2 text-right font-mono ${pC}">${p.unrealized_pnl>=0?'+':''}$${Math.abs(p.unrealized_pnl).toFixed(0)}</td>
-                <td class="p-2 text-right font-mono ${pC}">${p.pnl_pct>=0?'+':''}${p.pnl_pct}%</td>
+                <td class="p-2 text-right font-mono ${pC}">${cpnl>=0?'+':'-'}$${fmt(Math.abs(Math.round(cpnl)))}</td>
+                <td class="p-2 text-right font-mono ${pC}">${p.pnl_pct>=0?'+':''}${p.pnl_pct.toFixed(0)}%</td>
             </tr>`;
         }).join('');
     }else{posBody.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-4">Sin posiciones abiertas</td></tr>';}
