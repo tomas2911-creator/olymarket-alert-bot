@@ -1496,6 +1496,12 @@ class Database:
                         FROM whale_trades wt3
                         WHERE wt3.market_id = wt.market_id AND wt3.size >= $1
                     ) consensus ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT COUNT(*) as wallet_total_trades
+                        FROM whale_trades wt4
+                        WHERE wt4.wallet_address = wt.wallet_address
+                          AND wt4.size >= $1
+                    ) wallet_ct ON TRUE
                     WHERE wt.size >= $1
                       AND wt.created_at >= NOW() - make_interval(hours => $2)
                 """
@@ -1615,6 +1621,7 @@ class Database:
                         "streak": s_count,
                         "streak_type": "win" if s_type else ("loss" if s_type is not None else None),
                         "time_to_close_hours": time_to_close,
+                        "wallet_whale_trades": int(r["wallet_total_trades"] or 0),
                     })
                 return result
         except Exception as e:

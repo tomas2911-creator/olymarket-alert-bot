@@ -2373,18 +2373,19 @@
                                 <th class="text-left p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','created_at',render_whf)">Hora <span id="si-whf-created_at" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-left p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','market_question',render_whf)">Mercado <span id="si-whf-market_question" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-left p-2">Wallet</th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','wallet_whale_trades',render_whf)">#Trades <span id="si-whf-wallet_whale_trades" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','side',render_whf)">Side <span id="si-whf-side" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','size',render_whf)">Monto <span id="si-whf-size" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','price',render_whf)">Precio <span id="si-whf-price" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-right p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','pnl',render_whf)">PnL <span id="si-whf-pnl" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','status',render_whf)">Estado <span id="si-whf-status" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
-                                <th class="text-center p-2">Badges</th>
+                                <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','badge_count',render_whf)">Badges <span id="si-whf-badge_count" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','win_rate',render_whf)">Win% <span id="si-whf-win_rate" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','score',render_whf)">Score <span id="si-whf-score" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-center p-2 cursor-pointer select-none hover:text-cyan-400" onclick="colSort('whf','time_to_close_hours',render_whf)">Cierre <span id="si-whf-time_to_close_hours" data-sg="whf" class="text-cyan-400 hidden text-[9px]"></span></th>
                                 <th class="text-center p-2 w-8"></th>
                             </tr></thead>
-                            <tbody id="whale-feed-body"><tr><td colspan="13" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
+                            <tbody id="whale-feed-body"><tr><td colspan="14" class="text-center text-gray-600 p-6">Cargando...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -5561,14 +5562,14 @@ async function loadWhaleData(){
 let _whfData=[];
 async function loadWhaleFeed(minSize){
     const fb=document.getElementById('whale-feed-body');
-    fb.innerHTML='<tr><td colspan="13" class="text-center text-cyan-400 p-6">Cargando whale trades...</td></tr>';
+    fb.innerHTML='<tr><td colspan="14" class="text-center text-cyan-400 p-6">Cargando whale trades...</td></tr>';
     const side=document.getElementById('wh-side')?.value||'';
     const hours=document.getElementById('wh-hours')?.value||24;
     const data=await fetchJson(`/api/whales/feed?min_size=${minSize}&hours=${hours}&side=${side}&limit=200`);
-    if(!data){fb.innerHTML='<tr><td colspan="13" class="text-center text-red-400 p-6">Error al cargar</td></tr>';return;}
+    if(!data){fb.innerHTML='<tr><td colspan="14" class="text-center text-red-400 p-6">Error al cargar</td></tr>';return;}
     _whfData=data.trades||[];
     document.getElementById('wh-total').textContent=_whfData.length;
-    if(!_whfData.length){fb.innerHTML='<tr><td colspan="13" class="text-center text-gray-600 p-6">No hay whale trades en este período</td></tr>';return;}
+    if(!_whfData.length){fb.innerHTML='<tr><td colspan="14" class="text-center text-gray-600 p-6">No hay whale trades en este período</td></tr>';return;}
     render_whf();
 }
 function render_whf(){
@@ -5585,6 +5586,8 @@ function render_whf(){
         const sc=t.score||0;
         const scC=sc>=8?'text-green-400':sc>=5?'text-yellow-400':'text-gray-500';
         const star=t.is_watchlisted?'text-yellow-400':'text-gray-600 hover:text-yellow-400';
+        const wwt=t.wallet_whale_trades||0;
+        const wwtC=wwt>=10?'text-green-400 font-bold':wwt>=5?'text-yellow-400':wwt>=2?'text-gray-300':'text-gray-600';
         const mq=(t.market_question||'').length>45?t.market_question.slice(0,45)+'…':t.market_question||'';
         const mqSafe=(t.market_question||'').replace(/"/g,'&quot;');
         // PnL
@@ -5612,6 +5615,7 @@ function render_whf(){
             const cC=t.side_consensus_pct>=80?'text-green-400':t.side_consensus_pct>=60?'text-yellow-400':'text-gray-500';
             badges.push(`<span class="${cC}" title="${t.side_consensus_pct}% de ${t.side_consensus_total} whales en mismo side">👥${t.side_consensus_pct}%</span>`);
         }
+        t.badge_count=badges.length;
         const badgesHtml=badges.length?badges.join(' '):'<span class="text-gray-700">-</span>';
         // Cierre
         let closeHtml='-';
@@ -5625,6 +5629,7 @@ function render_whf(){
             <td class="p-2 text-gray-400 whitespace-nowrap">${timeStr}</td>
             <td class="p-2 max-w-[180px] truncate" title="${mqSafe}"><a href="https://polymarket.com/event/${t.market_slug||''}" target="_blank" class="text-gray-300 hover:text-cyan-400 hover:underline">${mq}</a></td>
             <td class="p-2"><a href="${polyProfile(addr)}" target="_blank" class="text-cyan-400 hover:underline" title="Ver perfil en Polymarket">${name}</a><br><a href="javascript:void(0)" onclick="showWhaleWalletHistory('${addr}','${name.replace(/'/g,"\\'")}')" class="text-[9px] text-gray-500 hover:text-cyan-300">📊 historial</a></td>
+            <td class="p-2 text-center"><span class="font-mono ${wwtC}" title="${wwt} whale trades totales de esta wallet">${wwt}</span></td>
             <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${sideC}">${t.side}</span></td>
             <td class="p-2 text-right font-mono font-bold text-white">$${(t.size||0).toLocaleString()}</td>
             <td class="p-2 text-right font-mono text-gray-400">${(t.price||0).toFixed(2)}</td>
