@@ -3005,6 +3005,7 @@ async def get_weather_autotrade_config(request: Request):
         "wt_cities",
         "wt_api_key", "wt_api_secret", "wt_private_key", "wt_passphrase",
         "wt_funder_address",
+        "wt_bankroll", "wt_bet_mode", "wt_bet_pct",
         "wt_stop_loss_enabled", "wt_stop_loss_pct",
         "wt_take_profit_pct", "wt_max_holding_sec",
     ], user_id=uid)
@@ -3022,7 +3023,10 @@ async def get_weather_autotrade_config(request: Request):
     stats = await db.get_weather_trade_stats(user_id=uid)
     return {
         "enabled": raw.get("wt_enabled") == "true",
-        "bet_size": float(raw.get("wt_bet_size", 10)),
+        "bankroll": float(raw.get("wt_bankroll", 0)),
+        "bet_mode": raw.get("wt_bet_mode", "fixed"),
+        "bet_size": float(raw.get("wt_bet_size", 1)),
+        "bet_pct": float(raw.get("wt_bet_pct", 2)),
         "min_edge": float(raw.get("wt_min_edge", 8)),
         "min_confidence": float(raw.get("wt_min_confidence", 50)),
         "max_odds": float(raw.get("wt_max_odds", 0.85)),
@@ -3040,6 +3044,8 @@ async def get_weather_autotrade_config(request: Request):
         "wallet_address": wallet_addr,
         "connected": wt_status.get("connected", False),
         "balance": balance,
+        "bankroll_available": wt_status.get("bankroll_available", 0),
+        "bankroll_in_play": wt_status.get("bankroll_in_play", 0),
         "funder_address": raw.get("wt_funder_address", ""),
         "funder_address_set": bool(raw.get("wt_funder_address")),
         "open_positions": stats.get("open_positions", 0),
@@ -3063,7 +3069,10 @@ async def save_weather_autotrade_config(request: Request):
     data = {}
     field_map = {
         "enabled": ("wt_enabled", lambda v: "true" if v else "false"),
+        "bankroll": ("wt_bankroll", str),
+        "bet_mode": ("wt_bet_mode", str),
         "bet_size": ("wt_bet_size", str),
+        "bet_pct": ("wt_bet_pct", str),
         "min_edge": ("wt_min_edge", str),
         "min_confidence": ("wt_min_confidence", str),
         "max_odds": ("wt_max_odds", str),

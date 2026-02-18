@@ -58,13 +58,18 @@ class WeatherAutoTrader:
                 "wt_cities",
                 "wt_api_key", "wt_api_secret", "wt_private_key", "wt_passphrase",
                 "wt_funder_address",
+                # Bankroll
+                "wt_bankroll", "wt_bet_mode", "wt_bet_pct",
                 # Risk management
                 "wt_stop_loss_enabled", "wt_stop_loss_pct",
                 "wt_take_profit_pct", "wt_max_holding_sec",
             ], user_id=self._user_id)
             self._config = {
                 "enabled": raw.get("wt_enabled") == "true",
-                "bet_size": float(raw.get("wt_bet_size", 10)),
+                "bankroll": float(raw.get("wt_bankroll", 0)),
+                "bet_mode": raw.get("wt_bet_mode", "fixed"),  # "fixed" o "proportional"
+                "bet_size": float(raw.get("wt_bet_size", 1)),
+                "bet_pct": float(raw.get("wt_bet_pct", 2)),
                 "min_edge": float(raw.get("wt_min_edge", 8)),
                 "min_confidence": float(raw.get("wt_min_confidence", 50)),
                 "max_odds": float(raw.get("wt_max_odds", 0.85)),
@@ -101,7 +106,11 @@ class WeatherAutoTrader:
             reason = ""
             if self._enabled and not self._client:
                 reason = " (sin credenciales)"
-            print(f"[WeatherTrader] {status}{reason} | bet=${self._config['bet_size']} "
+            bankroll = self._config['bankroll']
+            mode = self._config['bet_mode']
+            sizing = f"${self._config['bet_size']}" if mode == "fixed" else f"{self._config['bet_pct']}%"
+            print(f"[WeatherTrader] {status}{reason} | bankroll=${bankroll} "
+                  f"modo={mode} sizing={sizing} "
                   f"edge>={self._config['min_edge']}% conf>={self._config['min_confidence']}%",
                   flush=True)
         except Exception as e:
@@ -172,6 +181,19 @@ class WeatherAutoTrader:
             self._open_positions = {t["condition_id"]: t for t in (open_trades or [])}
         except Exception:
             self._open_positions = {}
+
+    def _get_bankroll_available(self) -> float:
+        """Calcular bankroll disponible = bankroll - en juego - pérdidas del día."""
+        bankroll = self._config.get("bankroll", 0)
+        if bankroll <= 0:
+            return 0.0
+        # Monto actualmente en posiciones abiertas
+        in_play = sum(t.get("size_usd", 0) for t in self._open_positions.values())
+        # PnL negativo del día (las pérdidas restan del bankroll)
+        daily_pnl = sum(t.get("pnl", 0) for t in self._trades_today if t.get("resolved"))
+        loss_offset = min(daily_pnl, 0)  # Solo pérdidas (negativo)
+        available = bankroll - in_play + loss_offset
+        return max(available, 0.0)
 
     # ── Evaluación de señales ──────────────────────────────────────────
 
@@ -245,8 +267,33 @@ class WeatherAutoTrader:
             else:
                 del self._failed_cids[cid]
 
-        bet_size = cfg["bet_size"]
-        print(f"{tag} PASS: edge={edge:.1f}% conf={confidence:.0f}% odds={poly_odds:.2f} -> EXECUTING ${bet_size}",
+        # ── Bankroll y sizing ──
+        bankroll = cfg["bankroll"]
+        if bankroll > 0:
+            available = self._get_bankroll_available()
+            if available <= 0:
+                print(f"{tag} SKIP: bankroll agotado (${bankroll}, disponible=${available:.2f})", flush=True)
+                return None
+            # Calcular bet_size según modo
+            if cfg["bet_mode"] == "proportional":
+                bet_size = round(available * cfg["bet_pct"] / 100, 2)
+            else:
+                bet_size = cfg["bet_size"]
+            # No apostar más de lo disponible
+            if bet_size > available:
+                bet_size = round(available, 2)
+            # Mínimo viable ($0.50)
+            if bet_size < 0.50:
+                print(f"{tag} SKIP: bet ${bet_size:.2f} < mínimo $0.50", flush=True)
+                return None
+        else:
+            # Sin bankroll configurado: usar bet_size fijo directo
+            if cfg["bet_mode"] == "proportional":
+                print(f"{tag} SKIP: modo proporcional requiere bankroll > 0", flush=True)
+                return None
+            bet_size = cfg["bet_size"]
+
+        print(f"{tag} PASS: edge={edge:.1f}% conf={confidence:.0f}% odds={poly_odds:.2f} -> EXECUTING ${bet_size:.2f}",
               flush=True)
 
         return {
@@ -565,12 +612,19 @@ class WeatherAutoTrader:
     def get_status(self) -> dict:
         """Estado actual para el dashboard."""
         daily_pnl = sum(t.get("pnl", 0) for t in self._trades_today if t.get("resolved"))
+        in_play = sum(t.get("size_usd", 0) for t in self._open_positions.values())
+        bankroll = self._config.get("bankroll", 0)
+        available = self._get_bankroll_available() if bankroll > 0 else 0
         return {
             "enabled": self._enabled,
             "connected": self._client is not None,
             "open_positions": len(self._open_positions),
             "trades_today": len(self._trades_today),
             "pnl_today": round(daily_pnl, 2),
+            "bankroll": bankroll,
+            "bankroll_available": round(available, 2),
+            "bankroll_in_play": round(in_play, 2),
+            "bet_mode": self._config.get("bet_mode", "fixed"),
         }
 
     async def get_usdc_balance(self, wallet_address: str = "") -> Optional[float]:

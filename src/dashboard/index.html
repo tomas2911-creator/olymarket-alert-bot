@@ -2936,41 +2936,90 @@
                 <div id="wa-tab-config" class="hidden">
                     <div class="bg-gray-800/40 rounded-lg p-4 border border-sky-900/30">
                         <h4 class="text-xs font-semibold text-sky-400 mb-3">⚙️ Configuración Weather AutoTrader</h4>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">Habilitado</label>
-                                <label class="toggle-switch"><input type="checkbox" id="wa-cfg-enabled"><span class="toggle-slider"></span></label>
+                        <div class="flex items-center gap-3 mb-4">
+                            <label class="text-[10px] text-gray-500">Habilitado</label>
+                            <label class="toggle-switch"><input type="checkbox" id="wa-cfg-enabled"><span class="toggle-slider"></span></label>
+                        </div>
+                        <!-- Bankroll -->
+                        <div class="bg-gray-900/40 rounded-lg p-3 border border-sky-900/20 mb-4">
+                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">💰 Bankroll</h5>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                                <div>
+                                    <label class="text-[10px] text-gray-500 block mb-1">Presupuesto Total ($)</label>
+                                    <input type="number" id="wa-cfg-bankroll" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="0" max="10000" step="1">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-gray-500 block mb-1">Modo de Apuesta</label>
+                                    <select id="wa-cfg-betmode" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="waToggleBetMode()">
+                                        <option value="fixed">Fijo ($)</option>
+                                        <option value="proportional">Proporcional (%)</option>
+                                    </select>
+                                </div>
+                                <div id="wa-betsize-group">
+                                    <label class="text-[10px] text-gray-500 block mb-1">Apuesta Fija ($)</label>
+                                    <input type="number" id="wa-cfg-bet" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="1" min="0.5" max="500" step="0.5">
+                                </div>
+                                <div id="wa-betpct-group" class="hidden">
+                                    <label class="text-[10px] text-gray-500 block mb-1">Apuesta (% disponible)</label>
+                                    <input type="number" id="wa-cfg-betpct" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="2" min="0.5" max="25" step="0.5">
+                                </div>
                             </div>
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">Bet Size ($)</label>
-                                <input type="number" id="wa-cfg-bet" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="5" min="1" max="500">
+                            <div id="wa-bankroll-status" class="grid grid-cols-3 gap-2 text-center hidden">
+                                <div class="bg-gray-800/60 rounded p-2">
+                                    <div class="text-[10px] text-gray-500">Disponible</div>
+                                    <div id="wa-bankroll-avail" class="text-sm font-bold text-green-400">$0</div>
+                                </div>
+                                <div class="bg-gray-800/60 rounded p-2">
+                                    <div class="text-[10px] text-gray-500">En Juego</div>
+                                    <div id="wa-bankroll-inplay" class="text-sm font-bold text-yellow-400">$0</div>
+                                </div>
+                                <div class="bg-gray-800/60 rounded p-2">
+                                    <div class="text-[10px] text-gray-500">Presupuesto</div>
+                                    <div id="wa-bankroll-total" class="text-sm font-bold text-sky-400">$0</div>
+                                </div>
                             </div>
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">Min Edge %</label>
-                                <input type="number" id="wa-cfg-edge" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="8" min="1" max="50" step="0.5">
+                        </div>
+                        <!-- Límites de Seguridad -->
+                        <div class="bg-gray-900/40 rounded-lg p-3 border border-sky-900/20 mb-4">
+                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">🛡️ Límites de Seguridad</h5>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div>
+                                    <label class="text-[10px] text-gray-500 block mb-1">Max Posiciones Abiertas</label>
+                                    <input type="number" id="wa-cfg-maxpos" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="10" min="1" max="50">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-gray-500 block mb-1">Max Trades/Día</label>
+                                    <input type="number" id="wa-cfg-daily" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="20" min="1" max="100">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-gray-500 block mb-1">Stop-Loss ($)</label>
+                                    <input type="number" id="wa-cfg-stoploss" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="15" min="1" max="1000">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-gray-500 block mb-1">Min Confianza %</label>
+                                    <input type="number" id="wa-cfg-conf" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="0" max="100">
+                                </div>
                             </div>
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">Max Odds</label>
-                                <input type="number" id="wa-cfg-odds" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="0.55" min="0.1" max="0.95" step="0.01">
-                            </div>
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">Max Trades/Día</label>
-                                <input type="number" id="wa-cfg-daily" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="10" min="1" max="50">
-                            </div>
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">Max Posiciones</label>
-                                <input type="number" id="wa-cfg-maxpos" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="15" min="1" max="50">
-                            </div>
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">Order Type</label>
-                                <select id="wa-cfg-ordertype" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300">
-                                    <option value="market">Market (FOK)</option>
-                                    <option value="limit">Limit (GTC)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">Min Confianza %</label>
-                                <input type="number" id="wa-cfg-conf" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="0" max="100">
+                        </div>
+                        <!-- Filtros de Señal -->
+                        <div class="bg-gray-900/40 rounded-lg p-3 border border-sky-900/20 mb-4">
+                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">📊 Filtros de Señal</h5>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="text-[10px] text-gray-500 block mb-1">Min Edge %</label>
+                                    <input type="number" id="wa-cfg-edge" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="8" min="1" max="50" step="0.5">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-gray-500 block mb-1">Max Odds</label>
+                                    <input type="number" id="wa-cfg-odds" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="0.55" min="0.1" max="0.95" step="0.01">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-gray-500 block mb-1">Order Type</label>
+                                    <select id="wa-cfg-ordertype" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300">
+                                        <option value="market">Market (FOK)</option>
+                                        <option value="limit">Limit (GTC)</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <h4 class="text-xs font-semibold text-sky-400 mb-2 mt-4">Wallet Separada</h4>
@@ -6676,18 +6725,31 @@ async function loadWeatherArb(){
         console.error('Weather Arb load error:',e);
     }
 }
+function waToggleBetMode(){
+    const mode=document.getElementById('wa-cfg-betmode').value;
+    document.getElementById('wa-betsize-group').classList.toggle('hidden',mode!=='fixed');
+    document.getElementById('wa-betpct-group').classList.toggle('hidden',mode!=='proportional');
+}
 async function waLoadConfig(){
     try{
         const r=await apiFetch('/api/weather-arb/autotrade-config');
         if(r){
             document.getElementById('wa-cfg-enabled').checked=r.enabled||false;
-            document.getElementById('wa-cfg-bet').value=r.bet_size||5;
+            // Bankroll
+            document.getElementById('wa-cfg-bankroll').value=r.bankroll||50;
+            document.getElementById('wa-cfg-betmode').value=r.bet_mode||'fixed';
+            document.getElementById('wa-cfg-bet').value=r.bet_size||1;
+            document.getElementById('wa-cfg-betpct').value=r.bet_pct||2;
+            waToggleBetMode();
+            // Límites
+            document.getElementById('wa-cfg-stoploss').value=r.max_daily_loss||15;
+            document.getElementById('wa-cfg-daily').value=r.max_daily_trades||20;
+            document.getElementById('wa-cfg-maxpos').value=r.max_positions||10;
+            document.getElementById('wa-cfg-conf').value=r.min_confidence||50;
+            // Filtros
             document.getElementById('wa-cfg-edge').value=r.min_edge||8;
             document.getElementById('wa-cfg-odds').value=r.max_odds||0.55;
-            document.getElementById('wa-cfg-daily').value=r.max_daily_trades||10;
-            document.getElementById('wa-cfg-maxpos').value=r.max_positions||15;
             document.getElementById('wa-cfg-ordertype').value=r.order_type||'market';
-            document.getElementById('wa-cfg-conf').value=r.min_confidence||50;
             // Badges de credenciales
             const setBadge=(id,ok)=>{const el=document.getElementById(id);if(el){el.textContent=ok?'✓ configurada':'no configurada';el.className=ok?'text-green-400':'text-red-400';}};
             setBadge('wa-apikey-badge',r.api_key_set);
@@ -6703,6 +6765,17 @@ async function waLoadConfig(){
                 document.getElementById('wa-funder-addr').textContent=r.funder_address||'no detectada';
                 document.getElementById('wa-balance').textContent=r.balance!=null?'$'+r.balance.toFixed(2):'—';
             }else{infoEl.classList.add('hidden');}
+            // Bankroll status indicators
+            const bk=r.bankroll||0;
+            const bkStatus=document.getElementById('wa-bankroll-status');
+            if(bk>0){
+                bkStatus.classList.remove('hidden');
+                document.getElementById('wa-bankroll-total').textContent='$'+bk.toFixed(0);
+                const avail=r.bankroll_available!=null?r.bankroll_available:(bk-(r.bankroll_in_play||0));
+                const inPlay=r.bankroll_in_play||0;
+                document.getElementById('wa-bankroll-avail').textContent='$'+avail.toFixed(2);
+                document.getElementById('wa-bankroll-inplay').textContent='$'+inPlay.toFixed(2);
+            }else{bkStatus.classList.add('hidden');}
         }
     }catch(e){console.error('WA config load error:',e);}
 }
@@ -6733,13 +6806,20 @@ async function waSaveConfig(){
     try{
         const body={
             enabled:document.getElementById('wa-cfg-enabled').checked,
-            bet_size:parseFloat(document.getElementById('wa-cfg-bet').value)||5,
+            // Bankroll
+            bankroll:parseFloat(document.getElementById('wa-cfg-bankroll').value)||0,
+            bet_mode:document.getElementById('wa-cfg-betmode').value||'fixed',
+            bet_size:parseFloat(document.getElementById('wa-cfg-bet').value)||1,
+            bet_pct:parseFloat(document.getElementById('wa-cfg-betpct').value)||2,
+            // Límites
+            max_daily_loss:parseFloat(document.getElementById('wa-cfg-stoploss').value)||15,
+            max_daily_trades:parseInt(document.getElementById('wa-cfg-daily').value)||20,
+            max_positions:parseInt(document.getElementById('wa-cfg-maxpos').value)||10,
+            min_confidence:parseFloat(document.getElementById('wa-cfg-conf').value)||50,
+            // Filtros
             min_edge:parseFloat(document.getElementById('wa-cfg-edge').value)||8,
             max_odds:parseFloat(document.getElementById('wa-cfg-odds').value)||0.55,
-            max_daily_trades:parseInt(document.getElementById('wa-cfg-daily').value)||10,
-            max_positions:parseInt(document.getElementById('wa-cfg-maxpos').value)||15,
             order_type:document.getElementById('wa-cfg-ordertype').value,
-            min_confidence:parseFloat(document.getElementById('wa-cfg-conf').value)||50,
         };
         const pk=document.getElementById('wa-cfg-pk').value;
         const ak=document.getElementById('wa-cfg-apikey').value;
