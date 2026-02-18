@@ -417,7 +417,8 @@ class PolymarketAlertBot:
                     await self.weather_paper.resolve_pending()
             except Exception as e:
                 print(f"[WeatherAutotrader] Error: {e}", flush=True)
-            await asyncio.sleep(30)
+            if self._running:
+                await asyncio.sleep(30)
 
     async def stop(self):
         self._running = False

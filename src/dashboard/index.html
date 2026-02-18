@@ -6580,7 +6580,7 @@ async function loadWeatherArb(){
         }else{
             sTbody.innerHTML=signals.map(s=>{
                 const edgeColor=s.edge_pct>=15?'text-green-400':s.edge_pct>=8?'text-yellow-400':'text-gray-400';
-                const ts=s.timestamp?new Date(s.timestamp*1000).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'';
+                const ts=s.timestamp?new Date(s.timestamp).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'';
                 return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
                     <td class="p-2 text-white">${s.city_name||s.city||''}</td>
                     <td class="p-2">${s.date||''}</td>
@@ -6603,15 +6603,15 @@ async function loadWeatherArb(){
             mkts.forEach(m=>{
                 (m.ranges||[]).forEach(r=>{
                     const ep=(r.ensemble_prob||0)*100;
-                    const po=(r.yes_price||0)*100;
-                    const edge=ep-po;
+                    const po=(r.poly_odds||r.yes_price||0)*100;
+                    const edge=r.edge!=null?r.edge:(ep-po);
                     const edgeColor=edge>=15?'text-green-400':edge>=8?'text-yellow-400':edge>0?'text-gray-400':'text-red-400';
                     rows.push(`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
-                        <td class="p-2 text-white">${m.city_name||''}</td>
+                        <td class="p-2 text-white">${m.city||m.city_name||''}</td>
                         <td class="p-2">${m.date||''}</td>
                         <td class="p-2 font-mono">${r.label||''}</td>
                         <td class="p-2 text-center font-mono text-sky-400">${ep.toFixed(1)}%</td>
-                        <td class="p-2 text-center font-mono">${(r.yes_price||0).toFixed(2)}</td>
+                        <td class="p-2 text-center font-mono">${(r.poly_odds||r.yes_price||0).toFixed(2)}</td>
                         <td class="p-2 text-center font-mono ${edgeColor}">${edge.toFixed(1)}%</td>
                         <td class="p-2 text-right text-gray-500">$${fmt(m.volume||0)}</td>
                     </tr>`);
@@ -6652,13 +6652,13 @@ async function loadWeatherArb(){
             pTbody.innerHTML=papers.map(p=>{
                 const pnl=p.pnl||0;
                 const pnlColor=pnl>0?'text-green-400':pnl<0?'text-red-400':'text-gray-400';
-                const status=p.resolved?(p.won?'<span class="text-green-400">WIN</span>':'<span class="text-red-400">LOSS</span>'):'<span class="text-sky-400">Pendiente</span>';
+                const status=p.resolved?(p.result==='win'?'<span class="text-green-400">WIN</span>':'<span class="text-red-400">LOSS</span>'):'<span class="text-sky-400">Pendiente</span>';
                 return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
                     <td class="p-2 text-white">${p.city_name||p.city||''}</td>
                     <td class="p-2">${p.date||''}</td>
                     <td class="p-2 font-mono">${p.range_label||''}</td>
                     <td class="p-2 text-center font-mono text-sky-400">${((p.ensemble_prob||0)*100).toFixed(1)}%</td>
-                    <td class="p-2 text-center font-mono">${(p.poly_odds||0).toFixed(2)}</td>
+                    <td class="p-2 text-center font-mono">${(p.entry_odds||p.poly_odds||0).toFixed(2)}</td>
                     <td class="p-2 text-center font-mono">${(p.edge_pct||0).toFixed(1)}%</td>
                     <td class="p-2 text-right font-mono ${pnlColor}">${pnl?'$'+pnl.toFixed(2):'—'}</td>
                     <td class="p-2 text-center">${status}</td>
@@ -6702,11 +6702,15 @@ async function waSaveConfig(){
             max_positions:parseInt(document.getElementById('wa-cfg-maxpos').value)||15,
             order_type:document.getElementById('wa-cfg-ordertype').value,
             min_confidence:parseFloat(document.getElementById('wa-cfg-conf').value)||50,
-            private_key:document.getElementById('wa-cfg-pk').value,
-            api_key:document.getElementById('wa-cfg-apikey').value,
-            api_secret:document.getElementById('wa-cfg-apisecret').value,
-            api_passphrase:document.getElementById('wa-cfg-passphrase').value,
         };
+        const pk=document.getElementById('wa-cfg-pk').value;
+        const ak=document.getElementById('wa-cfg-apikey').value;
+        const as2=document.getElementById('wa-cfg-apisecret').value;
+        const ap=document.getElementById('wa-cfg-passphrase').value;
+        if(pk)body.private_key=pk;
+        if(ak)body.api_key=ak;
+        if(as2)body.api_secret=as2;
+        if(ap)body.api_passphrase=ap;
         await apiFetch('/api/weather-arb/autotrade-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         statusEl.textContent='Guardado!';statusEl.className='text-xs text-green-400';statusEl.classList.remove('hidden');
         setTimeout(()=>statusEl.classList.add('hidden'),3000);
@@ -6719,7 +6723,7 @@ async function waTestConnection(){
     statusEl.textContent='Probando...';statusEl.className='text-xs text-yellow-400';statusEl.classList.remove('hidden');
     try{
         const r=await apiFetch('/api/weather-arb/test-connection',{method:'POST'});
-        if(r?.success){
+        if(r?.connected){
             statusEl.textContent='Conectado! Balance: $'+(r.balance||0).toFixed(2);statusEl.className='text-xs text-green-400';
         }else{
             statusEl.textContent='Error: '+(r?.error||'Sin respuesta');statusEl.className='text-xs text-red-400';

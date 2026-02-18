@@ -2945,8 +2945,8 @@ async def weather_arb_signals(request: Request, limit: int = 50):
     """Señales en vivo del detector weather."""
     bot = request.app.state.bot
     if bot and getattr(bot, "weather_detector", None):
-        return bot.weather_detector.get_recent_signals(limit)
-    return []
+        return {"signals": bot.weather_detector.get_recent_signals(limit)}
+    return {"signals": []}
 
 
 @router.get("/api/weather-arb/markets")
@@ -2954,8 +2954,8 @@ async def weather_arb_markets(request: Request):
     """Mercados weather activos con probabilidades ensemble vs odds."""
     bot = request.app.state.bot
     if bot and getattr(bot, "weather_detector", None):
-        return bot.weather_detector.get_active_markets()
-    return []
+        return {"markets": bot.weather_detector.get_active_markets()}
+    return {"markets": []}
 
 
 @router.get("/api/weather-arb/trades")
@@ -2963,7 +2963,8 @@ async def weather_arb_trades(request: Request, hours: int = 168, limit: int = 20
     """Trades weather (reales) recientes."""
     db = request.app.state.db
     uid = await get_user_id(request)
-    return await db.get_weather_trades(hours=hours, limit=limit, user_id=uid)
+    trades = await db.get_weather_trades(hours=hours, limit=limit, user_id=uid)
+    return {"trades": trades}
 
 
 @router.get("/api/weather-arb/paper-trades")
@@ -2971,8 +2972,8 @@ async def weather_arb_paper_trades(request: Request, limit: int = 200):
     """Paper trades del weather arb."""
     bot = request.app.state.bot
     if bot and getattr(bot, "weather_paper", None):
-        return bot.weather_paper.get_trades(limit)
-    return []
+        return {"trades": bot.weather_paper.get_trades(limit)}
+    return {"trades": []}
 
 
 @router.get("/api/weather-arb/pnl-history")
