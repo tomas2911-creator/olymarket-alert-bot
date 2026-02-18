@@ -42,6 +42,7 @@ from src.infra.news_catalyst import NewsCatalyst
 from src.infra.ml_scoring import MLScorer
 from src.detection.smart_score import SmartScoreCalculator
 from src.detection.insider_detector import InsiderDetector
+from src.detection.whale_scanner import WhaleScanner
 from src.detection.news_fetcher import NewsFetcher
 from src.detection.sentiment_analyzer import SentimentAnalyzer
 from src.trading.copy_engine import CopyTradingEngine
@@ -106,6 +107,7 @@ class PolymarketAlertBot:
         self.sentiment_analyzer = SentimentAnalyzer()
         self.copy_engine = None
         self.market_agent = None
+        self.whale_scanner = None
 
     async def start(self):
         """Inicializar DB y marcar como running."""
@@ -155,7 +157,11 @@ class PolymarketAlertBot:
         self.news_fetcher = NewsFetcher(self.db)
         self.copy_engine = CopyTradingEngine(self.db)
         self.market_agent = MarketAgent(self.db)
-        print(f"v11 módulos iniciados: News={True} CopyTrading={True} AI={self.market_agent.enabled}", flush=True)
+        # Whale Scanner híbrido (agregación de fills + monitoreo de actividad)
+        self.whale_scanner = WhaleScanner(self.db)
+        if config.WHALE_TRACKER_ENABLED:
+            asyncio.create_task(self.whale_scanner.run_activity_loop())
+        print(f"v11 módulos iniciados: News={True} CopyTrading={True} AI={self.market_agent.enabled} WhaleScanner={config.WHALE_TRACKER_ENABLED}", flush=True)
 
     async def _send_startup_safe(self):
         try:
@@ -549,6 +555,16 @@ class PolymarketAlertBot:
 
             # Whale Tracker: guardar trades grandes en DB (antes de filtros normales)
             whale_trades = client.get_last_whale_trades()
+
+            # WhaleScanner: agregar fills para detectar acumulaciones
+            if self.whale_scanner and trades:
+                try:
+                    aggregated = await self.whale_scanner.process_fills(trades)
+                    if aggregated:
+                        whale_trades = list(whale_trades or []) + aggregated
+                except Exception as e:
+                    print(f"[WhaleScanner] Error procesando fills: {e}", flush=True)
+
             if whale_trades:
                 saved = 0
                 for wt in whale_trades:
