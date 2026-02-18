@@ -387,36 +387,29 @@ async def get_copy_targets(request: Request):
     return {"targets": targets, "total": len(targets)}
 
 
-@router.post("/api/copy-trading/targets/{wallet_address}")
-async def add_copy_target(request: Request, wallet_address: str):
+@router.post("/api/copy-trading/targets/{wallet_address}/config")
+async def save_wallet_copy_config(request: Request, wallet_address: str):
+    """Guardar configuración de copy trade para una wallet específica."""
     db = request.app.state.db
-    uid = await get_user_id(request)
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-    result = await db.add_copy_target(
-        user_id=uid, wallet_address=wallet_address,
-        wallet_name=body.get("wallet_name", ""),
-        scale_pct=body.get("scale_pct", 1.0),
-        max_per_trade=body.get("max_per_trade", 100.0))
-    return result
-
-
-@router.delete("/api/copy-trading/targets/{wallet_address}")
-async def remove_copy_target(request: Request, wallet_address: str):
-    db = request.app.state.db
-    uid = await get_user_id(request)
-    ok = await db.remove_copy_target(user_id=uid, wallet_address=wallet_address)
+    body = await request.json()
+    ok = await db.save_wallet_copy_config(wallet_address, body)
     return {"ok": ok}
 
 
-@router.post("/api/copy-trading/targets/{wallet_address}/toggle")
-async def toggle_copy_target(request: Request, wallet_address: str):
+@router.get("/api/copy-trading/targets/{wallet_address}/config")
+async def get_wallet_copy_config(request: Request, wallet_address: str):
+    """Obtener configuración de copy trade de una wallet."""
     db = request.app.state.db
-    uid = await get_user_id(request)
-    return await db.toggle_copy_target(user_id=uid, wallet_address=wallet_address)
+    config = await db.get_wallet_copy_config(wallet_address)
+    return config or {}
+
+
+@router.post("/api/copy-trading/targets/{wallet_address}/reset-budget")
+async def reset_wallet_budget(request: Request, wallet_address: str):
+    """Resetear presupuesto usado de una wallet."""
+    db = request.app.state.db
+    await db.reset_wallet_budget(wallet_address)
+    return {"ok": True}
 
 
 @router.get("/api/copy-trading/trades")

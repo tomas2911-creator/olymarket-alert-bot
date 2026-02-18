@@ -2502,14 +2502,20 @@
                 </div>
                 <!-- Targets -->
                 <div class="mb-4">
-                    <h4 class="text-xs font-semibold text-gray-400 mb-2">Wallets Seguidas</h4>
+                    <h4 class="text-xs font-semibold text-gray-400 mb-2">Wallets Seguidas — Configuración Individual</h4>
                     <div class="overflow-x-auto"><table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
                             <th class="text-left p-2">Wallet</th><th class="text-center p-2">Score</th>
-                            <th class="text-center p-2">Win Rate</th><th class="text-center p-2">Trades</th>
-                            <th class="text-center p-2">Acción</th>
+                            <th class="text-center p-2">WR%</th>
+                            <th class="text-center p-2">Copiar</th>
+                            <th class="text-center p-2">Modo</th>
+                            <th class="text-right p-2">Monto/$/%</th>
+                            <th class="text-right p-2">Min</th><th class="text-right p-2">Max</th>
+                            <th class="text-right p-2">Budget</th><th class="text-right p-2">Usado</th>
+                            <th class="text-right p-2">MinTrigger</th><th class="text-right p-2">MaxMkt</th>
+                            <th class="text-center p-2">💾</th>
                         </tr></thead>
-                        <tbody id="ct-targets-body"><tr><td colspan="5" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr></tbody>
+                        <tbody id="ct-targets-body"><tr><td colspan="13" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr></tbody>
                     </table></div>
                 </div>
                 <!-- Copy Trades -->
@@ -5840,19 +5846,40 @@ async function loadCopyTrading(){
         wrEl.className='text-lg font-bold '+(wr>=50?'text-green-400':'text-red-400');
         // Targets table
         const tBody=document.getElementById('ct-targets-body');
-        if(!targets.length){tBody.innerHTML='<tr><td colspan="5" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr>';}
+        if(!targets.length){tBody.innerHTML='<tr><td colspan="13" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr>';}
         else{tBody.innerHTML=targets.map(t=>{
-            const name=t.display_name||t.wallet_address.slice(0,10)+'...';
+            const addr=t.wallet_address;
+            const name=t.display_name||addr.slice(0,10)+'...';
             const sc=t.smart_money_score||0;
             const wr=t.win_rate||0;
-            const trades=t.total_trades||0;
-            return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
-                <td class="p-2"><a href="${polyProfile(t.wallet_address)}" target="_blank" class="text-emerald-400 hover:underline">${name}</a></td>
+            const en=t.ct_enabled?'checked':'';
+            const mode=t.ct_mode||'fixed';
+            const amt=mode==='pct'||mode==='range'?t.ct_pct||5:t.ct_fixed_amount||5;
+            const bud=t.ct_budget||0;
+            const used=t.ct_budget_used||0;
+            const budPct=bud>0?Math.round(used/bud*100):0;
+            const budColor=budPct>=90?'text-red-400':budPct>=50?'text-yellow-400':'text-green-400';
+            const id=addr.slice(0,8);
+            return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20" data-addr="${addr}">
+                <td class="p-2"><a href="${polyProfile(addr)}" target="_blank" class="text-emerald-400 hover:underline text-[11px]">${name}</a></td>
                 <td class="p-2 text-center font-mono">${sc}</td>
                 <td class="p-2 text-center font-mono ${wr>=50?'text-green-400':'text-red-400'}">${wr}%</td>
-                <td class="p-2 text-center font-mono text-gray-400">${trades}</td>
+                <td class="p-2 text-center"><input type="checkbox" id="cte-${id}" ${en} class="accent-emerald-500"></td>
+                <td class="p-2 text-center"><select id="ctm-${id}" class="bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300">
+                    <option value="fixed" ${mode==='fixed'?'selected':''}>Fijo $</option>
+                    <option value="pct" ${mode==='pct'?'selected':''}>% Trade</option>
+                    <option value="range" ${mode==='range'?'selected':''}>Rango</option>
+                </select></td>
+                <td class="p-2 text-right"><input type="number" id="cta-${id}" value="${amt}" min="0.5" step="0.5" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
+                <td class="p-2 text-right"><input type="number" id="ctmin-${id}" value="${t.ct_min_bet||2}" min="0" step="0.5" class="w-12 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
+                <td class="p-2 text-right"><input type="number" id="ctmax-${id}" value="${t.ct_max_bet||50}" min="0" step="1" class="w-12 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
+                <td class="p-2 text-right"><input type="number" id="ctb-${id}" value="${bud}" min="0" step="10" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
+                <td class="p-2 text-right font-mono ${budColor}">${bud>0?'$'+used.toFixed(0)+' ('+budPct+'%)':'∞'}</td>
+                <td class="p-2 text-right"><input type="number" id="ctmt-${id}" value="${t.ct_min_trigger||0}" min="0" step="10" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
+                <td class="p-2 text-right"><input type="number" id="ctmm-${id}" value="${t.ct_max_per_market||0}" min="0" step="5" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
                 <td class="p-2 text-center">
-                    <button onclick="toggleWlWatchlist('${t.wallet_address}')" class="text-yellow-400 hover:text-red-400 text-xs" title="Quitar de watchlist">⭐</button>
+                    <button onclick="saveWalletCopyConfig('${addr}','${id}',this)" class="text-emerald-400 hover:text-emerald-300 text-xs" title="Guardar config">💾</button>
+                    ${bud>0?'<button onclick="resetWalletBudget(\''+addr+'\')" class="text-yellow-400 hover:text-yellow-300 text-xs ml-1" title="Reset budget">🔄</button>':''}
                 </td>
             </tr>`;
         }).join('');}
@@ -5885,12 +5912,31 @@ async function loadCopyTrading(){
         }).join('');}
     }catch(e){console.error('loadCopyTrading error',e);}
 }
-async function toggleCopyTarget(addr){
-    try{await fetch('/api/copy-trading/targets/'+addr+'/toggle',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});loadCopyTrading();}catch(e){console.error(e);}
+async function saveWalletCopyConfig(addr,id,btn){
+    try{
+        const mode=document.getElementById('ctm-'+id).value;
+        const amt=parseFloat(document.getElementById('cta-'+id).value)||5;
+        const body={
+            ct_enabled:document.getElementById('cte-'+id).checked,
+            ct_mode:mode,
+            ct_fixed_amount:mode==='fixed'?amt:5,
+            ct_pct:(mode==='pct'||mode==='range')?amt:5,
+            ct_min_bet:parseFloat(document.getElementById('ctmin-'+id).value)||2,
+            ct_max_bet:parseFloat(document.getElementById('ctmax-'+id).value)||50,
+            ct_budget:parseFloat(document.getElementById('ctb-'+id).value)||0,
+            ct_min_trigger:parseFloat(document.getElementById('ctmt-'+id).value)||0,
+            ct_max_per_market:parseFloat(document.getElementById('ctmm-'+id).value)||0,
+        };
+        await fetch('/api/copy-trading/targets/'+addr+'/config',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+_authToken},body:JSON.stringify(body)});
+        if(btn){btn.textContent='✅';setTimeout(()=>{btn.textContent='💾';},1500);}
+    }catch(e){console.error('saveWalletCopyConfig error',e);}
 }
-async function removeCopyTarget(addr){
-    if(!confirm('Eliminar target de copy trading?'))return;
-    try{await fetch('/api/copy-trading/targets/'+addr,{method:'DELETE',headers:{'Authorization':'Bearer '+_authToken}});loadCopyTrading();}catch(e){console.error(e);}
+async function resetWalletBudget(addr){
+    if(!confirm('Resetear presupuesto usado a $0?'))return;
+    try{
+        await fetch('/api/copy-trading/targets/'+addr+'/reset-budget',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        loadCopyTrading();
+    }catch(e){console.error('resetWalletBudget error',e);}
 }
 
 // ── v11: News ──

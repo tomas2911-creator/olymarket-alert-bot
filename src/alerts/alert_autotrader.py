@@ -1107,9 +1107,42 @@ class AlertAutoTrader:
                             score=candidate.score,
                             size=trade_info["bet_size"])
 
+    def _calc_copy_bet_size(self, wc: dict, insider_size: float) -> float:
+        """Calcular bet size según config per-wallet.
+        Modos: fixed, pct, range.
+        Retorna 0 si no debe copiar (presupuesto agotado, etc.)."""
+        mode = wc.get("ct_mode", "fixed")
+        budget = float(wc.get("ct_budget", 0))
+        budget_used = float(wc.get("ct_budget_used", 0))
+        remaining = budget - budget_used if budget > 0 else float('inf')
+
+        if mode == "fixed":
+            bet = float(wc.get("ct_fixed_amount", 5))
+        elif mode == "pct":
+            pct = float(wc.get("ct_pct", 5)) / 100.0
+            bet = insider_size * pct
+        elif mode == "range":
+            pct = float(wc.get("ct_pct", 5)) / 100.0
+            bet = insider_size * pct
+            min_bet = float(wc.get("ct_min_bet", 2))
+            max_bet = float(wc.get("ct_max_bet", 50))
+            bet = max(min_bet, min(bet, max_bet))
+        else:
+            bet = float(wc.get("ct_fixed_amount", 5))
+
+        # No superar presupuesto restante
+        if budget > 0 and bet > remaining:
+            if remaining < 1:
+                return 0  # Presupuesto agotado
+            bet = remaining
+
+        # Mínimo $1 para que sea viable en CLOB
+        return max(bet, 1.0) if bet > 0 else 0
+
     async def _process_copy_trade(self, candidate, trade):
         """Ejecutar copy trade automático de wallet watchlisted.
-        Bypasea filtros de score. Solo aplica filtros básicos de seguridad."""
+        Lee config per-wallet: modo, bet size, presupuesto, filtros.
+        Bypasea filtros de score."""
         cfg = self._config
         if not cfg.get("copy_trade_enabled"):
             return
@@ -1118,14 +1151,14 @@ class AlertAutoTrader:
         if self._trades_today_date != today:
             await self._load_today_trades()
 
-        # Filtro: max posiciones copy trade abiertas
+        # Filtro: max posiciones copy trade abiertas (global)
         ct_max_pos = cfg.get("copy_trade_max_positions", 3)
         ct_open = sum(1 for p in self._open_positions.values() if p.get("is_copy_trade"))
         if ct_open >= ct_max_pos:
             print(f"[CopyTrade] ⚠️ Max posiciones copy trade ({ct_max_pos}) alcanzado", flush=True)
             return
 
-        # Filtro: max trades diarios copy trade
+        # Filtro: max trades diarios copy trade (global)
         ct_max_daily = cfg.get("copy_trade_max_daily", 10)
         ct_today = sum(1 for t in self._trades_today if t.get("is_copy_trade"))
         if ct_today >= ct_max_daily:
@@ -1141,7 +1174,53 @@ class AlertAutoTrader:
         if now - self._last_trade_time < 10:
             return
 
-        bet_size = cfg.get("copy_trade_bet_size", 10)
+        # ── Config per-wallet ──
+        wc = await self.db.get_wallet_copy_config(trade.wallet_address)
+        if not wc:
+            print(f"[CopyTrade] ⚠️ Sin config para {trade.wallet_address[:10]}, usando defaults", flush=True)
+            wc = {"ct_enabled": True, "ct_mode": "fixed", "ct_fixed_amount": cfg.get("copy_trade_bet_size", 10),
+                  "ct_budget": 0, "ct_budget_used": 0, "ct_pct": 5, "ct_min_bet": 2, "ct_max_bet": 50,
+                  "ct_max_per_market": 0, "ct_min_trigger": 0}
+
+        # Filtro: wallet copy trade habilitado
+        if not wc.get("ct_enabled", False):
+            # Si no tiene ct_enabled pero está en watchlist, usar config global como fallback
+            if wc.get("ct_budget", 0) == 0 and wc.get("ct_mode") == "fixed":
+                wc["ct_enabled"] = True
+                wc["ct_fixed_amount"] = cfg.get("copy_trade_bet_size", 10)
+            else:
+                return
+
+        # Filtro per-wallet: min trigger (ignorar trades pequeños del insider)
+        min_trigger = float(wc.get("ct_min_trigger", 0))
+        if min_trigger > 0 and trade.size < min_trigger:
+            print(f"[CopyTrade] ⏭️ Trade ${trade.size:.0f} < min_trigger ${min_trigger:.0f} de {trade.wallet_address[:10]}", flush=True)
+            return
+
+        # Filtro per-wallet: max por mercado (exposición a un mercado)
+        max_per_mkt = float(wc.get("ct_max_per_market", 0))
+        if max_per_mkt > 0:
+            mkt_exposure = sum(
+                t.get("size_usd", 0) for t in self._trades_today
+                if t.get("is_copy_trade") and t.get("condition_id") == trade.market_id
+                   and t.get("wallet_address", "").lower() == trade.wallet_address.lower()
+            )
+            if mkt_exposure >= max_per_mkt:
+                print(f"[CopyTrade] ⚠️ Max por mercado ${max_per_mkt:.0f} alcanzado para {trade.market_slug[:30]}", flush=True)
+                return
+
+        # Filtro per-wallet: presupuesto agotado
+        budget = float(wc.get("ct_budget", 0))
+        budget_used = float(wc.get("ct_budget_used", 0))
+        if budget > 0 and budget_used >= budget:
+            print(f"[CopyTrade] ⚠️ Presupuesto agotado para {trade.wallet_address[:10]}: ${budget_used:.0f}/${budget:.0f}", flush=True)
+            return
+
+        # Calcular bet size según modo
+        bet_size = self._calc_copy_bet_size(wc, trade.size)
+        if bet_size <= 0:
+            print(f"[CopyTrade] ⚠️ Bet size calculado = 0 para {trade.wallet_address[:10]}", flush=True)
+            return
 
         trade_info = {
             "condition_id": trade.market_id,
@@ -1154,25 +1233,31 @@ class AlertAutoTrader:
             "insider_size": trade.size,
             "insider_price": trade.price,
             "alert_score": candidate.score,
-            "triggers": f"⭐ COPY TRADE: {trade.wallet_address[:10]}...",
+            "triggers": f"⭐ COPY TRADE: {trade.wallet_address[:10]}... | modo={wc.get('ct_mode','fixed')}",
             "wallet_hit_rate": candidate.wallet_hit_rate or 0,
             "bet_size": bet_size,
             "category": trade.market_category or "",
             "is_copy_trade": True,
         }
 
-        print(f"[CopyTrade] 🚀 Ejecutando copy trade: {trade.market_slug[:40]} | "
+        mode_label = wc.get("ct_mode", "fixed")
+        budget_label = f" | budget=${budget_used:.0f}+{bet_size:.0f}/{budget:.0f}" if budget > 0 else ""
+        print(f"[CopyTrade] 🚀 {trade.market_slug[:35]} | "
               f"wallet={trade.wallet_address[:10]} | {trade.side} {trade.outcome} | "
-              f"bet=${bet_size}", flush=True)
+              f"modo={mode_label} bet=${bet_size:.2f}{budget_label}", flush=True)
 
         result = await self.execute_trade(trade_info)
         if result.get("success"):
+            # Actualizar presupuesto usado
+            if budget > 0:
+                await self.db.update_wallet_budget_used(trade.wallet_address, bet_size)
             logger.info("copy_trade_executed",
                         market=trade.market_slug,
                         wallet=trade.wallet_address[:10],
                         side=trade.side,
                         outcome=trade.outcome,
-                        size=bet_size)
+                        size=bet_size,
+                        mode=mode_label)
         else:
             print(f"[CopyTrade] ❌ Error: {result.get('error', 'unknown')}", flush=True)
 

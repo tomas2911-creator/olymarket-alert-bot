@@ -572,6 +572,17 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_crypto_signals_user ON crypto_signals(user_id)",
                 # Quitar UNIQUE de email (permite múltiples usuarios sin email)
                 "DROP INDEX IF EXISTS users_email_key",
+                # Copy Trade per-wallet config
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_enabled BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_budget DOUBLE PRECISION DEFAULT 0",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_budget_used DOUBLE PRECISION DEFAULT 0",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_mode TEXT DEFAULT 'fixed'",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_fixed_amount DOUBLE PRECISION DEFAULT 5",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_pct DOUBLE PRECISION DEFAULT 5",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_min_bet DOUBLE PRECISION DEFAULT 2",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_max_bet DOUBLE PRECISION DEFAULT 50",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_max_per_market DOUBLE PRECISION DEFAULT 0",
+                "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ct_min_trigger DOUBLE PRECISION DEFAULT 0",
             ]
             for m in user_migrations:
                 try:
@@ -2905,7 +2916,7 @@ class Database:
             return result
 
     async def get_watchlisted_wallets_detail(self) -> list[dict]:
-        """Obtener wallets watchlisted con detalle para el panel Copy Trading."""
+        """Obtener wallets watchlisted con detalle y config copy trade."""
         try:
             async with self._pool.acquire() as conn:
                 rows = await conn.fetch("""
@@ -2913,10 +2924,20 @@ class Database:
                            COALESCE(w.name, w.pseudonym) as display_name,
                            w.smart_money_score,
                            w.total_trades, w.win_count, w.loss_count,
+                           w.total_volume,
                            CASE WHEN (w.win_count + w.loss_count) > 0
                                 THEN ROUND(w.win_count::numeric / (w.win_count + w.loss_count) * 100, 1)
                                 ELSE 0 END as win_rate,
-                           TRUE as enabled
+                           COALESCE(w.ct_enabled, FALSE) as ct_enabled,
+                           COALESCE(w.ct_budget, 0) as ct_budget,
+                           COALESCE(w.ct_budget_used, 0) as ct_budget_used,
+                           COALESCE(w.ct_mode, 'fixed') as ct_mode,
+                           COALESCE(w.ct_fixed_amount, 5) as ct_fixed_amount,
+                           COALESCE(w.ct_pct, 5) as ct_pct,
+                           COALESCE(w.ct_min_bet, 2) as ct_min_bet,
+                           COALESCE(w.ct_max_bet, 50) as ct_max_bet,
+                           COALESCE(w.ct_max_per_market, 0) as ct_max_per_market,
+                           COALESCE(w.ct_min_trigger, 0) as ct_min_trigger
                     FROM wallets w
                     WHERE w.is_watchlisted = TRUE
                     ORDER BY w.smart_money_score DESC NULLS LAST
@@ -2925,6 +2946,85 @@ class Database:
         except Exception as e:
             print(f"[DB] get_watchlisted_wallets_detail error: {e}", flush=True)
             return []
+
+    async def save_wallet_copy_config(self, address: str, config: dict) -> bool:
+        """Guardar configuración de copy trade para una wallet específica."""
+        try:
+            addr = address.lower()
+            async with self._pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE wallets SET
+                        ct_enabled = $2,
+                        ct_budget = $3,
+                        ct_mode = $4,
+                        ct_fixed_amount = $5,
+                        ct_pct = $6,
+                        ct_min_bet = $7,
+                        ct_max_bet = $8,
+                        ct_max_per_market = $9,
+                        ct_min_trigger = $10
+                    WHERE address = $1
+                """,
+                    addr,
+                    config.get("ct_enabled", False),
+                    float(config.get("ct_budget", 0)),
+                    config.get("ct_mode", "fixed"),
+                    float(config.get("ct_fixed_amount", 5)),
+                    float(config.get("ct_pct", 5)),
+                    float(config.get("ct_min_bet", 2)),
+                    float(config.get("ct_max_bet", 50)),
+                    float(config.get("ct_max_per_market", 0)),
+                    float(config.get("ct_min_trigger", 0)),
+                )
+                return True
+        except Exception as e:
+            print(f"[DB] save_wallet_copy_config error: {e}", flush=True)
+            return False
+
+    async def get_wallet_copy_config(self, address: str) -> dict:
+        """Obtener configuración de copy trade de una wallet."""
+        try:
+            addr = address.lower()
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT COALESCE(ct_enabled, FALSE) as ct_enabled,
+                           COALESCE(ct_budget, 0) as ct_budget,
+                           COALESCE(ct_budget_used, 0) as ct_budget_used,
+                           COALESCE(ct_mode, 'fixed') as ct_mode,
+                           COALESCE(ct_fixed_amount, 5) as ct_fixed_amount,
+                           COALESCE(ct_pct, 5) as ct_pct,
+                           COALESCE(ct_min_bet, 2) as ct_min_bet,
+                           COALESCE(ct_max_bet, 50) as ct_max_bet,
+                           COALESCE(ct_max_per_market, 0) as ct_max_per_market,
+                           COALESCE(ct_min_trigger, 0) as ct_min_trigger
+                    FROM wallets WHERE address = $1
+                """, addr)
+                return dict(row) if row else {}
+        except Exception as e:
+            print(f"[DB] get_wallet_copy_config error: {e}", flush=True)
+            return {}
+
+    async def update_wallet_budget_used(self, address: str, amount: float):
+        """Incrementar el presupuesto usado de copy trade de una wallet."""
+        try:
+            addr = address.lower()
+            async with self._pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE wallets SET ct_budget_used = COALESCE(ct_budget_used, 0) + $2
+                    WHERE address = $1
+                """, addr, amount)
+        except Exception as e:
+            print(f"[DB] update_wallet_budget_used error: {e}", flush=True)
+
+    async def reset_wallet_budget(self, address: str):
+        """Resetear el presupuesto usado de copy trade de una wallet."""
+        try:
+            addr = address.lower()
+            async with self._pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE wallets SET ct_budget_used = 0 WHERE address = $1", addr)
+        except Exception as e:
+            print(f"[DB] reset_wallet_budget error: {e}", flush=True)
 
     async def get_watchlisted_wallets(self) -> set[str]:
         async with self._pool.acquire() as conn:
