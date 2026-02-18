@@ -124,6 +124,7 @@
         <div onclick="showTab('copytrading')" id="nav-copytrading" class="sidebar-nav-item"><span class="nav-icon">🤖</span>Copy Trading</div>
         <div onclick="showTab('backtester')" id="nav-backtester" class="sidebar-nav-item"><span class="nav-icon">📈</span>Backtester</div>
         <div onclick="showTab('complementarb')" id="nav-complementarb" class="sidebar-nav-item"><span class="nav-icon">🔄</span>Complement Arb</div>
+        <div onclick="showTab('weatherarb')" id="nav-weatherarb" class="sidebar-nav-item"><span class="nav-icon">🌡️</span>Weather Arb</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Herramientas</span></div>
         <div onclick="showTab('walletscan')" id="nav-walletscan" class="sidebar-nav-item"><span class="nav-icon">🔬</span>Wallet Scan</div>
         <div onclick="showTab('heatmap')" id="nav-heatmap" class="sidebar-nav-item"><span class="nav-icon">🗺️</span>Heatmap</div>
@@ -2856,6 +2857,163 @@
             </div>
         </div>
 
+        <!-- ═══ Weather Arb Panel ═══ -->
+        <div id="panel-weatherarb" class="hidden space-y-4">
+            <div class="glass glow rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-sky-400 uppercase tracking-wider">🌡️ Weather Arb — Temperatura vs Polymarket</h3>
+                        <p class="text-[10px] text-gray-500">Cruza pronósticos ensemble (Open-Meteo GFS 31 miembros) con odds de mercados de temperatura</p>
+                    </div>
+                    <button onclick="loadWeatherArb()" class="px-3 py-1 bg-sky-600/30 hover:bg-sky-600/50 text-sky-400 rounded text-xs">Actualizar</button>
+                </div>
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Mercados</div><div class="text-lg font-bold text-sky-400" id="wa-markets">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Señales</div><div class="text-lg font-bold text-yellow-400" id="wa-signals">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Trades</div><div class="text-lg font-bold text-white" id="wa-trades">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Abiertos</div><div class="text-lg font-bold text-cyan-400" id="wa-open">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">PnL Total</div><div class="text-lg font-bold" id="wa-pnl">$0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Win Rate</div><div class="text-lg font-bold" id="wa-wr">0%</div></div>
+                </div>
+                <!-- Sub-tabs -->
+                <div class="flex gap-2 mb-4 border-b border-gray-800/50 pb-2 overflow-x-auto" id="wa-subtabs">
+                    <button onclick="waSubTab('signals')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-sky-500 text-sky-400" data-tab="signals">Señales</button>
+                    <button onclick="waSubTab('markets')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="markets">Mercados</button>
+                    <button onclick="waSubTab('trades')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="trades">Trades</button>
+                    <button onclick="waSubTab('paper')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="paper">Paper Trades</button>
+                    <button onclick="waSubTab('config')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="config">Config</button>
+                </div>
+                <!-- Sub-tab: Señales -->
+                <div id="wa-tab-signals">
+                    <div class="overflow-x-auto"><table class="w-full text-xs">
+                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                            <th class="text-left p-2">Ciudad</th><th class="text-left p-2">Fecha</th>
+                            <th class="text-left p-2">Rango</th><th class="text-center p-2">Ensemble</th>
+                            <th class="text-center p-2">Poly Odds</th><th class="text-center p-2">Edge %</th>
+                            <th class="text-center p-2">Confianza</th><th class="text-right p-2">Hora</th>
+                        </tr></thead>
+                        <tbody id="wa-signals-body"><tr><td colspan="8" class="text-center text-gray-600 p-6">Cargando señales...</td></tr></tbody>
+                    </table></div>
+                </div>
+                <!-- Sub-tab: Mercados Activos -->
+                <div id="wa-tab-markets" class="hidden">
+                    <div class="flex justify-end mb-2">
+                        <button onclick="waRefreshForecasts()" id="wa-refresh-btn" class="px-3 py-1 bg-sky-600/30 hover:bg-sky-600/50 text-sky-400 rounded text-xs">Refresh Forecasts</button>
+                    </div>
+                    <div class="overflow-x-auto"><table class="w-full text-xs">
+                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                            <th class="text-left p-2">Ciudad</th><th class="text-left p-2">Fecha</th>
+                            <th class="text-left p-2">Rango</th><th class="text-center p-2">Ensemble Prob</th>
+                            <th class="text-center p-2">Poly Odds</th><th class="text-center p-2">Edge %</th>
+                            <th class="text-right p-2">Volumen</th>
+                        </tr></thead>
+                        <tbody id="wa-markets-body"><tr><td colspan="7" class="text-center text-gray-600 p-6">Cargando mercados...</td></tr></tbody>
+                    </table></div>
+                </div>
+                <!-- Sub-tab: Trades Reales -->
+                <div id="wa-tab-trades" class="hidden">
+                    <div class="overflow-x-auto"><table class="w-full text-xs">
+                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                            <th class="text-left p-2">Fecha</th><th class="text-left p-2">Ciudad</th>
+                            <th class="text-left p-2">Rango</th><th class="text-center p-2">Lado</th>
+                            <th class="text-right p-2">Precio</th><th class="text-right p-2">Monto</th>
+                            <th class="text-center p-2">Edge %</th><th class="text-right p-2">PnL</th>
+                            <th class="text-center p-2">Estado</th>
+                        </tr></thead>
+                        <tbody id="wa-trades-body"><tr><td colspan="9" class="text-center text-gray-600 p-6">Sin trades reales aún</td></tr></tbody>
+                    </table></div>
+                </div>
+                <!-- Sub-tab: Paper Trades -->
+                <div id="wa-tab-paper" class="hidden">
+                    <div class="overflow-x-auto"><table class="w-full text-xs">
+                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                            <th class="text-left p-2">Ciudad</th><th class="text-left p-2">Fecha</th>
+                            <th class="text-left p-2">Rango</th><th class="text-center p-2">Ensemble</th>
+                            <th class="text-center p-2">Poly Odds</th><th class="text-center p-2">Edge %</th>
+                            <th class="text-right p-2">PnL Sim</th><th class="text-center p-2">Estado</th>
+                        </tr></thead>
+                        <tbody id="wa-paper-body"><tr><td colspan="8" class="text-center text-gray-600 p-6">Sin paper trades aún</td></tr></tbody>
+                    </table></div>
+                </div>
+                <!-- Sub-tab: Config -->
+                <div id="wa-tab-config" class="hidden">
+                    <div class="bg-gray-800/40 rounded-lg p-4 border border-sky-900/30">
+                        <h4 class="text-xs font-semibold text-sky-400 mb-3">⚙️ Configuración Weather AutoTrader</h4>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">Habilitado</label>
+                                <label class="toggle-switch"><input type="checkbox" id="wa-cfg-enabled"><span class="toggle-slider"></span></label>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">Bet Size ($)</label>
+                                <input type="number" id="wa-cfg-bet" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="5" min="1" max="500">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">Min Edge %</label>
+                                <input type="number" id="wa-cfg-edge" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="8" min="1" max="50" step="0.5">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">Max Odds</label>
+                                <input type="number" id="wa-cfg-odds" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="0.55" min="0.1" max="0.95" step="0.01">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">Max Trades/Día</label>
+                                <input type="number" id="wa-cfg-daily" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="10" min="1" max="50">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">Max Posiciones</label>
+                                <input type="number" id="wa-cfg-maxpos" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="15" min="1" max="50">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">Order Type</label>
+                                <select id="wa-cfg-ordertype" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300">
+                                    <option value="market">Market (FOK)</option>
+                                    <option value="limit">Limit (GTC)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">Min Confianza %</label>
+                                <input type="number" id="wa-cfg-conf" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="0" max="100">
+                            </div>
+                        </div>
+                        <h4 class="text-xs font-semibold text-sky-400 mb-2 mt-4">Wallet Separada</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">Private Key</label>
+                                <input type="password" id="wa-cfg-pk" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="0x...">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">API Key (CLOB)</label>
+                                <input type="password" id="wa-cfg-apikey" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="API Key">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">API Secret</label>
+                                <input type="password" id="wa-cfg-apisecret" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="API Secret">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">API Passphrase</label>
+                                <input type="password" id="wa-cfg-passphrase" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="Passphrase">
+                            </div>
+                        </div>
+                        <div class="flex gap-3 items-center">
+                            <button onclick="waSaveConfig()" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium transition">Guardar Config</button>
+                            <button onclick="waTestConnection()" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm font-medium transition">Test Conexión</button>
+                            <span id="wa-cfg-status" class="text-xs hidden"></span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-900/60 rounded-lg p-3 text-[10px] text-gray-500 mt-3">
+                        <p class="font-semibold text-gray-400 mb-1">Como funciona Weather Arb:</p>
+                        <p>1. Open-Meteo Ensemble (31 miembros GFS) calcula la probabilidad de cada rango de temperatura</p>
+                        <p>2. Se compara con los odds de Polymarket para detectar discrepancias (edges)</p>
+                        <p>3. Si ensemble dice 45% pero Polymarket vende a 30c, hay 15% de edge</p>
+                        <p>4. El bot compra automáticamente cuando el edge supera el umbral mínimo</p>
+                        <p>5. Wallet SEPARADA del crypto arb — configura las credenciales arriba</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- ═══ v8.0: Heatmap Panel ═══ -->
         <div id="panel-heatmap" class="hidden glass glow rounded-xl overflow-hidden p-4">
             <h3 class="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-3">Heatmap de Categorías</h3>
@@ -3280,9 +3438,9 @@ function polyProfile(addr){return`https://polymarket.com/profile/${addr}`}
 function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
 // ── Sidebar Navigation ──
-const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',spikes:'Spikes',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',whales:'Whale Trades',copytrading:'Copy Trading',backtester:'Backtester',complementarb:'Complement Arb',news:'Noticias',aianalyst:'AI Analyst',heatmap:'Heatmap',walletscan:'Wallet Scan',config:'Configuración'};
+const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',spikes:'Spikes',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',whales:'Whale Trades',copytrading:'Copy Trading',backtester:'Backtester',complementarb:'Complement Arb',weatherarb:'Weather Arb',news:'Noticias',aianalyst:'AI Analyst',heatmap:'Heatmap',walletscan:'Wallet Scan',config:'Configuración'};
 function showTab(t){
-    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','spikes','alerttrading','alertpnl','wallettracker','whales','copytrading','backtester','complementarb','news','aianalyst','heatmap','walletscan'];
+    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','spikes','alerttrading','alertpnl','wallettracker','whales','copytrading','backtester','complementarb','weatherarb','news','aianalyst','heatmap','walletscan'];
     // Ocultar todos los paneles
     panels.forEach(id=>{
         const panel=document.getElementById('panel-'+id);
@@ -3317,6 +3475,7 @@ function showTab(t){
     if(t==='heatmap')loadHeatmap();
     if(t==='spikes')loadSpikes();
     if(t==='copytrading')loadCopyTrading();
+    if(t==='weatherarb')loadWeatherArb();
     if(t==='news')loadNewsData();
     if(t==='aianalyst')loadAiAnalyses();
     // Cerrar sidebar en mobile
@@ -6376,6 +6535,207 @@ function renderComplementArb(data){
             <td class="p-2 text-right text-gray-500">$${fmt(o.liquidity||0)}</td>
         </tr>`;
     }).join('');
+}
+
+// ── Weather Arb ──
+function waSubTab(tab){
+    ['signals','markets','trades','paper','config'].forEach(t=>{
+        const el=document.getElementById('wa-tab-'+t);
+        if(el)el.classList.toggle('hidden',t!==tab);
+    });
+    document.querySelectorAll('.wa-subtab').forEach(btn=>{
+        const isActive=btn.dataset.tab===tab;
+        btn.classList.toggle('border-sky-500',isActive);
+        btn.classList.toggle('text-sky-400',isActive);
+        btn.classList.toggle('border-transparent',!isActive);
+        btn.classList.toggle('text-gray-500',!isActive);
+    });
+}
+async function loadWeatherArb(){
+    try{
+        const [statsR,signalsR,marketsR,tradesR,paperR]=await Promise.all([
+            apiFetch('/api/weather-arb/stats'),
+            apiFetch('/api/weather-arb/signals'),
+            apiFetch('/api/weather-arb/markets'),
+            apiFetch('/api/weather-arb/trades'),
+            apiFetch('/api/weather-arb/paper-trades'),
+        ]);
+        // KPIs
+        if(statsR){
+            document.getElementById('wa-markets').textContent=statsR.active_markets||0;
+            document.getElementById('wa-signals').textContent=statsR.signals_today||0;
+            document.getElementById('wa-trades').textContent=statsR.total_trades||0;
+            document.getElementById('wa-open').textContent=statsR.open_positions||0;
+            const pnl=statsR.total_pnl||0;
+            const pnlEl=document.getElementById('wa-pnl');
+            pnlEl.textContent='$'+pnl.toFixed(2);
+            pnlEl.className='text-lg font-bold '+(pnl>=0?'text-green-400':'text-red-400');
+            document.getElementById('wa-wr').textContent=(statsR.win_rate||0).toFixed(1)+'%';
+        }
+        // Señales
+        const sTbody=document.getElementById('wa-signals-body');
+        const signals=signalsR?.signals||[];
+        if(signals.length===0){
+            sTbody.innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-6">Sin señales activas. El detector necesita mercados weather abiertos en Polymarket.</td></tr>';
+        }else{
+            sTbody.innerHTML=signals.map(s=>{
+                const edgeColor=s.edge_pct>=15?'text-green-400':s.edge_pct>=8?'text-yellow-400':'text-gray-400';
+                const ts=s.timestamp?new Date(s.timestamp*1000).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'';
+                return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                    <td class="p-2 text-white">${s.city_name||s.city||''}</td>
+                    <td class="p-2">${s.date||''}</td>
+                    <td class="p-2 font-mono">${s.range_label||''}</td>
+                    <td class="p-2 text-center font-mono text-sky-400">${((s.ensemble_prob||0)*100).toFixed(1)}%</td>
+                    <td class="p-2 text-center font-mono">${(s.poly_odds||0).toFixed(2)}</td>
+                    <td class="p-2 text-center font-mono font-bold ${edgeColor}">${(s.edge_pct||0).toFixed(1)}%</td>
+                    <td class="p-2 text-center">${(s.confidence||0).toFixed(0)}%</td>
+                    <td class="p-2 text-right text-gray-500">${ts}</td>
+                </tr>`;
+            }).join('');
+        }
+        // Mercados
+        const mTbody=document.getElementById('wa-markets-body');
+        const mkts=marketsR?.markets||[];
+        if(mkts.length===0){
+            mTbody.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-6">Sin mercados weather activos en Polymarket ahora</td></tr>';
+        }else{
+            let rows=[];
+            mkts.forEach(m=>{
+                (m.ranges||[]).forEach(r=>{
+                    const ep=(r.ensemble_prob||0)*100;
+                    const po=(r.yes_price||0)*100;
+                    const edge=ep-po;
+                    const edgeColor=edge>=15?'text-green-400':edge>=8?'text-yellow-400':edge>0?'text-gray-400':'text-red-400';
+                    rows.push(`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                        <td class="p-2 text-white">${m.city_name||''}</td>
+                        <td class="p-2">${m.date||''}</td>
+                        <td class="p-2 font-mono">${r.label||''}</td>
+                        <td class="p-2 text-center font-mono text-sky-400">${ep.toFixed(1)}%</td>
+                        <td class="p-2 text-center font-mono">${(r.yes_price||0).toFixed(2)}</td>
+                        <td class="p-2 text-center font-mono ${edgeColor}">${edge.toFixed(1)}%</td>
+                        <td class="p-2 text-right text-gray-500">$${fmt(m.volume||0)}</td>
+                    </tr>`);
+                });
+            });
+            mTbody.innerHTML=rows.join('')||'<tr><td colspan="7" class="text-center text-gray-600 p-6">Sin rangos</td></tr>';
+        }
+        // Trades reales
+        const tTbody=document.getElementById('wa-trades-body');
+        const trades=tradesR?.trades||[];
+        if(trades.length===0){
+            tTbody.innerHTML='<tr><td colspan="9" class="text-center text-gray-600 p-6">Sin trades reales aún. Configura la wallet en la pestaña Config.</td></tr>';
+        }else{
+            tTbody.innerHTML=trades.map(t=>{
+                const pnl=t.pnl||0;
+                const pnlColor=pnl>0?'text-green-400':pnl<0?'text-red-400':'text-gray-400';
+                const status=t.resolved?((t.result||'')=='win'?'<span class="text-green-400">WIN</span>':'<span class="text-red-400">LOSS</span>'):'<span class="px-2 py-0.5 bg-sky-900/40 text-sky-400 rounded text-[10px]">ABIERTO</span>';
+                const dt=t.created_at?new Date(t.created_at).toLocaleString('es-CL',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+                return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                    <td class="p-2 text-gray-400">${dt}</td>
+                    <td class="p-2 text-white">${t.city_name||t.city||''}</td>
+                    <td class="p-2 font-mono">${t.range_label||''}</td>
+                    <td class="p-2 text-center">${t.side||'BUY'}</td>
+                    <td class="p-2 text-right font-mono">${(t.price||0).toFixed(2)}</td>
+                    <td class="p-2 text-right font-mono">$${(t.size_usd||0).toFixed(2)}</td>
+                    <td class="p-2 text-center font-mono">${(t.edge_pct||0).toFixed(1)}%</td>
+                    <td class="p-2 text-right font-mono ${pnlColor}">${pnl?'$'+pnl.toFixed(2):'—'}</td>
+                    <td class="p-2 text-center">${status}</td>
+                </tr>`;
+            }).join('');
+        }
+        // Paper trades
+        const pTbody=document.getElementById('wa-paper-body');
+        const papers=paperR?.trades||[];
+        if(papers.length===0){
+            pTbody.innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-6">Sin paper trades. Se registran automáticamente cuando hay señales.</td></tr>';
+        }else{
+            pTbody.innerHTML=papers.map(p=>{
+                const pnl=p.pnl||0;
+                const pnlColor=pnl>0?'text-green-400':pnl<0?'text-red-400':'text-gray-400';
+                const status=p.resolved?(p.won?'<span class="text-green-400">WIN</span>':'<span class="text-red-400">LOSS</span>'):'<span class="text-sky-400">Pendiente</span>';
+                return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                    <td class="p-2 text-white">${p.city_name||p.city||''}</td>
+                    <td class="p-2">${p.date||''}</td>
+                    <td class="p-2 font-mono">${p.range_label||''}</td>
+                    <td class="p-2 text-center font-mono text-sky-400">${((p.ensemble_prob||0)*100).toFixed(1)}%</td>
+                    <td class="p-2 text-center font-mono">${(p.poly_odds||0).toFixed(2)}</td>
+                    <td class="p-2 text-center font-mono">${(p.edge_pct||0).toFixed(1)}%</td>
+                    <td class="p-2 text-right font-mono ${pnlColor}">${pnl?'$'+pnl.toFixed(2):'—'}</td>
+                    <td class="p-2 text-center">${status}</td>
+                </tr>`;
+            }).join('');
+        }
+        // Config tab — cargar valores
+        waLoadConfig();
+    }catch(e){
+        console.error('Weather Arb load error:',e);
+    }
+}
+async function waLoadConfig(){
+    try{
+        const r=await apiFetch('/api/weather-arb/autotrade-config');
+        if(r){
+            document.getElementById('wa-cfg-enabled').checked=r.enabled||false;
+            document.getElementById('wa-cfg-bet').value=r.bet_size||5;
+            document.getElementById('wa-cfg-edge').value=r.min_edge||8;
+            document.getElementById('wa-cfg-odds').value=r.max_odds||0.55;
+            document.getElementById('wa-cfg-daily').value=r.max_daily_trades||10;
+            document.getElementById('wa-cfg-maxpos').value=r.max_positions||15;
+            document.getElementById('wa-cfg-ordertype').value=r.order_type||'market';
+            document.getElementById('wa-cfg-conf').value=r.min_confidence||50;
+            if(r.private_key)document.getElementById('wa-cfg-pk').value=r.private_key;
+            if(r.api_key)document.getElementById('wa-cfg-apikey').value=r.api_key;
+            if(r.api_secret)document.getElementById('wa-cfg-apisecret').value=r.api_secret;
+            if(r.api_passphrase)document.getElementById('wa-cfg-passphrase').value=r.api_passphrase;
+        }
+    }catch(e){console.error('WA config load error:',e);}
+}
+async function waSaveConfig(){
+    const statusEl=document.getElementById('wa-cfg-status');
+    try{
+        const body={
+            enabled:document.getElementById('wa-cfg-enabled').checked,
+            bet_size:parseFloat(document.getElementById('wa-cfg-bet').value)||5,
+            min_edge:parseFloat(document.getElementById('wa-cfg-edge').value)||8,
+            max_odds:parseFloat(document.getElementById('wa-cfg-odds').value)||0.55,
+            max_daily_trades:parseInt(document.getElementById('wa-cfg-daily').value)||10,
+            max_positions:parseInt(document.getElementById('wa-cfg-maxpos').value)||15,
+            order_type:document.getElementById('wa-cfg-ordertype').value,
+            min_confidence:parseFloat(document.getElementById('wa-cfg-conf').value)||50,
+            private_key:document.getElementById('wa-cfg-pk').value,
+            api_key:document.getElementById('wa-cfg-apikey').value,
+            api_secret:document.getElementById('wa-cfg-apisecret').value,
+            api_passphrase:document.getElementById('wa-cfg-passphrase').value,
+        };
+        await apiFetch('/api/weather-arb/autotrade-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        statusEl.textContent='Guardado!';statusEl.className='text-xs text-green-400';statusEl.classList.remove('hidden');
+        setTimeout(()=>statusEl.classList.add('hidden'),3000);
+    }catch(e){
+        statusEl.textContent='Error: '+e.message;statusEl.className='text-xs text-red-400';statusEl.classList.remove('hidden');
+    }
+}
+async function waTestConnection(){
+    const statusEl=document.getElementById('wa-cfg-status');
+    statusEl.textContent='Probando...';statusEl.className='text-xs text-yellow-400';statusEl.classList.remove('hidden');
+    try{
+        const r=await apiFetch('/api/weather-arb/test-connection',{method:'POST'});
+        if(r?.success){
+            statusEl.textContent='Conectado! Balance: $'+(r.balance||0).toFixed(2);statusEl.className='text-xs text-green-400';
+        }else{
+            statusEl.textContent='Error: '+(r?.error||'Sin respuesta');statusEl.className='text-xs text-red-400';
+        }
+    }catch(e){
+        statusEl.textContent='Error: '+e.message;statusEl.className='text-xs text-red-400';
+    }
+}
+async function waRefreshForecasts(){
+    const btn=document.getElementById('wa-refresh-btn');
+    btn.textContent='Refrescando...';btn.disabled=true;
+    try{
+        await apiFetch('/api/weather-arb/refresh-forecasts',{method:'POST'});
+        await loadWeatherArb();
+    }catch(e){console.error(e);}
+    finally{btn.textContent='Refresh Forecasts';btn.disabled=false;}
 }
 
 // ── Init ──
