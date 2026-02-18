@@ -125,6 +125,7 @@
         <div onclick="showTab('backtester')" id="nav-backtester" class="sidebar-nav-item"><span class="nav-icon">📈</span>Backtester</div>
         <div onclick="showTab('complementarb')" id="nav-complementarb" class="sidebar-nav-item"><span class="nav-icon">🔄</span>Complement Arb</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Herramientas</span></div>
+        <div onclick="showTab('walletscan')" id="nav-walletscan" class="sidebar-nav-item"><span class="nav-icon">🔬</span>Wallet Scan</div>
         <div onclick="showTab('heatmap')" id="nav-heatmap" class="sidebar-nav-item"><span class="nav-icon">🗺️</span>Heatmap</div>
         <div onclick="showTab('feed')" id="nav-feed" class="sidebar-nav-item"><span class="nav-icon">📡</span>Feed</div>
         <div onclick="showTab('news')" id="nav-news" class="sidebar-nav-item"><span class="nav-icon">📰</span>Noticias</div>
@@ -2427,6 +2428,115 @@
             </div>
         </div>
 
+        <!-- ═══ Wallet Scan Panel ═══ -->
+        <div id="panel-walletscan" class="hidden space-y-4">
+            <div class="glass glow rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-violet-400 uppercase tracking-wider">🔬 Wallet Scan</h3>
+                        <p class="text-[10px] text-gray-500">Pega cualquier dirección de Polymarket para obtener un análisis completo</p>
+                    </div>
+                </div>
+                <!-- Input -->
+                <div class="flex gap-2 mb-4">
+                    <input type="text" id="wscan-address" placeholder="0x... dirección de wallet" class="flex-1 bg-gray-800/60 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50" onkeydown="if(event.key==='Enter')runWalletScan()">
+                    <button onclick="runWalletScan()" id="wscan-btn" class="px-5 py-2 bg-violet-600/50 hover:bg-violet-600/70 text-violet-200 rounded-lg text-sm font-semibold transition">🔍 Analizar</button>
+                </div>
+                <!-- Resultado -->
+                <div id="wscan-result" class="hidden">
+                    <!-- KPIs -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-4" id="wscan-kpis">
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500 uppercase">Portfolio</div>
+                            <div class="text-lg font-bold text-violet-400" id="wscan-portfolio">$0</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500 uppercase">Capital Inicial</div>
+                            <div class="text-lg font-bold text-gray-300" id="wscan-initial">$0</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500 uppercase">PnL Total</div>
+                            <div class="text-lg font-bold" id="wscan-pnl">$0</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500 uppercase">ROI</div>
+                            <div class="text-lg font-bold" id="wscan-roi">0%</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500 uppercase">Win Rate</div>
+                            <div class="text-lg font-bold" id="wscan-wr">0%</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500 uppercase">Total Trades</div>
+                            <div class="text-lg font-bold text-gray-300" id="wscan-trades">0</div>
+                        </div>
+                    </div>
+                    <!-- Detalle extra -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">W / L</div>
+                            <div class="text-sm font-bold"><span class="text-green-400" id="wscan-wins">0</span> / <span class="text-red-400" id="wscan-losses">0</span></div>
+                        </div>
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">PnL Realizado</div>
+                            <div class="text-sm font-bold" id="wscan-realized">$0</div>
+                        </div>
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Primer Trade</div>
+                            <div class="text-sm font-bold text-gray-300" id="wscan-first">-</div>
+                        </div>
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Tiempo Activo</div>
+                            <div class="text-sm font-bold text-gray-300" id="wscan-days">-</div>
+                        </div>
+                    </div>
+                    <!-- Links -->
+                    <div class="flex gap-3 mb-4 text-xs">
+                        <a id="wscan-link-poly" href="#" target="_blank" class="text-violet-400 hover:underline">🔗 Ver en Polymarket</a>
+                        <a id="wscan-link-scan" href="#" target="_blank" class="text-purple-400 hover:underline">🔗 PolygonScan</a>
+                    </div>
+                    <!-- Posiciones Abiertas -->
+                    <h4 class="text-xs font-semibold text-gray-400 mb-2">📊 Posiciones Abiertas (<span id="wscan-pos-count">0</span>)</h4>
+                    <div class="overflow-x-auto mb-4">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                                <th class="text-left p-2">Mercado</th>
+                                <th class="text-right p-2">Size</th>
+                                <th class="text-right p-2">Precio Entrada</th>
+                                <th class="text-right p-2">Precio Actual</th>
+                                <th class="text-right p-2">Valor</th>
+                                <th class="text-right p-2">PnL</th>
+                                <th class="text-right p-2">PnL %</th>
+                            </tr></thead>
+                            <tbody id="wscan-pos-body"><tr><td colspan="7" class="text-center text-gray-600 p-4">Sin datos</td></tr></tbody>
+                        </table>
+                    </div>
+                    <!-- Actividad Reciente -->
+                    <h4 class="text-xs font-semibold text-gray-400 mb-2">🕐 Actividad Reciente</h4>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                                <th class="text-left p-2">Fecha</th>
+                                <th class="text-left p-2">Mercado</th>
+                                <th class="text-center p-2">Side</th>
+                                <th class="text-right p-2">Monto</th>
+                                <th class="text-right p-2">Precio</th>
+                            </tr></thead>
+                            <tbody id="wscan-activity-body"><tr><td colspan="5" class="text-center text-gray-600 p-4">Sin datos</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- Loading -->
+                <div id="wscan-loading" class="hidden text-center py-10">
+                    <div class="text-violet-400 text-sm animate-pulse">🔬 Analizando wallet... esto puede tomar unos segundos</div>
+                </div>
+                <!-- Error -->
+                <div id="wscan-error" class="hidden text-center py-6">
+                    <div class="text-red-400 text-sm" id="wscan-error-msg">Error</div>
+                </div>
+            </div>
+        </div>
+
         <!-- ═══ v11: Spikes Panel ═══ -->
         <div id="panel-spikes" class="hidden space-y-4">
             <div class="glass glow rounded-xl p-4">
@@ -3165,9 +3275,9 @@ function polyProfile(addr){return`https://polymarket.com/profile/${addr}`}
 function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
 // ── Sidebar Navigation ──
-const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',spikes:'Spikes',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',whales:'Whale Trades',copytrading:'Copy Trading',backtester:'Backtester',complementarb:'Complement Arb',news:'Noticias',aianalyst:'AI Analyst',heatmap:'Heatmap',config:'Configuración'};
+const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',spikes:'Spikes',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',whales:'Whale Trades',copytrading:'Copy Trading',backtester:'Backtester',complementarb:'Complement Arb',news:'Noticias',aianalyst:'AI Analyst',heatmap:'Heatmap',walletscan:'Wallet Scan',config:'Configuración'};
 function showTab(t){
-    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','spikes','alerttrading','alertpnl','wallettracker','whales','copytrading','backtester','complementarb','news','aianalyst','heatmap'];
+    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','spikes','alerttrading','alertpnl','wallettracker','whales','copytrading','backtester','complementarb','news','aianalyst','heatmap','walletscan'];
     // Ocultar todos los paneles
     panels.forEach(id=>{
         const panel=document.getElementById('panel-'+id);
@@ -5525,6 +5635,104 @@ async function showWalletDetail(addr,idx){
     panel.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
+// ── Wallet Scan ──
+async function runWalletScan(addr){
+    const input=document.getElementById('wscan-address');
+    const address=addr||input.value.trim();
+    if(!address||address.length<10){alert('Pega una dirección válida (0x...)');return;}
+    input.value=address;
+    document.getElementById('wscan-result').classList.add('hidden');
+    document.getElementById('wscan-error').classList.add('hidden');
+    document.getElementById('wscan-loading').classList.remove('hidden');
+    const btn=document.getElementById('wscan-btn');
+    btn.disabled=true;btn.textContent='Analizando...';
+    try{
+        const data=await fetchJson(`/api/wallet/scan?address=${encodeURIComponent(address)}`);
+        document.getElementById('wscan-loading').classList.add('hidden');
+        btn.disabled=false;btn.textContent='🔍 Analizar';
+        if(!data||data.error){
+            document.getElementById('wscan-error-msg').textContent=data?.error||'Error al analizar wallet';
+            document.getElementById('wscan-error').classList.remove('hidden');
+            return;
+        }
+        renderWalletScan(data);
+    }catch(e){
+        document.getElementById('wscan-loading').classList.add('hidden');
+        btn.disabled=false;btn.textContent='🔍 Analizar';
+        document.getElementById('wscan-error-msg').textContent='Error de conexión';
+        document.getElementById('wscan-error').classList.remove('hidden');
+    }
+}
+function scanWalletFromAddr(addr){
+    showTab('walletscan');
+    setTimeout(()=>runWalletScan(addr),100);
+}
+function renderWalletScan(d){
+    // KPIs
+    document.getElementById('wscan-portfolio').textContent='$'+fmt(Math.round(d.portfolio_value));
+    document.getElementById('wscan-initial').textContent='$'+fmt(Math.round(d.estimated_initial_capital));
+    const pnlEl=document.getElementById('wscan-pnl');
+    pnlEl.textContent=(d.total_pnl>=0?'+':'')+`$${fmt(Math.abs(Math.round(d.total_pnl)))}`;
+    pnlEl.className='text-lg font-bold '+(d.total_pnl>=0?'text-green-400':'text-red-400');
+    const roiEl=document.getElementById('wscan-roi');
+    roiEl.textContent=(d.roi_pct>=0?'+':'')+d.roi_pct+'%';
+    roiEl.className='text-lg font-bold '+(d.roi_pct>=0?'text-green-400':'text-red-400');
+    const wrEl=document.getElementById('wscan-wr');
+    wrEl.textContent=d.win_rate+'%';
+    wrEl.className='text-lg font-bold '+(d.win_rate>=60?'text-green-400':d.win_rate>=40?'text-yellow-400':'text-red-400');
+    document.getElementById('wscan-trades').textContent=fmt(d.total_trades);
+    // Detalle
+    document.getElementById('wscan-wins').textContent=d.wins;
+    document.getElementById('wscan-losses').textContent=d.losses;
+    const realEl=document.getElementById('wscan-realized');
+    realEl.textContent=(d.realized_pnl>=0?'+':'')+`$${fmt(Math.abs(Math.round(d.realized_pnl)))}`;
+    realEl.className='text-sm font-bold '+(d.realized_pnl>=0?'text-green-400':'text-red-400');
+    if(d.first_trade_date){
+        try{const dt=new Date(d.first_trade_date);document.getElementById('wscan-first').textContent=dt.toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'});}
+        catch(e){document.getElementById('wscan-first').textContent=d.first_trade_date.slice(0,10);}
+    }else{document.getElementById('wscan-first').textContent='-';}
+    document.getElementById('wscan-days').textContent=d.days_active?d.days_active+' días':'-';
+    // Links
+    document.getElementById('wscan-link-poly').href=polyProfile(d.address);
+    document.getElementById('wscan-link-scan').href='https://polygonscan.com/address/'+d.address;
+    // Posiciones
+    document.getElementById('wscan-pos-count').textContent=d.open_positions_count||0;
+    const posBody=document.getElementById('wscan-pos-body');
+    if(d.open_positions&&d.open_positions.length>0){
+        posBody.innerHTML=d.open_positions.map(p=>{
+            const pC=p.unrealized_pnl>=0?'text-green-400':'text-red-400';
+            const title=(p.title||'').length>50?p.title.slice(0,50)+'…':p.title||'';
+            return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                <td class="p-2 max-w-[200px] truncate">${p.slug?`<a href="https://polymarket.com/event/${p.slug}" target="_blank" class="text-gray-300 hover:text-violet-400">${title}</a>`:title}</td>
+                <td class="p-2 text-right font-mono">${p.size}</td>
+                <td class="p-2 text-right font-mono text-gray-400">${p.avg_price.toFixed(2)}</td>
+                <td class="p-2 text-right font-mono text-gray-400">${p.cur_price.toFixed(2)}</td>
+                <td class="p-2 text-right font-mono">$${fmt(Math.round(p.current_value))}</td>
+                <td class="p-2 text-right font-mono ${pC}">${p.unrealized_pnl>=0?'+':''}$${Math.abs(p.unrealized_pnl).toFixed(0)}</td>
+                <td class="p-2 text-right font-mono ${pC}">${p.pnl_pct>=0?'+':''}${p.pnl_pct}%</td>
+            </tr>`;
+        }).join('');
+    }else{posBody.innerHTML='<tr><td colspan="7" class="text-center text-gray-600 p-4">Sin posiciones abiertas</td></tr>';}
+    // Actividad
+    const actBody=document.getElementById('wscan-activity-body');
+    if(d.recent_trades&&d.recent_trades.length>0){
+        actBody.innerHTML=d.recent_trades.map(a=>{
+            let ts='-';
+            if(a.timestamp){try{ts=new Date(a.timestamp).toLocaleString('es-CL',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});}catch(e){ts=String(a.timestamp).slice(0,16);}}
+            const sC=(a.side||'').toUpperCase()==='BUY'||a.side==='Buy'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400';
+            const title=(a.title||'').length>45?a.title.slice(0,45)+'…':a.title||'';
+            return`<tr class="border-b border-gray-800/30">
+                <td class="p-2 text-gray-400 whitespace-nowrap">${ts}</td>
+                <td class="p-2 max-w-[200px] truncate text-gray-300">${title}</td>
+                <td class="p-2 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${sC}">${(a.side||'').toUpperCase()}</span></td>
+                <td class="p-2 text-right font-mono">$${fmt(a.size)}</td>
+                <td class="p-2 text-right font-mono text-gray-400">${a.price.toFixed(2)}</td>
+            </tr>`;
+        }).join('');
+    }else{actBody.innerHTML='<tr><td colspan="5" class="text-center text-gray-600 p-4">Sin actividad reciente</td></tr>';}
+    document.getElementById('wscan-result').classList.remove('hidden');
+}
+
 // ── Whale Trades ──
 let _whaleView='feed';
 function showWhaleView(v){
@@ -5639,7 +5847,7 @@ function render_whf(){
             <td class="p-2 text-center ${wrC}">${t.win_rate>0?t.win_rate+'%':'-'}</td>
             <td class="p-2 text-center ${scC}">${sc>0?sc:'-'}</td>
             <td class="p-2 text-center whitespace-nowrap">${closeHtml}</td>
-            <td class="p-2 text-center cursor-pointer ${star}" onclick="whaleToggleWatchlist('${addr}',this)">★</td>
+            <td class="p-2 text-center whitespace-nowrap"><span class="cursor-pointer ${star}" onclick="whaleToggleWatchlist('${addr}',this)">★</span> <span class="cursor-pointer text-violet-400 hover:text-violet-300" onclick="scanWalletFromAddr('${addr}')" title="Analizar wallet">🔬</span></td>
         </tr>`;
     }).join('');
 }
@@ -5681,7 +5889,7 @@ function render_whr(){
             <td class="p-2 text-right font-mono ${rC}">${(w.roi_pct||0)}%</td>
             <td class="p-2 text-center ${scC}">${w.smart_money_score}</td>
             <td class="p-2 text-center text-gray-400">${w.markets}</td>
-            <td class="p-2 text-center cursor-pointer ${star}" onclick="whaleToggleWatchlist('${addr}',this)">★</td>
+            <td class="p-2 text-center whitespace-nowrap"><span class="cursor-pointer ${star}" onclick="whaleToggleWatchlist('${addr}',this)">★</span> <span class="cursor-pointer text-violet-400 hover:text-violet-300" onclick="scanWalletFromAddr('${addr}')" title="Analizar wallet">🔬</span></td>
         </tr>`;
     }).join('');
 }
@@ -5891,9 +6099,10 @@ async function loadCopyTrading(){
                 <td class="p-2 text-right"><input type="number" id="ctic-${id}" value="${t.ct_insider_capital||0}" min="0" step="50" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right" title="Capital estimado del insider ($)"></td>
                 <td class="p-2 text-right"><input type="number" id="ctmt-${id}" value="${t.ct_min_trigger||0}" min="0" step="10" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
                 <td class="p-2 text-right"><input type="number" id="ctmm-${id}" value="${t.ct_max_per_market||0}" min="0" step="5" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
-                <td class="p-2 text-center">
+                <td class="p-2 text-center whitespace-nowrap">
                     <button onclick="saveWalletCopyConfig('${addr}','${id}',this)" class="text-emerald-400 hover:text-emerald-300 text-xs" title="Guardar config">💾</button>
                     ${bud>0?'<button onclick="resetWalletBudget(\''+addr+'\')" class="text-yellow-400 hover:text-yellow-300 text-xs ml-1" title="Reset budget">🔄</button>':''}
+                    <button onclick="removeFromCopyWatchlist('${addr}',this)" class="text-red-400 hover:text-red-300 text-xs ml-1" title="Quitar de watchlist">❌</button>
                 </td>
             </tr>`;
         }).join('');}
@@ -5952,6 +6161,15 @@ async function resetWalletBudget(addr){
         await fetch('/api/copy-trading/targets/'+addr+'/reset-budget',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
         loadCopyTrading();
     }catch(e){console.error('resetWalletBudget error',e);}
+}
+
+async function removeFromCopyWatchlist(addr,btn){
+    if(!confirm('¿Quitar esta wallet de la watchlist? Ya no se copiarán sus trades.'))return;
+    try{
+        btn.textContent='...';btn.disabled=true;
+        await fetch('/api/wallet-tracker/watchlist/'+addr,{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        loadCopyTrading();
+    }catch(e){console.error('removeFromCopyWatchlist error',e);btn.textContent='❌';btn.disabled=false;}
 }
 
 // ── v11: News ──

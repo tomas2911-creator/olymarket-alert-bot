@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from pathlib import Path
+import httpx
 
 from src import config
 
@@ -341,6 +342,226 @@ async def get_whale_wallet_history(request: Request, address: str, limit: int = 
     db = request.app.state.db
     data = await db.get_whale_wallet_history(address=address, limit=limit)
     return data
+
+
+# ── Wallet Scan ──────────────────────────────────────────────────────
+
+_POLY_DATA_API = "https://data-api.polymarket.com"
+
+
+@router.get("/api/wallet/scan")
+async def wallet_scan(request: Request, address: str):
+    """Análisis completo de una wallet de Polymarket consultando la Data API."""
+    addr = address.strip().lower()
+    if not addr or len(addr) < 10:
+        return JSONResponse({"error": "Dirección inválida"}, status_code=400)
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        # 1. Portfolio value
+        portfolio_value = 0
+        try:
+            r = await client.get(f"{_POLY_DATA_API}/value", params={"user": addr})
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list) and data:
+                    portfolio_value = float(data[0].get("value", 0))
+                elif isinstance(data, dict):
+                    portfolio_value = float(data.get("value", 0))
+        except Exception:
+            pass
+
+        # 2. Posiciones abiertas
+        positions = []
+        try:
+            r = await client.get(f"{_POLY_DATA_API}/positions",
+                                 params={"user": addr, "sizeThreshold": 0.1, "limit": 200})
+            if r.status_code == 200:
+                positions = r.json() if isinstance(r.json(), list) else []
+        except Exception:
+            pass
+
+        # 3. Actividad — buscar primeros y últimos trades para calcular capital inicial
+        activity_recent = []
+        activity_first = []
+        first_trade_date = None
+        total_trades = 0
+        wins = 0
+        losses = 0
+        total_bought = 0
+
+        try:
+            # Últimos 50 trades
+            r = await client.get(f"{_POLY_DATA_API}/activity",
+                                 params={"user": addr, "limit": 50, "offset": 0})
+            if r.status_code == 200:
+                activity_recent = r.json() if isinstance(r.json(), list) else []
+
+            # Buscar los primeros trades iterativamente
+            offsets_to_try = [5000, 2000, 1000, 500, 200, 100, 50]
+            for off in offsets_to_try:
+                try:
+                    r2 = await client.get(f"{_POLY_DATA_API}/activity",
+                                          params={"user": addr, "limit": 10, "offset": off})
+                    if r2.status_code == 200:
+                        data2 = r2.json()
+                        if isinstance(data2, list) and len(data2) > 0:
+                            activity_first = data2
+                            total_trades = max(total_trades, off + len(data2))
+                            continue
+                        else:
+                            break
+                    else:
+                        break
+                except Exception:
+                    break
+
+            # Si no encontramos trades alejados, usar los recientes
+            if not activity_first and activity_recent:
+                activity_first = activity_recent
+
+            # Determinar total_trades más preciso con búsqueda binaria
+            if total_trades == 0 and activity_recent:
+                # Intento rápido con offsets crecientes
+                lo, hi = 0, 10000
+                while lo < hi:
+                    mid = (lo + hi) // 2
+                    try:
+                        r3 = await client.get(f"{_POLY_DATA_API}/activity",
+                                              params={"user": addr, "limit": 1, "offset": mid})
+                        if r3.status_code == 200:
+                            d3 = r3.json()
+                            if isinstance(d3, list) and len(d3) > 0:
+                                lo = mid + 1
+                            else:
+                                hi = mid
+                        else:
+                            hi = mid
+                    except Exception:
+                        hi = mid
+                total_trades = lo
+
+            # Fecha primer trade
+            if activity_first:
+                last_item = activity_first[-1]
+                ts_field = last_item.get("timestamp") or last_item.get("created_at") or last_item.get("createdAt")
+                if ts_field:
+                    try:
+                        if isinstance(ts_field, (int, float)):
+                            first_trade_date = datetime.fromtimestamp(ts_field, tz=timezone.utc).isoformat()
+                        else:
+                            first_trade_date = str(ts_field)
+                    except Exception:
+                        pass
+
+        except Exception:
+            pass
+
+        # 4. Calcular métricas desde posiciones
+        total_realized_pnl = 0
+        total_initial_value = 0
+        open_positions = []
+
+        for p in positions:
+            try:
+                size = float(p.get("size", 0))
+                avg_price = float(p.get("avgPrice", 0))
+                cur_price = float(p.get("curPrice", 0))
+                initial_val = float(p.get("initialValue", 0))
+                current_val = float(p.get("currentValue", 0))
+                cash_pnl = float(p.get("cashPnl", 0))
+                realized = float(p.get("realizedPnl", 0))
+                total_b = float(p.get("totalBought", 0))
+                pct_pnl = float(p.get("percentPnl", 0))
+
+                total_realized_pnl += realized
+                total_initial_value += initial_val
+                total_bought += total_b
+
+                if size > 0.01:
+                    unrealized = current_val - initial_val
+                    open_positions.append({
+                        "title": p.get("title", ""),
+                        "slug": p.get("slug", ""),
+                        "size": round(size, 2),
+                        "avg_price": round(avg_price, 4),
+                        "cur_price": round(cur_price, 4),
+                        "initial_value": round(initial_val, 2),
+                        "current_value": round(current_val, 2),
+                        "unrealized_pnl": round(unrealized, 2),
+                        "realized_pnl": round(realized, 2),
+                        "pnl_pct": round(pct_pnl, 2),
+                        "end_date": p.get("endDate", ""),
+                    })
+
+                # Win/loss count
+                if realized > 0.5:
+                    wins += 1
+                elif realized < -0.5:
+                    losses += 1
+
+            except (ValueError, TypeError):
+                continue
+
+        # 5. Estimar capital inicial
+        # Capital inicial ≈ portfolio actual - PnL total
+        total_pnl = total_realized_pnl + sum(
+            op["unrealized_pnl"] for op in open_positions
+        )
+        estimated_initial = max(portfolio_value - total_pnl, 0) if portfolio_value > 0 else total_initial_value
+        if estimated_initial <= 0:
+            estimated_initial = total_bought - total_pnl if total_bought > 0 else 0
+
+        # ROI
+        roi_pct = round(total_pnl / max(estimated_initial, 1) * 100, 2) if estimated_initial > 0 else 0
+
+        # Win rate
+        total_resolved = wins + losses
+        win_rate = round(wins / max(total_resolved, 1) * 100, 1)
+
+        # Tiempo activo
+        days_active = None
+        if first_trade_date:
+            try:
+                ft = datetime.fromisoformat(first_trade_date.replace("Z", "+00:00"))
+                days_active = (datetime.now(timezone.utc) - ft).days
+            except Exception:
+                pass
+
+        # Ordenar posiciones por valor
+        open_positions.sort(key=lambda x: abs(x["current_value"]), reverse=True)
+
+        # Actividad reciente formateada
+        recent_trades = []
+        for a in activity_recent[:20]:
+            try:
+                recent_trades.append({
+                    "title": a.get("title", a.get("question", "")),
+                    "side": a.get("side", a.get("type", "")),
+                    "size": round(float(a.get("size", a.get("amount", 0))), 2),
+                    "price": round(float(a.get("price", 0)), 4),
+                    "timestamp": a.get("timestamp") or a.get("created_at") or a.get("createdAt"),
+                    "outcome": a.get("outcome", ""),
+                })
+            except Exception:
+                continue
+
+        return {
+            "address": addr,
+            "portfolio_value": round(portfolio_value, 2),
+            "estimated_initial_capital": round(estimated_initial, 2),
+            "total_pnl": round(total_pnl, 2),
+            "realized_pnl": round(total_realized_pnl, 2),
+            "roi_pct": roi_pct,
+            "win_rate": win_rate,
+            "wins": wins,
+            "losses": losses,
+            "total_trades": total_trades if total_trades > 0 else len(activity_recent),
+            "first_trade_date": first_trade_date,
+            "days_active": days_active,
+            "open_positions_count": len(open_positions),
+            "open_positions": open_positions[:30],
+            "recent_trades": recent_trades,
+        }
 
 
 # ── v11: News Feed ────────────────────────────────────────────────────
