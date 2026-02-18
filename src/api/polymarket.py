@@ -111,12 +111,14 @@ class PolymarketClient:
 
     async def get_recent_trades(self, limit: int = 200,
                                 excluded_categories: set | None = None,
-                                whale_min_size: float = 0) -> list[Trade]:
+                                whale_min_size: float = 0,
+                                watchlisted_wallets: set | None = None) -> list[Trade]:
         """Obtener trades recientes con paginación y filtrado dinámico por categorías.
         Si excluded_categories está vacío o None → NO filtra nada → todos los trades pasan.
         whale_min_size > 0: extrae trades grandes ANTES del filtro de categoría."""
         excluded = excluded_categories or set()
         exclude_re = _build_exclude_regex(excluded)
+        watchlist = watchlisted_wallets or set()
 
         trades: list[Trade] = []
         self._last_whale_trades: list[Trade] = []
@@ -180,18 +182,23 @@ class PolymarketClient:
                         if trade and whale_min_size > 0 and trade.size >= whale_min_size:
                             self._last_whale_trades.append(trade)
 
-                        # 1. Excluir crypto up/down SIEMPRE (hardcodeado, lo cubre Crypto Arb bot)
-                        if filter_tags and {t.lower() for t in filter_tags} & _ALWAYS_EXCLUDED_CATS:
-                            filtered_cat += 1
-                            continue
-                        if filter_title and _ALWAYS_EXCLUDED_TITLE_RE.search(filter_title):
-                            filtered_cat += 1
-                            continue
+                        # Bypass filtros para wallets watchlisted (copy trading)
+                        wallet_addr = (trade.wallet_address or "").lower() if trade else ""
+                        is_watchlisted = wallet_addr in watchlist
 
-                        # 2. Filtrar por categorías EXCLUIDAS del dashboard (dinámico)
-                        if excluded and is_category_excluded(filter_title, filter_tags, excluded, exclude_re):
-                            filtered_cat += 1
-                            continue
+                        # 1. Excluir crypto up/down SIEMPRE (hardcodeado, lo cubre Crypto Arb bot)
+                        if not is_watchlisted:
+                            if filter_tags and {t.lower() for t in filter_tags} & _ALWAYS_EXCLUDED_CATS:
+                                filtered_cat += 1
+                                continue
+                            if filter_title and _ALWAYS_EXCLUDED_TITLE_RE.search(filter_title):
+                                filtered_cat += 1
+                                continue
+
+                            # 2. Filtrar por categorías EXCLUIDAS del dashboard (dinámico)
+                            if excluded and is_category_excluded(filter_title, filter_tags, excluded, exclude_re):
+                                filtered_cat += 1
+                                continue
 
                         if trade:
                             trades.append(trade)

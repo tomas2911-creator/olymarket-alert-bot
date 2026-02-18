@@ -541,6 +541,7 @@ class PolymarketAlertBot:
                 limit=2000,
                 excluded_categories=self._excluded_categories,
                 whale_min_size=whale_min,
+                watchlisted_wallets=self._watchlist,
             )
 
             # Guardar stats del pipeline para el dashboard
