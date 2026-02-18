@@ -112,25 +112,21 @@
         <div onclick="showTab('dashboard')" id="nav-dashboard" class="sidebar-nav-item active"><span class="nav-icon">📊</span>Dashboard</div>
         <div onclick="showTab('alerts')" id="nav-alerts" class="sidebar-nav-item"><span class="nav-icon">🚨</span>Alertas</div>
         <div onclick="showTab('leaderboard')" id="nav-leaderboard" class="sidebar-nav-item"><span class="nav-icon">🏆</span>Leaderboard</div>
-        <div onclick="showTab('wallets')" id="nav-wallets" class="sidebar-nav-item"><span class="nav-icon">👛</span>Wallets</div>
-        <div onclick="showTab('markets')" id="nav-markets" class="sidebar-nav-item"><span class="nav-icon">🏪</span>Mercados</div>
-        <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Trading</span></div>
+        <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Auto Trading Bots</span></div>
         <div onclick="showTab('crypto')" id="nav-crypto" class="sidebar-nav-item"><span class="nav-icon">₿</span>Crypto Arb</div>
-        <div onclick="showTab('spikes')" id="nav-spikes" class="sidebar-nav-item"><span class="nav-icon">⚡</span>Spikes</div>
         <div onclick="showTab('alerttrading')" id="nav-alerttrading" class="sidebar-nav-item"><span class="nav-icon">📊</span>Alert Trading</div>
-        <div onclick="showTab('alertpnl')" id="nav-alertpnl" class="sidebar-nav-item"><span class="nav-icon">💰</span>PnL Alertas</div>
-        <div onclick="showTab('wallettracker')" id="nav-wallettracker" class="sidebar-nav-item"><span class="nav-icon">🏆</span>Top Wallets</div>
-        <div onclick="showTab('whales')" id="nav-whales" class="sidebar-nav-item"><span class="nav-icon">🐋</span>Whale Trades</div>
         <div onclick="showTab('copytrading')" id="nav-copytrading" class="sidebar-nav-item"><span class="nav-icon">🤖</span>Copy Trading</div>
-        <div onclick="showTab('backtester')" id="nav-backtester" class="sidebar-nav-item"><span class="nav-icon">📈</span>Backtester</div>
-        <div onclick="showTab('complementarb')" id="nav-complementarb" class="sidebar-nav-item"><span class="nav-icon">🔄</span>Complement Arb</div>
         <div onclick="showTab('weatherarb')" id="nav-weatherarb" class="sidebar-nav-item"><span class="nav-icon">🌡️</span>Weather Arb</div>
+        <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Wallets</span></div>
+        <div onclick="showTab('wallets')" id="nav-wallets" class="sidebar-nav-item"><span class="nav-icon">👛</span>Wallets</div>
+        <div onclick="showTab('wallettracker')" id="nav-wallettracker" class="sidebar-nav-item"><span class="nav-icon">🏆</span>Top Wallets</div>
+        <div onclick="showTab('alertpnl')" id="nav-alertpnl" class="sidebar-nav-item"><span class="nav-icon">💰</span>PnL Alertas</div>
+        <div onclick="showTab('whales')" id="nav-whales" class="sidebar-nav-item"><span class="nav-icon">🐋</span>Whale Trades</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Herramientas</span></div>
         <div onclick="showTab('walletscan')" id="nav-walletscan" class="sidebar-nav-item"><span class="nav-icon">🔬</span>Wallet Scan</div>
         <div onclick="showTab('heatmap')" id="nav-heatmap" class="sidebar-nav-item"><span class="nav-icon">🗺️</span>Heatmap</div>
         <div onclick="showTab('feed')" id="nav-feed" class="sidebar-nav-item"><span class="nav-icon">📡</span>Feed</div>
         <div onclick="showTab('news')" id="nav-news" class="sidebar-nav-item"><span class="nav-icon">📰</span>Noticias</div>
-        <div onclick="showTab('aianalyst')" id="nav-aianalyst" class="sidebar-nav-item"><span class="nav-icon">🧠</span>AI Analyst</div>
         <div onclick="showTab('coordination')" id="nav-coordination" class="sidebar-nav-item"><span class="nav-icon">🔗</span>Coordinación</div>
         <div class="px-4 mt-4 mb-2"><span class="text-[10px] text-gray-600 uppercase font-semibold tracking-wider">Sistema</span></div>
         <div onclick="showTab('config')" id="nav-config" class="sidebar-nav-item"><span class="nav-icon">⚙️</span>Configuración</div>
@@ -3452,9 +3448,9 @@ function polyProfile(addr){return`https://polymarket.com/profile/${addr}`}
 function txLink(hash){return`https://polygonscan.com/tx/${hash}`}
 
 // ── Sidebar Navigation ──
-const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',markets:'Mercados',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',spikes:'Spikes',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',whales:'Whale Trades',copytrading:'Copy Trading',backtester:'Backtester',complementarb:'Complement Arb',weatherarb:'Weather Arb',news:'Noticias',aianalyst:'AI Analyst',heatmap:'Heatmap',walletscan:'Wallet Scan',config:'Configuración'};
+const PAGE_TITLES = {dashboard:'Dashboard',alerts:'Alertas',leaderboard:'Leaderboard',wallets:'Wallets',coordination:'Coordinación',feed:'Feed',crypto:'Crypto Arb',alerttrading:'Alert Trading',alertpnl:'PnL Alertas',wallettracker:'Top Wallets',whales:'Whale Trades',copytrading:'Copy Trading',weatherarb:'Weather Arb',news:'Noticias',heatmap:'Heatmap',walletscan:'Wallet Scan',config:'Configuración'};
 function showTab(t){
-    const panels=['dashboard','alerts','leaderboard','wallets','markets','coordination','feed','crypto','spikes','alerttrading','alertpnl','wallettracker','whales','copytrading','backtester','complementarb','weatherarb','news','aianalyst','heatmap','walletscan'];
+    const panels=['dashboard','alerts','leaderboard','wallets','coordination','feed','crypto','alerttrading','alertpnl','wallettracker','whales','copytrading','weatherarb','news','heatmap','walletscan'];
     // Ocultar todos los paneles
     panels.forEach(id=>{
         const panel=document.getElementById('panel-'+id);
@@ -3475,7 +3471,6 @@ function showTab(t){
     if(cfgPanel)cfgPanel.classList.toggle('hidden',t!=='config');
     document.getElementById('page-title').textContent=PAGE_TITLES[t]||t;
     if(t==='alerts')loadAlerts();
-    if(t==='markets')loadMarkets();
     if(t==='feed')loadFeed();
     if(t==='leaderboard')loadLeaderboard();
     if(t==='coordination')loadCoordination();
@@ -3484,14 +3479,10 @@ function showTab(t){
     if(t==='alertpnl')loadAlertPnl();
     if(t==='wallettracker')loadWalletTracker();
     if(t==='whales')loadWhaleData();
-    if(t==='backtester')loadBacktesterDefaults();
-    if(t==='complementarb')loadComplementArb();
     if(t==='heatmap')loadHeatmap();
-    if(t==='spikes')loadSpikes();
     if(t==='copytrading')loadCopyTrading();
     if(t==='weatherarb')loadWeatherArb();
     if(t==='news')loadNewsData();
-    if(t==='aianalyst')loadAiAnalyses();
     // Cerrar sidebar en mobile
     document.getElementById('sidebar').classList.remove('open');
 }
@@ -6637,7 +6628,7 @@ async function loadWeatherArb(){
         const tTbody=document.getElementById('wa-trades-body');
         const trades=tradesR?.trades||[];
         if(trades.length===0){
-            tTbody.innerHTML='<tr><td colspan="9" class="text-center text-gray-600 p-6">Sin trades reales aún. Configura la wallet en la pestaña Config.</td></tr>';
+            tTbody.innerHTML='<tr><td colspan="9" class="text-center text-gray-600 p-6">Sin trades reales. Las señales y paper trades funcionan sin wallet configurada.</td></tr>';
         }else{
             tTbody.innerHTML=trades.map(t=>{
                 const pnl=t.pnl||0;

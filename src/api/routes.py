@@ -2937,7 +2937,16 @@ async def weather_arb_stats(request: Request):
     paper_stats = {}
     if bot and getattr(bot, "weather_paper", None):
         paper_stats = bot.weather_paper.get_stats()
-    return {**db_stats, "live": live_stats, "feed": feed_status, "paper": paper_stats}
+    # Aplanar: live_stats tiene active_markets, signals_today etc.
+    # paper_stats tiene paper trading stats
+    merged = {**db_stats}
+    merged["active_markets"] = live_stats.get("active_markets", 0)
+    merged["signals_today"] = live_stats.get("signals_today", 0)
+    merged["cities_monitored"] = live_stats.get("cities_monitored", 0)
+    merged["live"] = live_stats
+    merged["feed"] = feed_status
+    merged["paper"] = paper_stats
+    return merged
 
 
 @router.get("/api/weather-arb/signals")

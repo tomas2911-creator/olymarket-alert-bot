@@ -347,7 +347,11 @@ class PolymarketAlertBot:
     # ── Weather Arb ──────────────────────────────────────────────────
 
     async def _start_weather_arb(self):
-        """Inicializar módulo weather arb."""
+        """Inicializar módulo weather arb.
+
+        Feed + Detector + Paper Trading siempre corren (no necesitan wallet).
+        AutoTrader solo ejecuta trades reales si tiene wallet configurada.
+        """
         try:
             cities = config.WEATHER_ARB_CITIES  # None = todas
             self.weather_feed = WeatherFeed(
@@ -362,16 +366,18 @@ class PolymarketAlertBot:
                 "scan_interval": config.WEATHER_ARB_SCAN_INTERVAL,
                 "enabled_cities": cities,
             })
+            self.weather_paper = WeatherPaperTrader(bet_size=config.WEATHER_ARB_PAPER_BET)
             self.weather_autotrader = WeatherAutoTrader(self.db)
             await self.weather_autotrader.initialize()
-            self.weather_paper = WeatherPaperTrader(bet_size=config.WEATHER_ARB_PAPER_BET)
             # Lanzar loops de background
             asyncio.create_task(self._run_weather_feed())
             asyncio.create_task(self._run_weather_detector())
-            asyncio.create_task(self._run_weather_autotrader())
+            asyncio.create_task(self._run_weather_signal_loop())
+            at_status = "ON" if self.weather_autotrader._enabled and self.weather_autotrader._client else "OFF (solo señales + paper)"
             print(f"Weather Arb iniciado: cities={cities or 'ALL'} "
                   f"edge>={config.WEATHER_ARB_MIN_EDGE}% "
-                  f"conf>={config.WEATHER_ARB_MIN_CONFIDENCE}%", flush=True)
+                  f"conf>={config.WEATHER_ARB_MIN_CONFIDENCE}% "
+                  f"autotrader={at_status}", flush=True)
         except Exception as e:
             print(f"Error iniciando Weather Arb: {e}", flush=True)
             import traceback
@@ -398,25 +404,35 @@ class PolymarketAlertBot:
             if self._running:
                 await asyncio.sleep(30)
 
-    async def _run_weather_autotrader(self):
-        """Loop: evaluar señales weather y ejecutar trades cada 30s."""
+    async def _run_weather_signal_loop(self):
+        """Loop principal weather: señales + paper trading (siempre) + autotrading (si wallet).
+
+        Este loop NO requiere wallet ni autotrader habilitado.
+        Las señales y el paper trading funcionan independientemente.
+        """
         await asyncio.sleep(15)  # Esperar que feed y detector tengan datos
-        while self._running and self.weather_autotrader and self.weather_detector:
+        while self._running and self.weather_detector:
             try:
                 signals = self.weather_detector.get_recent_signals(50)
                 if signals:
-                    # Paper trading: registrar todas las señales
+                    # Paper trading: registrar TODAS las señales (no necesita wallet)
                     if self.weather_paper:
                         for s in signals:
                             self.weather_paper.record_signal(s)
-                    # Autotrading: ejecutar si está habilitado
-                    await self.weather_autotrader.process_signals(signals)
-                # Resolver trades (reales y paper)
-                await self.weather_autotrader.resolve_trades()
+                    # Autotrading real: solo si está habilitado y tiene wallet
+                    if self.weather_autotrader:
+                        await self.weather_autotrader.process_signals(signals)
+                # Resolver paper trades (no necesita wallet)
                 if self.weather_paper:
                     await self.weather_paper.resolve_pending()
+                # Resolver trades reales (solo si hay autotrader con posiciones)
+                if self.weather_autotrader:
+                    try:
+                        await self.weather_autotrader.resolve_trades()
+                    except Exception:
+                        pass
             except Exception as e:
-                print(f"[WeatherAutotrader] Error: {e}", flush=True)
+                print(f"[WeatherSignalLoop] Error: {e}", flush=True)
             if self._running:
                 await asyncio.sleep(30)
 
