@@ -107,6 +107,8 @@ class AlertAutoTrader:
                 # Copy Trade automático
                 "aat_copy_trade_enabled", "aat_copy_trade_bet_size",
                 "aat_copy_trade_max_positions", "aat_copy_trade_max_daily",
+                # Slippage para cruzar el spread en órdenes BUY
+                "aat_buy_price_bump",
             ])
             pk = raw.get("aat_private_key", "")
             if pk and not pk.startswith("0x"):
@@ -178,6 +180,8 @@ class AlertAutoTrader:
                 "copy_trade_bet_size": float(raw.get("aat_copy_trade_bet_size", 10)),
                 "copy_trade_max_positions": int(raw.get("aat_copy_trade_max_positions", 3)),
                 "copy_trade_max_daily": int(raw.get("aat_copy_trade_max_daily", 10)),
+                # Bump de precio para cruzar el spread (default 2 centavos)
+                "buy_price_bump": float(raw.get("aat_buy_price_bump", 0.02)),
             }
             self._enabled = self._config["enabled"]
 
@@ -872,7 +876,7 @@ class AlertAutoTrader:
         if success and resp_status.lower() == "live" and order_id:
             print(f"[AlertTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill...", flush=True)
             filled = False
-            for attempt in range(12):  # 12 × 5s = 60s máximo
+            for attempt in range(6):  # 6 × 5s = 30s máximo
                 await asyncio.sleep(5)
                 try:
                     order_info = await loop.run_in_executor(None, self._client.get_order, order_id)
@@ -881,7 +885,7 @@ class AlertAutoTrader:
                         current_status = order_info.get("status", "")
                     elif hasattr(order_info, "status"):
                         current_status = getattr(order_info, "status", "")
-                    print(f"[AlertTrader]   polling {attempt+1}/12: status={current_status}", flush=True)
+                    print(f"[AlertTrader]   polling {attempt+1}/6: status={current_status}", flush=True)
                     if current_status.lower() == "matched":
                         filled = True
                         break
@@ -908,7 +912,9 @@ class AlertAutoTrader:
         """Ejecutar una sola orden BUY."""
         cid = trade_info["condition_id"]
         outcome = trade_info["buy_outcome"]
-        order_price = round(price, 2)
+        # Bump precio para cruzar el spread (midpoint → ask side)
+        bump = self._config.get("buy_price_bump", 0.02)
+        order_price = round(min(price + bump, 0.99), 2)
         shares = self._calc_shares(bet_size, order_price)
         if shares <= 0:
             return {"success": False, "error": f"No se pudo calcular shares para price={order_price} bet={bet_size}"}
@@ -989,7 +995,8 @@ class AlertAutoTrader:
                         break
                     price = current_price
 
-            order_price = round(price, 2)
+            bump = self._config.get("buy_price_bump", 0.02)
+            order_price = round(min(price + bump, 0.99), 2)
             shares = self._calc_shares(split_size, order_price)
             if shares <= 0:
                 continue
