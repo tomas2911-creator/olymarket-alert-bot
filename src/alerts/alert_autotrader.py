@@ -22,6 +22,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+import httpx
 import structlog
 from src import config
 
@@ -29,6 +30,7 @@ logger = structlog.get_logger()
 
 CLOB_HOST = "https://clob.polymarket.com"
 GAMMA_HOST = "https://gamma-api.polymarket.com"
+DATA_API_URL = "https://data-api.polymarket.com"
 CHAIN_ID = 137
 
 
@@ -61,6 +63,8 @@ class AlertAutoTrader:
         # v10: Backtest calibration data
         self._calibrated_win_rate: float = 0.55  # default
         self._calibrated_at: float = 0
+        # Cache de portfolio value de insiders: addr → (value, timestamp)
+        self._portfolio_cache: dict[str, tuple[float, float]] = {}
 
     async def initialize(self):
         """Cargar config y crear cliente CLOB si hay credenciales."""
@@ -1107,6 +1111,34 @@ class AlertAutoTrader:
                             score=candidate.score,
                             size=trade_info["bet_size"])
 
+    async def _fetch_insider_portfolio(self, address: str, cache_ttl: int = 600) -> float:
+        """Obtener valor total de posiciones de una wallet via Data API /value.
+        Cachea por cache_ttl segundos (10 min) para no saturar la API."""
+        addr = address.lower()
+        now = time.time()
+        if addr in self._portfolio_cache:
+            cached_val, cached_ts = self._portfolio_cache[addr]
+            if now - cached_ts < cache_ttl:
+                return cached_val
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(f"{DATA_API_URL}/value", params={"user": addr})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, list) and data:
+                        val = float(data[0].get("value", 0))
+                    elif isinstance(data, dict):
+                        val = float(data.get("value", 0))
+                    else:
+                        val = 0
+                    if val > 0:
+                        self._portfolio_cache[addr] = (val, now)
+                        print(f"[CopyTrade] 📊 Portfolio {addr[:10]}: ${val:,.0f}", flush=True)
+                    return val
+        except Exception as e:
+            print(f"[CopyTrade] ⚠️ Error fetch portfolio {addr[:10]}: {e}", flush=True)
+        return 0
+
     def _calc_copy_bet_size(self, wc: dict, insider_size: float) -> float:
         """Calcular bet size según config per-wallet.
         Modos: fixed, pct, range, proporcional.
@@ -1231,6 +1263,16 @@ class AlertAutoTrader:
         if budget > 0 and budget_used >= budget:
             print(f"[CopyTrade] ⚠️ Presupuesto agotado para {trade.wallet_address[:10]}: ${budget_used:.0f}/${budget:.0f}", flush=True)
             return
+
+        # Auto-fetch capital del insider si modo proporcional y no configurado
+        if wc.get("ct_mode") == "proporcional" and float(wc.get("ct_insider_capital", 0)) <= 0:
+            fetched = await self._fetch_insider_portfolio(trade.wallet_address)
+            if fetched > 0:
+                wc["ct_insider_capital"] = fetched
+                # Guardar en DB para que aparezca en el dashboard
+                await self.db.save_wallet_copy_config(trade.wallet_address, {
+                    **wc, "ct_insider_capital": fetched
+                })
 
         # Calcular bet size según modo
         bet_size = self._calc_copy_bet_size(wc, trade.size)
