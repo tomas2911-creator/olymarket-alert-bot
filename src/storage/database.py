@@ -1641,6 +1641,7 @@ class Database:
                             losses += 1
                     result.append({
                         "market_question": r["market_question"],
+                        "market_slug": r["market_slug"],
                         "side": r["side"],
                         "outcome": r["outcome"],
                         "size": round(size, 2),

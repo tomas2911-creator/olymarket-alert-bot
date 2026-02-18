@@ -5566,8 +5566,8 @@ function render_whf(){
         }else if(t.status!=='open'){closeHtml='<span class="text-gray-600 text-[10px]">Cerrado</span>';}
         return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
             <td class="p-2 text-gray-400 whitespace-nowrap">${timeStr}</td>
-            <td class="p-2 text-gray-300 max-w-[180px] truncate" title="${mqSafe}">${mq}</td>
-            <td class="p-2"><a href="javascript:void(0)" onclick="showWhaleWalletHistory('${addr}','${name.replace(/'/g,"\\'")}')" class="text-cyan-400 hover:underline">${name}</a></td>
+            <td class="p-2 max-w-[180px] truncate" title="${mqSafe}"><a href="https://polymarket.com/event/${t.market_slug||''}" target="_blank" class="text-gray-300 hover:text-cyan-400 hover:underline">${mq}</a></td>
+            <td class="p-2"><a href="${polyProfile(addr)}" target="_blank" class="text-cyan-400 hover:underline" title="Ver perfil en Polymarket">${name}</a><br><a href="javascript:void(0)" onclick="showWhaleWalletHistory('${addr}','${name.replace(/'/g,"\\'")}')" class="text-[9px] text-gray-500 hover:text-cyan-300">📊 historial</a></td>
             <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${sideC}">${t.side}</span></td>
             <td class="p-2 text-right font-mono font-bold text-white">$${(t.size||0).toLocaleString()}</td>
             <td class="p-2 text-right font-mono text-gray-400">${(t.price||0).toFixed(2)}</td>
@@ -5626,7 +5626,7 @@ function render_whr(){
 async function showWhaleWalletHistory(addr,displayName){
     const modal=document.getElementById('whale-hist-modal');
     modal.classList.remove('hidden');
-    document.getElementById('wh-hist-name').textContent=displayName+' — '+addr.slice(0,8)+'...'+addr.slice(-6);
+    document.getElementById('wh-hist-name').innerHTML=`<a href="${polyProfile(addr)}" target="_blank" class="hover:text-cyan-400 hover:underline">${displayName}</a> — <a href="${scanLink(addr)}" target="_blank" class="text-purple-400 hover:underline text-xs">${addr.slice(0,8)}...${addr.slice(-6)}</a>`;
     const tbody=document.getElementById('wh-hist-body');
     tbody.innerHTML='<tr><td colspan="7" class="text-center text-cyan-400 p-4">Cargando historial...</td></tr>';
     const data=await fetchJson(`/api/whales/wallet/${addr}/history?limit=50`);
@@ -5656,7 +5656,7 @@ async function showWhaleWalletHistory(addr,displayName){
         else if(t.status==='lost')stH='<span class="text-red-400 font-bold">LOST</span>';
         return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
             <td class="p-2 text-gray-400 whitespace-nowrap">${ts}</td>
-            <td class="p-2 text-gray-300 max-w-[200px] truncate" title="${(t.market_question||'').replace(/"/g,'&quot;')}">${mq}</td>
+            <td class="p-2 max-w-[200px] truncate" title="${(t.market_question||'').replace(/"/g,'&quot;')}"><a href="https://polymarket.com/event/${t.market_slug||''}" target="_blank" class="text-gray-300 hover:text-cyan-400 hover:underline">${mq}</a></td>
             <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${sC}">${t.side}</span></td>
             <td class="p-2 text-right font-mono text-white">$${(t.size||0).toLocaleString()}</td>
             <td class="p-2 text-right font-mono text-gray-400">${(t.price||0).toFixed(2)}</td>
