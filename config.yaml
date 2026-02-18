@@ -9,6 +9,20 @@ features:
   wallet_baskets: true            # Grupos de wallets por tema
   sniper_dbscan: true             # Clustering avanzado DBSCAN
   crypto_arb: true                # Bot de arbitraje crypto 15-min up/down
+  weather_arb: false              # Bot de arbitraje weather (temperatura vs Polymarket)
+
+# ══════════════════════════════════════════════════════════════
+# WEATHER ARB — Temperatura vs odds de Polymarket
+# ══════════════════════════════════════════════════════════════
+weather_arb:
+  min_edge_pct: 8.0               # Edge mínimo para señal (ensemble_prob - poly_odds)*100
+  min_confidence_pct: 50.0        # Confianza mínima del ensemble (0-100)
+  max_poly_odds: 0.85             # No comprar si odds ya muy alto
+  scan_interval_sec: 300          # Escanear mercados cada 5 min
+  forecast_refresh_sec: 1800      # Actualizar forecasts cada 30 min
+  paper_bet_size: 50              # Monto simulado para paper trading
+  telegram_alerts: true           # Enviar alertas a Telegram
+  # cities: ["nyc", "london"]    # Ciudades a monitorear (null = todas)
 
 # ══════════════════════════════════════════════════════════════
 # POLLING

@@ -350,6 +350,46 @@ class Database:
                     ON alert_autotrades(condition_id);
             """)
 
+            # Tabla de weather trades (weather arb)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS weather_trades (
+                    id              SERIAL PRIMARY KEY,
+                    condition_id    TEXT NOT NULL,
+                    order_id        TEXT DEFAULT '',
+                    city            TEXT NOT NULL,
+                    city_name       TEXT DEFAULT '',
+                    date            TEXT DEFAULT '',
+                    range_label     TEXT DEFAULT '',
+                    side            TEXT DEFAULT 'BUY',
+                    price           DOUBLE PRECISION,
+                    size_usd        DOUBLE PRECISION,
+                    shares          DOUBLE PRECISION,
+                    token_id        TEXT,
+                    edge_pct        DOUBLE PRECISION,
+                    confidence      DOUBLE PRECISION,
+                    ensemble_prob   DOUBLE PRECISION,
+                    event_slug      TEXT DEFAULT '',
+                    order_type      TEXT DEFAULT 'market',
+                    unit            TEXT DEFAULT '',
+                    status          TEXT DEFAULT 'filled',
+                    error           TEXT,
+                    resolved        BOOLEAN DEFAULT FALSE,
+                    result          TEXT,
+                    pnl             DOUBLE PRECISION DEFAULT 0,
+                    resolved_at     TIMESTAMPTZ,
+                    user_id         INTEGER DEFAULT 1,
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_weather_trades_created
+                    ON weather_trades(created_at);
+                CREATE INDEX IF NOT EXISTS idx_weather_trades_resolved
+                    ON weather_trades(resolved);
+                CREATE INDEX IF NOT EXISTS idx_weather_trades_cid
+                    ON weather_trades(condition_id);
+                CREATE INDEX IF NOT EXISTS idx_weather_trades_user
+                    ON weather_trades(user_id);
+            """)
+
             # Tabla de usuarios
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -4053,6 +4093,144 @@ class Database:
                 """)
                 return [dict(r) for r in rows]
         except Exception as e:
+            return []
+
+
+    # ── Weather Trades (weather arb) ──────────────────────────────────
+
+    async def record_weather_trade(self, trade: dict, user_id: int = 1):
+        """Guardar un trade weather ejecutado por el autotrader."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO weather_trades
+                    (condition_id, order_id, city, city_name, date, range_label,
+                     side, price, size_usd, shares, token_id, edge_pct,
+                     confidence, ensemble_prob, event_slug, order_type, unit,
+                     status, error, user_id)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+            """,
+                trade.get("condition_id", ""),
+                trade.get("order_id", ""),
+                trade.get("city", ""),
+                trade.get("city_name", ""),
+                trade.get("date", ""),
+                trade.get("range_label", ""),
+                trade.get("side", "BUY"),
+                trade.get("price", 0),
+                trade.get("size_usd", 0),
+                trade.get("shares", 0),
+                trade.get("token_id", ""),
+                trade.get("edge_pct", 0),
+                trade.get("confidence", 0),
+                trade.get("ensemble_prob", 0),
+                trade.get("event_slug", ""),
+                trade.get("order_type", "market"),
+                trade.get("unit", ""),
+                trade.get("status", "filled"),
+                trade.get("error"),
+                user_id,
+            )
+
+    async def resolve_weather_trade(self, condition_id: str, result: str, pnl: float, user_id: int = 1):
+        """Marcar un weather trade como resuelto."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE weather_trades
+                SET resolved = TRUE, result = $2, pnl = $3, resolved_at = NOW()
+                WHERE condition_id = $1 AND resolved = FALSE AND user_id = $4
+            """, condition_id, result, pnl, user_id)
+
+    async def get_weather_trades(self, hours: int = 24, limit: int = 100, user_id: int = 1) -> list[dict]:
+        """Obtener weather trades recientes."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT * FROM weather_trades
+                    WHERE created_at > NOW() - INTERVAL '1 hour' * $1 AND user_id = $3
+                    ORDER BY created_at DESC LIMIT $2
+                """, hours, limit, user_id)
+                return [_serialize_row(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] get_weather_trades error: {e}", flush=True)
+            return []
+
+    async def get_open_weather_trades(self, user_id: int = 1) -> list[dict]:
+        """Obtener weather trades no resueltos (posiciones abiertas)."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT * FROM weather_trades
+                    WHERE resolved = FALSE AND status = 'filled' AND user_id = $1
+                    ORDER BY created_at DESC
+                """, user_id)
+                return [_serialize_row(r) for r in rows]
+        except Exception as e:
+            return []
+
+    async def get_weather_trade_stats(self, user_id: int = 1) -> dict:
+        """Estadísticas de weather trading."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow("""
+                    SELECT
+                        COUNT(*) FILTER (WHERE status = 'filled') as total_trades,
+                        COUNT(*) FILTER (WHERE resolved AND result = 'win') as wins,
+                        COUNT(*) FILTER (WHERE resolved AND result = 'loss') as losses,
+                        COUNT(*) FILTER (WHERE NOT resolved AND status = 'filled') as open_positions,
+                        COALESCE(SUM(pnl) FILTER (WHERE resolved), 0) as total_pnl,
+                        COALESCE(SUM(size_usd) FILTER (WHERE status = 'filled'), 0) as total_volume,
+                        COALESCE(SUM(pnl) FILTER (WHERE resolved AND created_at > NOW() - INTERVAL '24 hours'), 0) as pnl_24h,
+                        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours' AND status = 'filled') as trades_24h
+                    FROM weather_trades WHERE user_id = $1
+                """, user_id)
+                total = (row["wins"] or 0) + (row["losses"] or 0)
+                return {
+                    "total_trades": row["total_trades"] or 0,
+                    "wins": row["wins"] or 0,
+                    "losses": row["losses"] or 0,
+                    "open_positions": row["open_positions"] or 0,
+                    "win_rate": round((row["wins"] / total * 100) if total else 0, 1),
+                    "total_pnl": round(float(row["total_pnl"] or 0), 2),
+                    "total_volume": round(float(row["total_volume"] or 0), 2),
+                    "pnl_24h": round(float(row["pnl_24h"] or 0), 2),
+                    "trades_24h": row["trades_24h"] or 0,
+                }
+        except Exception as e:
+            print(f"[DB] get_weather_trade_stats error: {e}", flush=True)
+            return {"total_trades": 0, "wins": 0, "losses": 0, "open_positions": 0,
+                    "win_rate": 0, "total_pnl": 0, "total_volume": 0, "pnl_24h": 0, "trades_24h": 0}
+
+    async def get_weather_pnl_history(self, days: int = 30, user_id: int = 1) -> list[dict]:
+        """Historial diario de PnL para weather trades."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT DATE(resolved_at) as date,
+                           SUM(pnl) as daily_pnl,
+                           COUNT(*) as trades,
+                           SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) as wins,
+                           SUM(CASE WHEN result = 'loss' THEN 1 ELSE 0 END) as losses
+                    FROM weather_trades
+                    WHERE resolved = TRUE AND resolved_at > NOW() - INTERVAL '1 day' * $1 AND user_id = $2
+                    GROUP BY DATE(resolved_at)
+                    ORDER BY date ASC
+                """, days, user_id)
+                result = []
+                cumulative = 0
+                for r in rows:
+                    daily = float(r["daily_pnl"] or 0)
+                    cumulative += daily
+                    result.append({
+                        "date": r["date"].isoformat() if r["date"] else "",
+                        "pnl": round(daily, 2),
+                        "cumulative_pnl": round(cumulative, 2),
+                        "trades": int(r["trades"] or 0),
+                        "wins": int(r["wins"] or 0),
+                        "losses": int(r["losses"] or 0),
+                    })
+                return result
+        except Exception as e:
+            print(f"[DB] get_weather_pnl_history error: {e}", flush=True)
             return []
 
 

@@ -47,6 +47,10 @@ from src.detection.news_fetcher import NewsFetcher
 from src.detection.sentiment_analyzer import SentimentAnalyzer
 from src.trading.copy_engine import CopyTradingEngine
 from src.ai.market_agent import MarketAgent
+from src.weather_arb.weather_feed import WeatherFeed
+from src.weather_arb.detector import WeatherArbDetector
+from src.weather_arb.autotrader import WeatherAutoTrader
+from src.weather_arb.backtester import WeatherPaperTrader
 
 structlog.configure(
     processors=[
@@ -108,6 +112,11 @@ class PolymarketAlertBot:
         self.copy_engine = None
         self.market_agent = None
         self.whale_scanner = None
+        # Weather Arb
+        self.weather_feed = None
+        self.weather_detector = None
+        self.weather_autotrader = None
+        self.weather_paper = None
 
     async def start(self):
         """Inicializar DB y marcar como running."""
@@ -162,6 +171,9 @@ class PolymarketAlertBot:
         if config.WHALE_TRACKER_ENABLED:
             asyncio.create_task(self.whale_scanner.run_activity_loop())
         print(f"v11 módulos iniciados: News={True} CopyTrading={True} AI={self.market_agent.enabled} WhaleScanner={config.WHALE_TRACKER_ENABLED}", flush=True)
+        # Weather Arb
+        if config.FEATURE_WEATHER_ARB:
+            await self._start_weather_arb()
 
     async def _send_startup_safe(self):
         try:
@@ -332,6 +344,81 @@ class PolymarketAlertBot:
                 print(f"[CryptoAutotrader] Error en loop rápido: {e}", flush=True)
             await asyncio.sleep(5)
 
+    # ── Weather Arb ──────────────────────────────────────────────────
+
+    async def _start_weather_arb(self):
+        """Inicializar módulo weather arb."""
+        try:
+            cities = config.WEATHER_ARB_CITIES  # None = todas
+            self.weather_feed = WeatherFeed(
+                cities=cities,
+                refresh_interval=config.WEATHER_ARB_FORECAST_REFRESH,
+            )
+            self.weather_detector = WeatherArbDetector(self.weather_feed)
+            self.weather_detector.configure({
+                "min_edge": config.WEATHER_ARB_MIN_EDGE,
+                "min_confidence": config.WEATHER_ARB_MIN_CONFIDENCE,
+                "max_poly_odds": config.WEATHER_ARB_MAX_POLY_ODDS,
+                "scan_interval": config.WEATHER_ARB_SCAN_INTERVAL,
+                "enabled_cities": cities,
+            })
+            self.weather_autotrader = WeatherAutoTrader(self.db)
+            await self.weather_autotrader.initialize()
+            self.weather_paper = WeatherPaperTrader(bet_size=config.WEATHER_ARB_PAPER_BET)
+            # Lanzar loops de background
+            asyncio.create_task(self._run_weather_feed())
+            asyncio.create_task(self._run_weather_detector())
+            asyncio.create_task(self._run_weather_autotrader())
+            print(f"Weather Arb iniciado: cities={cities or 'ALL'} "
+                  f"edge>={config.WEATHER_ARB_MIN_EDGE}% "
+                  f"conf>={config.WEATHER_ARB_MIN_CONFIDENCE}%", flush=True)
+        except Exception as e:
+            print(f"Error iniciando Weather Arb: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+
+    async def _run_weather_feed(self):
+        """Wrapper para weather feed con reconexión."""
+        while self._running and self.weather_feed:
+            try:
+                await self.weather_feed.start()
+            except Exception as e:
+                print(f"[WeatherFeed] Error, reintentando en 30s: {e}", flush=True)
+            if self._running:
+                await asyncio.sleep(30)
+
+    async def _run_weather_detector(self):
+        """Wrapper para detector weather."""
+        await asyncio.sleep(10)  # Esperar que el feed tenga datos
+        while self._running and self.weather_detector:
+            try:
+                await self.weather_detector.start()
+            except Exception as e:
+                print(f"[WeatherDetector] Error: {e}", flush=True)
+            if self._running:
+                await asyncio.sleep(30)
+
+    async def _run_weather_autotrader(self):
+        """Loop: evaluar señales weather y ejecutar trades cada 30s."""
+        await asyncio.sleep(15)  # Esperar que feed y detector tengan datos
+        while self._running and self.weather_autotrader and self.weather_detector:
+            try:
+                signals = self.weather_detector.get_recent_signals(50)
+                if signals:
+                    # Paper trading: registrar todas las señales
+                    if self.weather_paper:
+                        for s in signals:
+                            self.weather_paper.record_signal(s)
+                    # Autotrading: ejecutar si está habilitado
+                    await self.weather_autotrader.process_signals(signals)
+                # Resolver trades (reales y paper)
+                await self.weather_autotrader.resolve_trades()
+                if self.weather_paper:
+                    await self.weather_paper.resolve_pending()
+            except Exception as e:
+                print(f"[WeatherAutotrader] Error: {e}", flush=True)
+            await asyncio.sleep(30)
+
     async def stop(self):
         self._running = False
         if self.ws_client:
@@ -342,6 +429,10 @@ class PolymarketAlertBot:
             await self.crypto_detector.stop()
         if self.early_detector:
             await self.early_detector.stop()
+        if self.weather_feed:
+            await self.weather_feed.stop()
+        if self.weather_detector:
+            await self.weather_detector.stop()
         await self.db.close()
 
     async def _on_ws_trade(self, data: dict):

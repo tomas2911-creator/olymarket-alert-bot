@@ -976,6 +976,7 @@ async def get_features():
         "wallet_baskets": config.FEATURE_WALLET_BASKETS,
         "sniper_dbscan": config.FEATURE_SNIPER_DBSCAN,
         "crypto_arb": config.FEATURE_CRYPTO_ARB,
+        "weather_arb": config.FEATURE_WEATHER_ARB,
     }
 
 
@@ -985,6 +986,7 @@ class FeaturesUpdate(BaseModel):
     wallet_baskets: bool | None = None
     sniper_dbscan: bool | None = None
     crypto_arb: bool | None = None
+    weather_arb: bool | None = None
 
 
 @router.post("/api/features")
@@ -1013,6 +1015,10 @@ async def update_features(request: Request, body: FeaturesUpdate):
         if uid == 1: config.FEATURE_CRYPTO_ARB = body.crypto_arb
         updated["crypto_arb"] = body.crypto_arb
         data["feature_crypto_arb"] = str(body.crypto_arb)
+    if body.weather_arb is not None:
+        if uid == 1: config.FEATURE_WEATHER_ARB = body.weather_arb
+        updated["weather_arb"] = body.weather_arb
+        data["feature_weather_arb"] = str(body.weather_arb)
     if data:
         await db.set_config_bulk(data, user_id=uid)
     return {"status": "ok", "updated": updated}
@@ -1138,7 +1144,7 @@ async def reset_all_data(request: Request):
         async with db._pool.acquire() as conn:
             counts = {}
             # Tablas con user_id — filtrar por usuario
-            for table in ["alerts", "autotrades", "alert_autotrades"]:
+            for table in ["alerts", "autotrades", "alert_autotrades", "weather_trades"]:
                 result = await conn.execute(f"DELETE FROM {table} WHERE user_id = $1", uid)
                 counts[table] = int(result.split(" ")[-1]) if result else 0
             # Tablas globales (sin user_id) — solo borrar si es user 1
@@ -2907,3 +2913,215 @@ async def get_category_edge(request: Request):
     db = request.app.state.db
     edges = await db.get_category_edge()
     return {"categories": edges}
+
+
+# ── Weather Arb ──────────────────────────────────────────────────────
+
+@router.get("/api/weather-arb/stats")
+async def weather_arb_stats(request: Request):
+    """Estadísticas completas del weather arb."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    try:
+        db_stats = await db.get_weather_trade_stats(user_id=uid)
+    except Exception:
+        db_stats = {"total_trades": 0, "wins": 0, "losses": 0, "open_positions": 0,
+                    "win_rate": 0, "total_pnl": 0, "total_volume": 0, "pnl_24h": 0, "trades_24h": 0}
+    bot = request.app.state.bot
+    live_stats = {}
+    if bot and getattr(bot, "weather_detector", None):
+        live_stats = bot.weather_detector.get_stats()
+    feed_status = {}
+    if bot and getattr(bot, "weather_feed", None):
+        feed_status = bot.weather_feed.get_status()
+    paper_stats = {}
+    if bot and getattr(bot, "weather_paper", None):
+        paper_stats = bot.weather_paper.get_stats()
+    return {**db_stats, "live": live_stats, "feed": feed_status, "paper": paper_stats}
+
+
+@router.get("/api/weather-arb/signals")
+async def weather_arb_signals(request: Request, limit: int = 50):
+    """Señales en vivo del detector weather."""
+    bot = request.app.state.bot
+    if bot and getattr(bot, "weather_detector", None):
+        return bot.weather_detector.get_recent_signals(limit)
+    return []
+
+
+@router.get("/api/weather-arb/markets")
+async def weather_arb_markets(request: Request):
+    """Mercados weather activos con probabilidades ensemble vs odds."""
+    bot = request.app.state.bot
+    if bot and getattr(bot, "weather_detector", None):
+        return bot.weather_detector.get_active_markets()
+    return []
+
+
+@router.get("/api/weather-arb/trades")
+async def weather_arb_trades(request: Request, hours: int = 168, limit: int = 200):
+    """Trades weather (reales) recientes."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    return await db.get_weather_trades(hours=hours, limit=limit, user_id=uid)
+
+
+@router.get("/api/weather-arb/paper-trades")
+async def weather_arb_paper_trades(request: Request, limit: int = 200):
+    """Paper trades del weather arb."""
+    bot = request.app.state.bot
+    if bot and getattr(bot, "weather_paper", None):
+        return bot.weather_paper.get_trades(limit)
+    return []
+
+
+@router.get("/api/weather-arb/pnl-history")
+async def weather_arb_pnl_history(request: Request, days: int = 30):
+    """Historial diario de PnL weather."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    return await db.get_weather_pnl_history(days=days, user_id=uid)
+
+
+@router.get("/api/weather-arb/autotrade-config")
+async def get_weather_autotrade_config(request: Request):
+    """Obtener configuración del weather autotrader (sin credenciales)."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    raw = await db.get_config_bulk([
+        "wt_enabled", "wt_bet_size", "wt_min_edge", "wt_min_confidence",
+        "wt_max_odds", "wt_max_positions", "wt_order_type",
+        "wt_max_daily_loss", "wt_max_daily_trades", "wt_cooldown_sec",
+        "wt_cities",
+        "wt_api_key", "wt_api_secret", "wt_private_key", "wt_passphrase",
+        "wt_funder_address",
+        "wt_stop_loss_enabled", "wt_stop_loss_pct",
+        "wt_take_profit_pct", "wt_max_holding_sec",
+    ], user_id=uid)
+    # Estado del motor
+    bot = request.app.state.bot
+    wt = getattr(bot, "weather_autotrader", None) if bot else None
+    wt_status = wt.get_status() if wt else {}
+    wallet_addr = _derive_wallet_address(raw.get("wt_private_key", ""))
+    balance = None
+    if wt and wallet_addr:
+        try:
+            balance = await wt.get_usdc_balance(wallet_addr)
+        except Exception:
+            pass
+    stats = await db.get_weather_trade_stats(user_id=uid)
+    return {
+        "enabled": raw.get("wt_enabled") == "true",
+        "bet_size": float(raw.get("wt_bet_size", 10)),
+        "min_edge": float(raw.get("wt_min_edge", 8)),
+        "min_confidence": float(raw.get("wt_min_confidence", 50)),
+        "max_odds": float(raw.get("wt_max_odds", 0.85)),
+        "max_positions": int(raw.get("wt_max_positions", 5)),
+        "order_type": raw.get("wt_order_type", "market"),
+        "max_daily_loss": float(raw.get("wt_max_daily_loss", 100)),
+        "max_daily_trades": int(raw.get("wt_max_daily_trades", 20)),
+        "cooldown_sec": int(raw.get("wt_cooldown_sec", 60)),
+        "cities": [c.strip() for c in raw.get("wt_cities", "").split(",") if c.strip()] or [],
+        "api_key_set": bool(raw.get("wt_api_key")),
+        "api_secret_set": bool(raw.get("wt_api_secret")),
+        "private_key_set": bool(raw.get("wt_private_key")),
+        "passphrase_set": bool(raw.get("wt_passphrase")),
+        "api_key_preview": (raw.get("wt_api_key", "")[:12] + "...") if raw.get("wt_api_key") else "",
+        "wallet_address": wallet_addr,
+        "connected": wt_status.get("connected", False),
+        "balance": balance,
+        "funder_address": raw.get("wt_funder_address", ""),
+        "funder_address_set": bool(raw.get("wt_funder_address")),
+        "open_positions": stats.get("open_positions", 0),
+        "pnl_today": stats.get("pnl_24h", 0),
+        "trades_today": stats.get("trades_24h", 0),
+        "total_pnl": stats.get("total_pnl", 0),
+        "win_rate": stats.get("win_rate", 0),
+        "stop_loss_enabled": raw.get("wt_stop_loss_enabled") == "true",
+        "stop_loss_pct": float(raw.get("wt_stop_loss_pct", 30)),
+        "take_profit_pct": float(raw.get("wt_take_profit_pct", 50)),
+        "max_holding_sec": int(raw.get("wt_max_holding_sec", 86400)),
+    }
+
+
+@router.post("/api/weather-arb/autotrade-config")
+async def save_weather_autotrade_config(request: Request):
+    """Guardar configuración del weather autotrader."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    body = await request.json()
+    data = {}
+    field_map = {
+        "enabled": ("wt_enabled", lambda v: "true" if v else "false"),
+        "bet_size": ("wt_bet_size", str),
+        "min_edge": ("wt_min_edge", str),
+        "min_confidence": ("wt_min_confidence", str),
+        "max_odds": ("wt_max_odds", str),
+        "max_positions": ("wt_max_positions", str),
+        "order_type": ("wt_order_type", str),
+        "max_daily_loss": ("wt_max_daily_loss", str),
+        "max_daily_trades": ("wt_max_daily_trades", str),
+        "cooldown_sec": ("wt_cooldown_sec", str),
+        "api_key": ("wt_api_key", str),
+        "api_secret": ("wt_api_secret", str),
+        "private_key": ("wt_private_key", str),
+        "passphrase": ("wt_passphrase", str),
+        "funder_address": ("wt_funder_address", str),
+        "stop_loss_enabled": ("wt_stop_loss_enabled", lambda v: "true" if v else "false"),
+        "stop_loss_pct": ("wt_stop_loss_pct", str),
+        "take_profit_pct": ("wt_take_profit_pct", str),
+        "max_holding_sec": ("wt_max_holding_sec", str),
+    }
+    for key, (db_key, transform) in field_map.items():
+        if key in body:
+            data[db_key] = transform(body[key])
+    if "cities" in body:
+        data["wt_cities"] = ",".join(body["cities"]) if isinstance(body["cities"], list) else str(body["cities"])
+    if data:
+        await db.set_config_bulk(data, user_id=uid)
+    # Recargar autotrader
+    bot = request.app.state.bot
+    if bot and getattr(bot, "weather_autotrader", None):
+        await bot.weather_autotrader.reload_config(user_id=uid)
+    return {"status": "ok", "saved": len(data)}
+
+
+@router.post("/api/weather-arb/test-connection")
+async def weather_test_connection(request: Request):
+    """Probar conexión de la wallet weather."""
+    bot = request.app.state.bot
+    if not bot or not getattr(bot, "weather_autotrader", None):
+        return {"connected": False, "error": "Weather autotrader no activo"}
+    return await bot.weather_autotrader.test_connection()
+
+
+@router.delete("/api/weather-arb/trades")
+async def delete_weather_trades(request: Request):
+    """Borrar todos los weather trades del usuario."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    try:
+        async with db._pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM weather_trades WHERE user_id = $1", uid)
+            deleted = int(result.split(" ")[-1]) if result else 0
+        bot = request.app.state.bot
+        if bot and getattr(bot, "weather_autotrader", None):
+            bot.weather_autotrader.reset_state()
+        if bot and getattr(bot, "weather_paper", None):
+            bot.weather_paper.clear()
+        return {"status": "ok", "deleted": deleted}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.post("/api/weather-arb/refresh-forecasts")
+async def weather_refresh_forecasts(request: Request):
+    """Forzar refresh de forecasts."""
+    bot = request.app.state.bot
+    if bot and getattr(bot, "weather_feed", None):
+        try:
+            await bot.weather_feed.refresh_now()
+            return {"status": "ok", "message": "Forecasts actualizados"}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+    return {"status": "error", "error": "Weather feed no activo"}

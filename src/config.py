@@ -184,6 +184,18 @@ EARLY_ENTRY_WINDOW_SEC = _early.get("entry_window_sec", 15)
 EARLY_ENTRY_MIN_MOMENTUM_PCT = _early.get("min_momentum_pct", 0.03)
 EARLY_ENTRY_BET_SIZE = _early.get("bet_size", 3)
 
+# === Weather Arb ===
+_weather = _yaml.get("weather_arb", {})
+FEATURE_WEATHER_ARB = _features.get("weather_arb", False)
+WEATHER_ARB_MIN_EDGE = _weather.get("min_edge_pct", 8.0)
+WEATHER_ARB_MIN_CONFIDENCE = _weather.get("min_confidence_pct", 50.0)
+WEATHER_ARB_MAX_POLY_ODDS = _weather.get("max_poly_odds", 0.85)
+WEATHER_ARB_SCAN_INTERVAL = _weather.get("scan_interval_sec", 300)
+WEATHER_ARB_FORECAST_REFRESH = _weather.get("forecast_refresh_sec", 1800)
+WEATHER_ARB_PAPER_BET = _weather.get("paper_bet_size", 50)
+WEATHER_ARB_TELEGRAM = _weather.get("telegram_alerts", True)
+WEATHER_ARB_CITIES = _weather.get("cities", None)  # None = todas
+
 # === Nuevas Features v8.0 ===
 
 # -- Correlation Filter (Alert Trading) --
@@ -427,6 +439,16 @@ def restore_from_db(saved: dict):
     cfg.CRYPTO_ARB_ENTRY_MAX_TIME = _int("crypto_entry_max_time", cfg.CRYPTO_ARB_ENTRY_MAX_TIME)
     cfg.CRYPTO_ARB_MIN_DISTANCE_ATR = _float("crypto_min_distance_atr", cfg.CRYPTO_ARB_MIN_DISTANCE_ATR)
     cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY = _float("crypto_min_trend_consistency", cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY)
+
+    # Weather Arb
+    cfg.FEATURE_WEATHER_ARB = _bool("feature_weather_arb", cfg.FEATURE_WEATHER_ARB)
+    cfg.WEATHER_ARB_MIN_EDGE = _float("weather_min_edge", cfg.WEATHER_ARB_MIN_EDGE)
+    cfg.WEATHER_ARB_MIN_CONFIDENCE = _float("weather_min_confidence", cfg.WEATHER_ARB_MIN_CONFIDENCE)
+    cfg.WEATHER_ARB_MAX_POLY_ODDS = _float("weather_max_poly_odds", cfg.WEATHER_ARB_MAX_POLY_ODDS)
+    cfg.WEATHER_ARB_SCAN_INTERVAL = _int("weather_scan_interval", cfg.WEATHER_ARB_SCAN_INTERVAL)
+    cfg.WEATHER_ARB_FORECAST_REFRESH = _int("weather_forecast_refresh", cfg.WEATHER_ARB_FORECAST_REFRESH)
+    cfg.WEATHER_ARB_PAPER_BET = _float("weather_paper_bet", cfg.WEATHER_ARB_PAPER_BET)
+    cfg.WEATHER_ARB_TELEGRAM = _bool("weather_telegram", cfg.WEATHER_ARB_TELEGRAM)
 
     # === Telegram (desde DB) ===
     if "telegram_bot_token" in saved and saved["telegram_bot_token"]:
