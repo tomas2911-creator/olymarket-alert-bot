@@ -2978,23 +2978,32 @@
                             </div>
                         </div>
                         <h4 class="text-xs font-semibold text-sky-400 mb-2 mt-4">Wallet Separada</h4>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                        <div class="mb-3">
+                            <label class="text-[10px] text-gray-500 block mb-1">Private Key (pega tu PK y presiona Generar)</label>
+                            <div class="flex gap-2">
+                                <input type="password" id="wa-cfg-pk" class="flex-1 bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="0x...">
+                                <button onclick="waGenerateKeys()" id="wa-btn-genkeys" class="px-3 py-1 bg-purple-600 hover:bg-purple-500 rounded text-xs font-medium whitespace-nowrap transition-colors">Generar API Keys</button>
+                            </div>
+                            <span id="wa-genkeys-status" class="text-xs mt-1 hidden block"></span>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                             <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">Private Key</label>
-                                <input type="password" id="wa-cfg-pk" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="0x...">
+                                <label class="text-[10px] text-gray-500 block mb-1">API Key <span id="wa-apikey-badge" class="text-red-400">no configurada</span></label>
+                                <input type="password" id="wa-cfg-apikey" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="(se auto-genera)" readonly>
                             </div>
                             <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">API Key (CLOB)</label>
-                                <input type="password" id="wa-cfg-apikey" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="API Key">
+                                <label class="text-[10px] text-gray-500 block mb-1">API Secret <span id="wa-secret-badge" class="text-red-400">no configurada</span></label>
+                                <input type="password" id="wa-cfg-apisecret" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="(se auto-genera)" readonly>
                             </div>
                             <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">API Secret</label>
-                                <input type="password" id="wa-cfg-apisecret" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="API Secret">
+                                <label class="text-[10px] text-gray-500 block mb-1">Passphrase <span id="wa-pass-badge" class="text-red-400">no configurada</span></label>
+                                <input type="password" id="wa-cfg-passphrase" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="(se auto-genera)" readonly>
                             </div>
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">API Passphrase</label>
-                                <input type="password" id="wa-cfg-passphrase" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="Passphrase">
-                            </div>
+                        </div>
+                        <div id="wa-wallet-info" class="text-[10px] text-gray-500 mb-3 hidden">
+                            Wallet: <span id="wa-wallet-addr" class="text-gray-400 font-mono"></span> |
+                            Funder: <span id="wa-funder-addr" class="text-gray-400 font-mono"></span> |
+                            Balance: <span id="wa-balance" class="text-green-400 font-mono"></span>
                         </div>
                         <div class="flex gap-3 items-center">
                             <button onclick="waSaveConfig()" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium transition">Guardar Config</button>
@@ -6683,12 +6692,44 @@ async function waLoadConfig(){
             document.getElementById('wa-cfg-maxpos').value=r.max_positions||15;
             document.getElementById('wa-cfg-ordertype').value=r.order_type||'market';
             document.getElementById('wa-cfg-conf').value=r.min_confidence||50;
-            if(r.private_key)document.getElementById('wa-cfg-pk').value=r.private_key;
-            if(r.api_key)document.getElementById('wa-cfg-apikey').value=r.api_key;
-            if(r.api_secret)document.getElementById('wa-cfg-apisecret').value=r.api_secret;
-            if(r.api_passphrase)document.getElementById('wa-cfg-passphrase').value=r.api_passphrase;
+            // Badges de credenciales
+            const setBadge=(id,ok)=>{const el=document.getElementById(id);if(el){el.textContent=ok?'✓ configurada':'no configurada';el.className=ok?'text-green-400':'text-red-400';}};
+            setBadge('wa-apikey-badge',r.api_key_set);
+            setBadge('wa-secret-badge',r.api_secret_set);
+            setBadge('wa-pass-badge',r.passphrase_set);
+            if(r.api_key_preview)document.getElementById('wa-cfg-apikey').value=r.api_key_preview;
+            // Info wallet/funder/balance
+            const infoEl=document.getElementById('wa-wallet-info');
+            if(r.wallet_address||r.funder_address){
+                infoEl.classList.remove('hidden');
+                document.getElementById('wa-wallet-addr').textContent=r.wallet_address||'—';
+                document.getElementById('wa-funder-addr').textContent=r.funder_address||'no detectada';
+                document.getElementById('wa-balance').textContent=r.balance!=null?'$'+r.balance.toFixed(2):'—';
+            }else{infoEl.classList.add('hidden');}
         }
     }catch(e){console.error('WA config load error:',e);}
+}
+async function waGenerateKeys(){
+    const btn=document.getElementById('wa-btn-genkeys');
+    const statusEl=document.getElementById('wa-genkeys-status');
+    const pk=document.getElementById('wa-cfg-pk').value.trim();
+    if(!pk){statusEl.textContent='Pega tu Private Key primero';statusEl.className='text-xs text-red-400 mt-1 block';statusEl.classList.remove('hidden');return;}
+    btn.disabled=true;btn.textContent='Generando...';
+    statusEl.textContent='Firmando EIP-712 y contactando CLOB...';statusEl.className='text-xs text-yellow-400 mt-1 block';statusEl.classList.remove('hidden');
+    try{
+        const r=await apiFetch('/api/weather-arb/generate-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({private_key:pk})});
+        if(r?.status==='ok'){
+            statusEl.textContent=r.message||'Keys generadas!';statusEl.className='text-xs text-green-400 mt-1 block';
+            document.getElementById('wa-cfg-pk').value='';
+            await waLoadConfig();
+        }else{
+            statusEl.textContent='Error: '+(r?.error||'Sin respuesta');statusEl.className='text-xs text-red-400 mt-1 block';
+        }
+    }catch(e){
+        statusEl.textContent='Error: '+e.message;statusEl.className='text-xs text-red-400 mt-1 block';
+    }finally{
+        btn.disabled=false;btn.textContent='Generar API Keys';
+    }
 }
 async function waSaveConfig(){
     const statusEl=document.getElementById('wa-cfg-status');

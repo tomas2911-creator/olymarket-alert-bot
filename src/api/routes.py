@@ -3115,6 +3115,198 @@ async def delete_weather_trades(request: Request):
         return {"status": "error", "error": str(e)}
 
 
+@router.post("/api/weather-arb/generate-keys")
+async def generate_weather_api_keys(request: Request):
+    """Generar API Key, Secret y Passphrase para weather arb a partir de la Private Key.
+
+    Solo necesita la private key — genera las otras 3 credenciales
+    automáticamente via EIP-712 signing + CLOB API.
+    """
+    import httpx as _httpx
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    body = await request.json()
+    private_key = body.get("private_key", "").strip()
+
+    if not private_key:
+        return {"status": "error", "error": "Private key es requerida."}
+
+    if not private_key.startswith("0x"):
+        private_key = "0x" + private_key
+    pk_clean = private_key[2:]
+    if len(pk_clean) != 64:
+        return {"status": "error", "error": f"Private key debe tener 64 caracteres hex (sin 0x). La tuya tiene {len(pk_clean)}."}
+
+    try:
+        import time as _time
+        from eth_account import Account
+        from eth_account.messages import encode_typed_data
+
+        account = Account.from_key(private_key)
+        wallet_address = account.address
+        timestamp = str(int(_time.time()))
+        nonce = 0
+
+        typed_data = {
+            "types": {
+                "EIP712Domain": [
+                    {"name": "name", "type": "string"},
+                    {"name": "version", "type": "string"},
+                    {"name": "chainId", "type": "uint256"},
+                ],
+                "ClobAuth": [
+                    {"name": "address", "type": "address"},
+                    {"name": "timestamp", "type": "string"},
+                    {"name": "nonce", "type": "uint256"},
+                    {"name": "message", "type": "string"},
+                ],
+            },
+            "primaryType": "ClobAuth",
+            "domain": {"name": "ClobAuthDomain", "version": "1", "chainId": 137},
+            "message": {
+                "address": wallet_address,
+                "timestamp": timestamp,
+                "nonce": nonce,
+                "message": "This message attests that I control the given wallet",
+            },
+        }
+
+        signable = encode_typed_data(full_message=typed_data)
+        signed = account.sign_message(signable)
+        signature = signed.signature.hex()
+        if not signature.startswith("0x"):
+            signature = "0x" + signature
+
+        poly_headers = {
+            "POLY_ADDRESS": wallet_address,
+            "POLY_SIGNATURE": signature,
+            "POLY_TIMESTAMP": timestamp,
+            "POLY_NONCE": str(nonce),
+            "User-Agent": "PolymarketAlertBot/3.0",
+            "Accept": "application/json",
+        }
+
+        api_creds = None
+        error_msg = ""
+
+        async with _httpx.AsyncClient(timeout=15) as client:
+            try:
+                resp = await client.get("https://clob.polymarket.com/auth/derive-api-key", headers=poly_headers)
+                if resp.status_code == 200:
+                    api_creds = resp.json()
+            except Exception:
+                pass
+
+            if not api_creds:
+                try:
+                    resp = await client.post("https://clob.polymarket.com/auth/api-key", headers=poly_headers, content=b"")
+                    if resp.status_code == 200:
+                        api_creds = resp.json()
+                    else:
+                        error_msg = f"CLOB respondió HTTP {resp.status_code}: {resp.text[:200]}"
+                except Exception as e:
+                    error_msg = str(e)
+
+        if not api_creds:
+            return {"status": "error", "error": error_msg or "No se pudieron generar las API keys."}
+
+        print(f"[WeatherGenKeys] CLOB response keys: {list(api_creds.keys())}", flush=True)
+
+        api_key = api_creds.get("apiKey", "")
+        api_secret = api_creds.get("secret", "")
+        passphrase = api_creds.get("passphrase", "")
+
+        # Detectar proxy wallet (funder)
+        funder_address = ""
+        try:
+            from py_clob_client.client import ClobClient as _ClobClient
+            from py_clob_client.clob_types import ApiCreds as _ApiCreds
+            _creds = _ApiCreds(api_key=api_key, api_secret=api_secret, api_passphrase=passphrase)
+            _temp_client = _ClobClient(
+                "https://clob.polymarket.com",
+                key=private_key, chain_id=137, signature_type=2, creds=_creds,
+            )
+            try:
+                api_keys_resp = _temp_client.get_api_keys()
+                print(f"[WeatherGenKeys] get_api_keys response: {api_keys_resp}", flush=True)
+                if isinstance(api_keys_resp, list):
+                    for k in api_keys_resp:
+                        if isinstance(k, dict):
+                            for field in ["proxyAddress", "funder", "proxy_address", "makerAddress", "maker"]:
+                                if k.get(field):
+                                    funder_address = k[field]
+                                    break
+                        if funder_address:
+                            break
+                elif isinstance(api_keys_resp, dict):
+                    for field in ["proxyAddress", "funder", "proxy_address", "makerAddress", "maker"]:
+                        if api_keys_resp.get(field):
+                            funder_address = api_keys_resp[field]
+                            break
+            except Exception as e2:
+                print(f"[WeatherGenKeys] get_api_keys falló: {e2}", flush=True)
+        except Exception as e1:
+            print(f"[WeatherGenKeys] Detección de proxy falló: {e1}", flush=True)
+
+        if not funder_address:
+            try:
+                async with _httpx.AsyncClient(timeout=10) as gamma_client:
+                    gamma_resp = await gamma_client.get(
+                        f"https://gamma-api.polymarket.com/nonce",
+                        params={"address": wallet_address}
+                    )
+                    if gamma_resp.status_code == 200:
+                        gamma_data = gamma_resp.json()
+                        for field in ["proxyAddress", "proxy_address", "polyAddress", "address"]:
+                            val = gamma_data.get(field, "")
+                            if val and val.lower() != wallet_address.lower():
+                                funder_address = val
+                                break
+            except Exception:
+                pass
+
+        config_to_save = {
+            "wt_private_key": pk_clean,
+            "wt_api_key": api_key,
+            "wt_api_secret": api_secret,
+            "wt_passphrase": passphrase,
+        }
+        if funder_address:
+            config_to_save["wt_funder_address"] = funder_address
+
+        await db.set_config_bulk(config_to_save, user_id=uid)
+
+        # Recargar config en weather autotrader
+        bot = request.app.state.bot
+        if bot and getattr(bot, "weather_autotrader", None):
+            try:
+                await bot.weather_autotrader.reload_config(user_id=uid)
+            except Exception:
+                pass
+
+        msg = "API Keys generadas y guardadas para Weather Arb."
+        if funder_address:
+            msg += f" Proxy wallet detectada: {funder_address[:10]}..."
+        else:
+            msg += " ⚠️ Proxy wallet NO detectada. Ve a polymarket.com/settings, copia tu Proxy Wallet Address y guárdala en Config."
+
+        return {
+            "status": "ok",
+            "wallet": wallet_address,
+            "api_key_preview": api_key[:12] + "..." if api_key else "",
+            "funder_address": funder_address,
+            "funder_detected": bool(funder_address),
+            "message": msg,
+        }
+
+    except ImportError:
+        return {"status": "error", "error": "Dependencia eth-account no instalada."}
+    except ValueError as e:
+        return {"status": "error", "error": f"Private key inválida: {e}"}
+    except Exception as e:
+        return {"status": "error", "error": f"Error generando keys: {e}"}
+
+
 @router.post("/api/weather-arb/refresh-forecasts")
 async def weather_refresh_forecasts(request: Request):
     """Forzar refresh de forecasts."""

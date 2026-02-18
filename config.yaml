@@ -9,7 +9,7 @@ features:
   wallet_baskets: true            # Grupos de wallets por tema
   sniper_dbscan: true             # Clustering avanzado DBSCAN
   crypto_arb: true                # Bot de arbitraje crypto 15-min up/down
-  weather_arb: false              # Bot de arbitraje weather (temperatura vs Polymarket)
+  weather_arb: true               # Bot de arbitraje weather (temperatura vs Polymarket)
 
 # ══════════════════════════════════════════════════════════════
 # WEATHER ARB — Temperatura vs odds de Polymarket
