@@ -48,6 +48,9 @@ class AutoTrader:
         self._last_claim_time = 0.0  # timestamp del último intento de claim
         self._processing_signals = False  # Lock para evitar evaluación concurrente
         self._failed_cids: dict[str, float] = {}  # cid -> timestamp: blacklist señales fallidas (evita retry loop)
+        # Maker orders state
+        self._open_maker_orders: dict[str, dict] = {}  # order_id -> order_info
+        self._maker_stats = {"placed": 0, "filled": 0, "cancelled": 0, "requoted": 0}
 
     async def initialize(self, user_id: int = None):
         """Cargar config y crear cliente CLOB si hay credenciales."""
@@ -66,6 +69,10 @@ class AutoTrader:
                 "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
                 "at_slippage_max_pct",
                 "at_ee_take_profit_enabled", "at_ee_take_profit_pct",
+                # Maker Orders
+                "at_maker_spread_offset", "at_maker_max_open_orders",
+                "at_maker_requote_threshold", "at_maker_fill_timeout_sec",
+                "at_hybrid_score_threshold",
             ], user_id=self._user_id)
             self._config = {
                 "enabled": raw.get("at_enabled") == "true",
@@ -98,6 +105,12 @@ class AutoTrader:
                 "early_entry_bet_size": float(raw.get("at_early_entry_bet_size", config.EARLY_ENTRY_BET_SIZE)),
                 "ee_take_profit_enabled": raw.get("at_ee_take_profit_enabled") == "true",
                 "ee_take_profit_pct": float(raw.get("at_ee_take_profit_pct", 40)),
+                # Maker Orders
+                "maker_spread_offset": float(raw.get("at_maker_spread_offset", config.AT_MAKER_SPREAD_OFFSET)),
+                "maker_max_open_orders": int(raw.get("at_maker_max_open_orders", config.AT_MAKER_MAX_OPEN_ORDERS)),
+                "maker_requote_threshold": float(raw.get("at_maker_requote_threshold", config.AT_MAKER_REQUOTE_THRESHOLD)),
+                "maker_fill_timeout_sec": int(raw.get("at_maker_fill_timeout_sec", config.AT_MAKER_FILL_TIMEOUT_SEC)),
+                "hybrid_score_threshold": float(raw.get("at_hybrid_score_threshold", config.AT_HYBRID_SCORE_THRESHOLD)),
             }
             self._enabled = self._config["enabled"]
 
@@ -366,6 +379,7 @@ class AutoTrader:
 
     async def execute_trade(self, trade_info: dict) -> dict:
         """Ejecutar un trade en Polymarket CLOB.
+        Soporta 4 modos: market (FOK), limit (GTC), maker (post-only GTC), hybrid.
         Retorna dict con resultado de la orden.
         """
         if not self._client:
@@ -375,6 +389,15 @@ class AutoTrader:
         direction = trade_info["direction"]
         bet_size = trade_info["bet_size"]
         price = trade_info["poly_odds"]
+        order_mode = trade_info.get("order_type", "limit")
+
+        # ── Modo MAKER: post-only GTC ──
+        if order_mode == "maker":
+            return await self._execute_maker_order(trade_info)
+
+        # ── Modo HYBRID: maker con sesgo direccional ──
+        if order_mode == "hybrid":
+            return await self._execute_hybrid_order(trade_info)
 
         try:
             # Obtener token_id del outcome correcto
@@ -391,7 +414,7 @@ class AutoTrader:
 
             # FOK: agregar slippage para encontrar liquidez en el order book
             # El price en FOK BUY es el MÁXIMO que estamos dispuestos a pagar
-            is_fok = trade_info["order_type"] == "market"
+            is_fok = order_mode == "market"
             if is_fok:
                 slippage_pct = self._config.get("slippage_max_pct", 3.0)
                 slippage = round(slippage_pct / 100, 2)  # ej: 3% → 0.03
@@ -652,6 +675,271 @@ class AutoTrader:
         except Exception as e:
             print(f"[AutoTrader] Error obteniendo token_id: {e}", flush=True)
         return None
+
+    # ── Maker Order Execution ─────────────────────────────────────────
+
+    async def _execute_maker_order(self, trade_info: dict) -> dict:
+        """Ejecutar una orden maker (post-only GTC) en Polymarket CLOB.
+        La orden se coloca POR DEBAJO del ask actual para que descanse en el book.
+        No paga taker fee — recibe maker rebate.
+        """
+        cid = trade_info["condition_id"]
+        direction = trade_info["direction"]
+        bet_size = trade_info["bet_size"]
+        poly_odds = trade_info["poly_odds"]
+        cfg = self._config
+
+        # Verificar límite de órdenes maker abiertas
+        if len(self._open_maker_orders) >= cfg["maker_max_open_orders"]:
+            return {"success": False, "error": f"Max maker orders alcanzado ({cfg['maker_max_open_orders']})"}
+
+        try:
+            token_result = await self._get_token_id(cid, direction)
+            if not token_result:
+                return {"success": False, "error": f"No se encontró token_id para {direction}"}
+            token_id, selected_outcome = token_result
+
+            # Precio maker = ask actual - spread_offset
+            spread_offset = cfg["maker_spread_offset"]
+            maker_price = round(max(poly_odds - spread_offset, 0.01), 2)
+            if maker_price <= 0 or maker_price >= 1:
+                return {"success": False, "error": f"Precio maker inválido: {maker_price}"}
+
+            # Calcular shares
+            from decimal import Decimal, ROUND_DOWN
+            MIN_CLOB_SHARES = Decimal('5')
+            d_price = Decimal(str(maker_price))
+            d_raw = Decimal(str(bet_size)) / d_price
+            d_shares = Decimal('0')
+            for decimals in [4, 3, 2, 1, 0]:
+                q = Decimal(10) ** -decimals
+                d_candidate = d_raw.quantize(q, rounding=ROUND_DOWN)
+                d_maker = d_candidate * d_price
+                if d_maker == d_maker.quantize(Decimal('0.01')):
+                    d_shares = d_candidate
+                    break
+            if d_shares < MIN_CLOB_SHARES:
+                d_shares = MIN_CLOB_SHARES
+                bet_size = float((d_shares * d_price).quantize(Decimal('0.01')))
+
+            shares = float(d_shares)
+            if shares <= 0:
+                self._failed_cids[cid] = time.time()
+                return {"success": False, "error": "No se pudo calcular shares válidas"}
+
+            print(f"[AutoTrader] MAKER Order: price=${maker_price} (ask=${poly_odds} - offset=${spread_offset}) "
+                  f"shares={shares} ${bet_size}", flush=True)
+
+            from py_clob_client.clob_types import OrderArgs, OrderType
+            order_args = OrderArgs(
+                price=maker_price,
+                size=shares,
+                side="BUY",
+                token_id=token_id,
+            )
+
+            loop = asyncio.get_running_loop()
+            signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
+
+            # Post con GTC — en py-clob-client, post_order acepta OrderType
+            # Para post-only, el CLOB rechaza si cruzaría el spread
+            resp = await loop.run_in_executor(
+                None, self._client.post_order, signed_order, OrderType.GTC
+            )
+
+            print(f"[AutoTrader] MAKER post_order response: {resp}", flush=True)
+
+            # Parsear respuesta
+            order_id = ""
+            resp_status = ""
+            success = False
+            error_msg = ""
+            if isinstance(resp, dict):
+                order_id = resp.get("orderID", resp.get("order_id", "")) or ""
+                resp_status = resp.get("status", "")
+                success = bool(order_id)
+                if not success:
+                    error_msg = resp.get("errorMsg", resp.get("error", str(resp)))
+            elif hasattr(resp, "orderID"):
+                order_id = getattr(resp, "orderID", "") or ""
+                resp_status = getattr(resp, "status", "")
+                success = bool(order_id)
+                error_msg = getattr(resp, "errorMsg", "")
+
+            if success and order_id:
+                # Registrar orden maker abierta — NO esperar fill inmediato
+                maker_record = {
+                    "order_id": order_id,
+                    "condition_id": cid,
+                    "coin": trade_info["coin"],
+                    "direction": direction,
+                    "side": "BUY",
+                    "price": maker_price,
+                    "size_usd": bet_size,
+                    "shares": shares,
+                    "token_id": token_id,
+                    "edge_pct": trade_info["edge_pct"],
+                    "confidence": trade_info["confidence"],
+                    "event_slug": trade_info["event_slug"],
+                    "order_type": "maker",
+                    "strategy": trade_info.get("strategy", "score"),
+                    "status": resp_status.lower(),  # "live" = en el book
+                    "created_ts": time.time(),
+                    "poly_odds_at_signal": poly_odds,
+                }
+                self._open_maker_orders[order_id] = maker_record
+                self._maker_stats["placed"] += 1
+                self._last_trade_time = time.time()
+
+                print(f"[AutoTrader] ✅ MAKER ORDER PLACED: {trade_info['coin']} "
+                      f"{direction.upper()} ${bet_size} @ ${maker_price:.2f} "
+                      f"(status={resp_status}) order={order_id[:16]}...", flush=True)
+                return {"success": True, "order_id": order_id, "status": resp_status,
+                        "maker": True, "price": maker_price}
+            else:
+                print(f"[AutoTrader] ❌ MAKER order rechazada: {error_msg}", flush=True)
+                self._failed_cids[cid] = time.time()
+                return {"success": False, "error": error_msg}
+
+        except Exception as e:
+            print(f"[AutoTrader] ❌ Error ejecutando maker order: {e}", flush=True)
+            self._failed_cids[cid] = time.time()
+            return {"success": False, "error": str(e)}
+
+    async def _execute_hybrid_order(self, trade_info: dict) -> dict:
+        """Modo hybrid: si score alto → maker direccional, si bajo → maker ambos lados."""
+        score_details = trade_info.get("score_details", {})
+        score = score_details.get("score", 0) if isinstance(score_details, dict) else 0
+        threshold = self._config.get("hybrid_score_threshold", 0.50)
+
+        if score >= threshold:
+            # Score alto: sesgo direccional como maker
+            print(f"[AutoTrader] HYBRID: score={score:.2f} >= {threshold} → MAKER direccional", flush=True)
+            return await self._execute_maker_order(trade_info)
+        else:
+            # Score bajo: solo maker direccional pero con spread más amplio
+            print(f"[AutoTrader] HYBRID: score={score:.2f} < {threshold} → MAKER conservador (spread amplio)", flush=True)
+            # Duplicar el spread offset para ser más conservador
+            orig_offset = self._config["maker_spread_offset"]
+            self._config["maker_spread_offset"] = round(orig_offset * 2, 2)
+            result = await self._execute_maker_order(trade_info)
+            self._config["maker_spread_offset"] = orig_offset  # Restaurar
+            return result
+
+    async def manage_maker_orders(self):
+        """Gestionar órdenes maker abiertas: verificar fills, re-quotear, cancelar.
+        Llamado cada 10s desde el loop principal.
+        """
+        if not self._client or not self._open_maker_orders:
+            return
+
+        now = time.time()
+        to_remove = []
+        loop = asyncio.get_running_loop()
+
+        for order_id, order in list(self._open_maker_orders.items()):
+            try:
+                # Consultar estado de la orden
+                order_info = await loop.run_in_executor(
+                    None, self._client.get_order, order_id
+                )
+                current_status = ""
+                if isinstance(order_info, dict):
+                    current_status = order_info.get("status", "").lower()
+                elif hasattr(order_info, "status"):
+                    current_status = getattr(order_info, "status", "").lower()
+
+                # ── MATCHED: la orden se llenó ──
+                if current_status == "matched":
+                    self._maker_stats["filled"] += 1
+                    order["status"] = "filled"
+                    # Registrar como trade exitoso
+                    trade_record = {
+                        "condition_id": order["condition_id"],
+                        "order_id": order_id,
+                        "coin": order["coin"],
+                        "direction": order["direction"],
+                        "side": "BUY",
+                        "price": order["price"],
+                        "size_usd": order["size_usd"],
+                        "shares": order["shares"],
+                        "token_id": order["token_id"],
+                        "edge_pct": order["edge_pct"],
+                        "confidence": order["confidence"],
+                        "event_slug": order["event_slug"],
+                        "order_type": "maker",
+                        "strategy": order.get("strategy", "score"),
+                        "status": "filled",
+                        "created_ts": order["created_ts"],
+                    }
+                    await self.db.record_autotrade(trade_record)
+                    self._trades_today.append(trade_record)
+                    self._open_positions[order["condition_id"]] = trade_record
+                    to_remove.append(order_id)
+                    print(f"[AutoTrader] ✅ MAKER FILLED: {order['coin']} "
+                          f"{order['direction'].upper()} @ ${order['price']:.2f} "
+                          f"order={order_id[:16]}...", flush=True)
+
+                # ── CANCELLED/EXPIRED: ya no existe ──
+                elif current_status in ("cancelled", "expired", ""):
+                    to_remove.append(order_id)
+                    self._maker_stats["cancelled"] += 1
+
+                # ── LIVE: aún en el book ──
+                elif current_status == "live":
+                    age = now - order["created_ts"]
+
+                    # Timeout: cancelar si muy vieja
+                    if age > self._config["maker_fill_timeout_sec"]:
+                        try:
+                            await loop.run_in_executor(None, self._client.cancel, order_id)
+                            self._maker_stats["cancelled"] += 1
+                            print(f"[AutoTrader] ⏰ MAKER TIMEOUT: cancelada {order['coin']} "
+                                  f"({age:.0f}s > {self._config['maker_fill_timeout_sec']}s)",
+                                  flush=True)
+                        except Exception as cancel_err:
+                            print(f"[AutoTrader] Error cancelando maker: {cancel_err}", flush=True)
+                        to_remove.append(order_id)
+
+                    # Re-quote: si el precio se movió mucho, cancelar y re-poner
+                    # (solo si la orden tiene menos de la mitad del timeout)
+                    elif age < self._config["maker_fill_timeout_sec"] / 2:
+                        try:
+                            import httpx
+                            async with httpx.AsyncClient(timeout=5) as client:
+                                resp = await client.get(
+                                    f"https://clob.polymarket.com/markets/{order['condition_id']}")
+                                if resp.status_code == 200:
+                                    mdata = resp.json()
+                                    if mdata.get("closed"):
+                                        # Mercado cerró — cancelar orden
+                                        await loop.run_in_executor(
+                                            None, self._client.cancel, order_id)
+                                        to_remove.append(order_id)
+                                        continue
+                                    tokens = mdata.get("tokens", [])
+                                    for tok in tokens:
+                                        outcome = tok.get("outcome", "").lower()
+                                        if outcome == order["direction"]:
+                                            new_ask = float(tok.get("price", 0))
+                                            price_diff = abs(new_ask - order["poly_odds_at_signal"])
+                                            if price_diff >= self._config["maker_requote_threshold"]:
+                                                # Cancelar y re-quotear
+                                                await loop.run_in_executor(
+                                                    None, self._client.cancel, order_id)
+                                                self._maker_stats["requoted"] += 1
+                                                to_remove.append(order_id)
+                                                print(f"[AutoTrader] 🔄 REQUOTE: {order['coin']} "
+                                                      f"precio movió ${price_diff:.2f}", flush=True)
+                                            break
+                        except Exception:
+                            pass  # No es crítico
+
+            except Exception as e:
+                print(f"[AutoTrader] Error gestionando maker {order_id[:16]}: {e}", flush=True)
+
+        for oid in to_remove:
+            self._open_maker_orders.pop(oid, None)
 
     # ── Proceso de señales (llamado desde main.py) ────────────────────
 

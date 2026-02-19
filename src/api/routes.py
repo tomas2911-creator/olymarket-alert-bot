@@ -1426,6 +1426,15 @@ async def get_autotrade_config(request: Request):
         "early_entry_min_momentum_15m": float(raw.get("at_early_entry_min_momentum_15m", 0.05)),
         "ee_take_profit_enabled": raw.get("at_ee_take_profit_enabled") == "true",
         "ee_take_profit_pct": float(raw.get("at_ee_take_profit_pct", 40)),
+        # Maker Orders
+        "maker_spread_offset": float(raw.get("at_maker_spread_offset", 0.02)),
+        "maker_max_open_orders": int(raw.get("at_maker_max_open_orders", 10)),
+        "maker_requote_threshold": float(raw.get("at_maker_requote_threshold", 0.03)),
+        "maker_fill_timeout_sec": int(raw.get("at_maker_fill_timeout_sec", 120)),
+        "hybrid_score_threshold": float(raw.get("at_hybrid_score_threshold", 0.50)),
+        # Maker stats
+        "maker_open_orders": len(autotrader._open_maker_orders) if autotrader else 0,
+        "maker_stats": autotrader._maker_stats if autotrader else {},
     }
 
 
@@ -1509,6 +1518,17 @@ async def save_autotrade_config(request: Request):
         data["at_ee_take_profit_enabled"] = "true" if body["ee_take_profit_enabled"] else "false"
     if "ee_take_profit_pct" in body:
         data["at_ee_take_profit_pct"] = str(body["ee_take_profit_pct"])
+    # Maker Orders config
+    if "maker_spread_offset" in body:
+        data["at_maker_spread_offset"] = str(body["maker_spread_offset"])
+    if "maker_max_open_orders" in body:
+        data["at_maker_max_open_orders"] = str(body["maker_max_open_orders"])
+    if "maker_requote_threshold" in body:
+        data["at_maker_requote_threshold"] = str(body["maker_requote_threshold"])
+    if "maker_fill_timeout_sec" in body:
+        data["at_maker_fill_timeout_sec"] = str(body["maker_fill_timeout_sec"])
+    if "hybrid_score_threshold" in body:
+        data["at_hybrid_score_threshold"] = str(body["hybrid_score_threshold"])
     if data:
         await db.set_config_bulk(data, user_id=uid)
     # Recargar config en el autotrader
@@ -1525,6 +1545,62 @@ async def save_autotrade_config(request: Request):
             await bot._configure_early_detector()
         except Exception:
             pass
+    return {"status": "ok"}
+
+
+# ── Paper Trading Maker ─────────────────────────────────────────
+
+@router.get("/api/crypto-arb/paper-trading")
+async def get_paper_trading(request: Request):
+    """Obtener estado completo del paper trader maker."""
+    bot = getattr(request.app.state, 'bot', None)
+    pt = bot.paper_trader if bot else None
+    if not pt:
+        return {"enabled": False, "status": {}, "open_orders": [], "resolved": []}
+    return {
+        "enabled": pt._enabled,
+        "status": pt.get_status(),
+        "open_orders": pt.get_open_orders(),
+        "resolved": pt.get_resolved_orders(100),
+    }
+
+
+@router.post("/api/crypto-arb/paper-trading/config")
+async def save_paper_trading_config(request: Request):
+    """Guardar configuración del paper trader maker."""
+    bot = getattr(request.app.state, 'bot', None)
+    pt = bot.paper_trader if bot else None
+    if not pt:
+        return {"status": "error", "error": "Paper trader no disponible"}
+    body = await request.json()
+    pt.configure(body)
+    # Persistir en DB
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    data = {}
+    if "enabled" in body:
+        data["paper_trading_enabled"] = "true" if body["enabled"] else "false"
+    if "bet_size" in body:
+        data["paper_bet_size"] = str(body["bet_size"])
+    if "spread_offset" in body:
+        data["paper_spread_offset"] = str(body["spread_offset"])
+    if "initial_capital" in body:
+        data["paper_initial_capital"] = str(body["initial_capital"])
+    if "mode" in body:
+        data["paper_mode"] = body["mode"]
+    if data:
+        await db.set_config_bulk(data, user_id=uid)
+    return {"status": "ok"}
+
+
+@router.post("/api/crypto-arb/paper-trading/reset")
+async def reset_paper_trading(request: Request):
+    """Resetear estado del paper trader."""
+    bot = getattr(request.app.state, 'bot', None)
+    pt = bot.paper_trader if bot else None
+    if not pt:
+        return {"status": "error", "error": "Paper trader no disponible"}
+    pt.reset()
     return {"status": "ok"}
 
 

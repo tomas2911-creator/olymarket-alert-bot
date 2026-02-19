@@ -51,6 +51,7 @@ from src.weather_arb.weather_feed import WeatherFeed
 from src.weather_arb.detector import WeatherArbDetector
 from src.weather_arb.autotrader import WeatherAutoTrader
 from src.weather_arb.backtester import WeatherPaperTrader
+from src.crypto_arb.paper_trader import MakerPaperTrader
 
 structlog.configure(
     processors=[
@@ -117,6 +118,8 @@ class PolymarketAlertBot:
         self.weather_detector = None
         self.weather_autotrader = None
         self.weather_paper = None
+        # Paper Trading Maker
+        self.paper_trader = None
 
     async def start(self):
         """Inicializar DB y marcar como running."""
@@ -249,6 +252,29 @@ class PolymarketAlertBot:
             await self.autotrader.initialize()
             # Configurar early detector desde DB
             await self._configure_early_detector()
+            # Inicializar paper trader maker
+            self.paper_trader = MakerPaperTrader()
+            # Cargar config paper trader desde DB
+            try:
+                pt_raw = await self.db.get_config_bulk([
+                    "paper_trading_enabled", "paper_bet_size",
+                    "paper_spread_offset", "paper_initial_capital", "paper_mode",
+                ], user_id=1)
+                pt_cfg = {}
+                if pt_raw.get("paper_trading_enabled") == "true":
+                    pt_cfg["enabled"] = True
+                if pt_raw.get("paper_bet_size"):
+                    pt_cfg["bet_size"] = float(pt_raw["paper_bet_size"])
+                if pt_raw.get("paper_spread_offset"):
+                    pt_cfg["spread_offset"] = float(pt_raw["paper_spread_offset"])
+                if pt_raw.get("paper_initial_capital"):
+                    pt_cfg["initial_capital"] = float(pt_raw["paper_initial_capital"])
+                if pt_raw.get("paper_mode"):
+                    pt_cfg["mode"] = pt_raw["paper_mode"]
+                if pt_cfg:
+                    self.paper_trader.configure(pt_cfg)
+            except Exception as e:
+                print(f"[PaperTrader] Error cargando config desde DB: {e}", flush=True)
             # Lanzar feed, detector, early detector y autotrader como tasks independientes
             asyncio.create_task(self._run_binance_feed())
             asyncio.create_task(self._run_crypto_detector())
@@ -337,9 +363,17 @@ class PolymarketAlertBot:
                     active = [s for s in signals if s.get("time_remaining_sec", 0) > 0]
                     if active:
                         await self.autotrader.process_signals(active)
+                        # Paper trader: procesar las mismas señales
+                        if self.paper_trader:
+                            await self.paper_trader.process_signals(active)
                 # Risk management cada ciclo (5s) — necesario para TP en mercados cortos
                 await self.autotrader.check_risk_management()
                 await self.autotrader.resolve_trades()
+                # Maker orders: gestionar órdenes abiertas
+                await self.autotrader.manage_maker_orders()
+                # Paper trader: gestionar órdenes simuladas
+                if self.paper_trader:
+                    await self.paper_trader.manage_orders()
             except Exception as e:
                 print(f"[CryptoAutotrader] Error en loop rápido: {e}", flush=True)
             await asyncio.sleep(5)

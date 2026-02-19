@@ -245,6 +245,25 @@ AT_TRAILING_STOP_ENABLED = _at_risk.get("trailing_stop", False)
 AT_TRAILING_STOP_PCT = _at_risk.get("trailing_stop_pct", 15)
 AT_SLIPPAGE_MAX_PCT = _at_risk.get("slippage_max_pct", 3.0)  # máx spread para entrar
 
+# -- Maker Orders (Crypto Arb) --
+_maker = _yaml.get("maker_orders", {})
+AT_MAKER_SPREAD_OFFSET = _maker.get("spread_offset", 0.02)  # centavos por debajo del ask
+AT_MAKER_MAX_OPEN_ORDERS = _maker.get("max_open_orders", 10)  # max órdenes maker simultáneas
+AT_MAKER_REQUOTE_THRESHOLD = _maker.get("requote_threshold", 0.03)  # re-quotear si precio cambia >X
+AT_MAKER_FILL_TIMEOUT_SEC = _maker.get("fill_timeout_sec", 120)  # cancelar si no se llena en N seg
+AT_HYBRID_SCORE_THRESHOLD = _maker.get("hybrid_score_threshold", 0.50)  # score mín para sesgo direccional
+
+# -- Paper Trading (Crypto Arb) --
+_paper = _yaml.get("paper_trading", {})
+FEATURE_PAPER_TRADING = _features.get("paper_trading", False)
+PAPER_BET_SIZE = _paper.get("bet_size", 10)  # bet size simulado
+PAPER_SPREAD_OFFSET = _paper.get("spread_offset", 0.02)  # spread offset simulado
+PAPER_INITIAL_CAPITAL = _paper.get("initial_capital", 500)  # capital inicial simulado
+PAPER_MODE = _paper.get("mode", "maker")  # "maker" o "hybrid"
+PAPER_FILL_TIMEOUT_SEC = _paper.get("fill_timeout_sec", 120)  # timeout para simular fill
+PAPER_REBATE_RATE = _paper.get("rebate_rate", 0.005)  # rebate estimado (0.5% del volumen)
+PAPER_TAKER_FEE_RATE = _paper.get("taker_fee_rate", 0.0156)  # taker fee para comparativa
+
 # -- Order Book Depth Crypto (Crypto Arb) --
 _obd_crypto = _yaml.get("orderbook_crypto", {})
 FEATURE_ORDERBOOK_CRYPTO = _features.get("orderbook_crypto", True)
@@ -518,6 +537,20 @@ def restore_from_db(saved: dict):
     cfg.AT_TRAILING_STOP_ENABLED = _bool("at_trailing_stop_enabled", cfg.AT_TRAILING_STOP_ENABLED)
     cfg.AT_TRAILING_STOP_PCT = _float("at_trailing_stop_pct", cfg.AT_TRAILING_STOP_PCT)
     cfg.AT_SLIPPAGE_MAX_PCT = _float("at_slippage_max_pct", cfg.AT_SLIPPAGE_MAX_PCT)
+
+    # === Maker Orders ===
+    cfg.AT_MAKER_SPREAD_OFFSET = _float("at_maker_spread_offset", cfg.AT_MAKER_SPREAD_OFFSET)
+    cfg.AT_MAKER_MAX_OPEN_ORDERS = _int("at_maker_max_open_orders", cfg.AT_MAKER_MAX_OPEN_ORDERS)
+    cfg.AT_MAKER_REQUOTE_THRESHOLD = _float("at_maker_requote_threshold", cfg.AT_MAKER_REQUOTE_THRESHOLD)
+    cfg.AT_MAKER_FILL_TIMEOUT_SEC = _int("at_maker_fill_timeout_sec", cfg.AT_MAKER_FILL_TIMEOUT_SEC)
+    cfg.AT_HYBRID_SCORE_THRESHOLD = _float("at_hybrid_score_threshold", cfg.AT_HYBRID_SCORE_THRESHOLD)
+
+    # === Paper Trading ===
+    cfg.FEATURE_PAPER_TRADING = _bool("feature_paper_trading", cfg.FEATURE_PAPER_TRADING)
+    cfg.PAPER_BET_SIZE = _float("paper_bet_size", cfg.PAPER_BET_SIZE)
+    cfg.PAPER_SPREAD_OFFSET = _float("paper_spread_offset", cfg.PAPER_SPREAD_OFFSET)
+    cfg.PAPER_INITIAL_CAPITAL = _float("paper_initial_capital", cfg.PAPER_INITIAL_CAPITAL)
+    cfg.PAPER_MODE = saved.get("paper_mode", cfg.PAPER_MODE) if "paper_mode" in saved else cfg.PAPER_MODE
 
     # === v10.0 ===
     cfg.FEATURE_COMPLEMENT_ARB = _bool("feature_complement_arb", cfg.FEATURE_COMPLEMENT_ARB)
