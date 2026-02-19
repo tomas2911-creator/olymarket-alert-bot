@@ -323,13 +323,27 @@ BANKROLL_WALLET_ADDRESS = os.getenv("BANKROLL_WALLET_ADDRESS", "")
 BANKROLL_INITIAL = float(os.getenv("BANKROLL_INITIAL", "1000"))
 BANKROLL_MAX_SINGLE_BET_PCT = 5.0  # máx % del bankroll en un solo trade
 
-# -- Market Making Bot --
+# -- Market Making Bot (Bilateral) --
 FEATURE_MARKET_MAKING = _features.get("market_making", False)
-MM_SPREAD_PCT = 3.0  # spread objetivo en %
-MM_ORDER_SIZE = 10.0  # tamaño de cada orden en USD
-MM_MAX_INVENTORY = 100.0  # máx inventario en USD
-MM_REFRESH_SEC = 30  # refrescar órdenes cada X segundos
-MM_MIN_LIQUIDITY = 10000  # liquidez mínima del mercado
+_mm = _yaml.get("market_making", {})
+MM_BET_SIZE = _mm.get("bet_size", 5.0)          # USD por lado (Up + Down)
+MM_SPREAD_TARGET = _mm.get("spread_target", 0.04)  # spread objetivo en $
+MM_MAX_INVENTORY = _mm.get("max_inventory", 50.0)  # máx exposure neto por mercado
+MM_MAX_MARKETS = _mm.get("max_markets", 3)       # máx mercados simultáneos
+MM_REQUOTE_SEC = _mm.get("requote_sec", 10)      # re-quotear cada N seg
+MM_REQUOTE_THRESHOLD = _mm.get("requote_threshold", 0.02)  # re-quotear si precio cambia > X
+MM_FILL_TIMEOUT_SEC = _mm.get("fill_timeout_sec", 120)     # cancelar si no llena
+MM_BIAS_ENABLED = _mm.get("bias_enabled", True)   # sesgo direccional
+MM_BIAS_STRENGTH = _mm.get("bias_strength", 0.02) # fuerza del sesgo en $
+MM_PAPER_MODE = _mm.get("paper_mode", True)        # empezar en paper
+MM_MAX_DAILY_LOSS = _mm.get("max_daily_loss", 20.0)  # pausar si pierde > X
+MM_MIN_TIME_REMAINING = _mm.get("min_time_remaining_sec", 180)  # no quotear < 3 min
+MM_REBATE_RATE = _mm.get("rebate_rate", 0.005)    # rebate estimado 0.5%
+# Compat legacy
+MM_SPREAD_PCT = 3.0
+MM_ORDER_SIZE = MM_BET_SIZE
+MM_REFRESH_SEC = MM_REQUOTE_SEC
+MM_MIN_LIQUIDITY = 10000
 
 # -- Event-Driven Bot --
 FEATURE_EVENT_DRIVEN = _features.get("event_driven", False)
@@ -505,9 +519,22 @@ def restore_from_db(saved: dict):
     cfg.BANKROLL_INITIAL = _float("bankroll_initial", cfg.BANKROLL_INITIAL)
     cfg.BANKROLL_MAX_SINGLE_BET_PCT = _float("bankroll_max_bet_pct", cfg.BANKROLL_MAX_SINGLE_BET_PCT)
     cfg.FEATURE_MARKET_MAKING = _bool("feature_market_making", cfg.FEATURE_MARKET_MAKING)
-    cfg.MM_SPREAD_PCT = _float("mm_spread_pct", cfg.MM_SPREAD_PCT)
-    cfg.MM_ORDER_SIZE = _float("mm_order_size", cfg.MM_ORDER_SIZE)
+    cfg.MM_BET_SIZE = _float("mm_bet_size", cfg.MM_BET_SIZE)
+    cfg.MM_SPREAD_TARGET = _float("mm_spread_target", cfg.MM_SPREAD_TARGET)
     cfg.MM_MAX_INVENTORY = _float("mm_max_inventory", cfg.MM_MAX_INVENTORY)
+    cfg.MM_MAX_MARKETS = _int("mm_max_markets", cfg.MM_MAX_MARKETS)
+    cfg.MM_REQUOTE_SEC = _int("mm_requote_sec", cfg.MM_REQUOTE_SEC)
+    cfg.MM_REQUOTE_THRESHOLD = _float("mm_requote_threshold", cfg.MM_REQUOTE_THRESHOLD)
+    cfg.MM_FILL_TIMEOUT_SEC = _int("mm_fill_timeout_sec", cfg.MM_FILL_TIMEOUT_SEC)
+    cfg.MM_BIAS_ENABLED = _bool("mm_bias_enabled", cfg.MM_BIAS_ENABLED)
+    cfg.MM_BIAS_STRENGTH = _float("mm_bias_strength", cfg.MM_BIAS_STRENGTH)
+    cfg.MM_PAPER_MODE = _bool("mm_paper_mode", cfg.MM_PAPER_MODE)
+    cfg.MM_MAX_DAILY_LOSS = _float("mm_max_daily_loss", cfg.MM_MAX_DAILY_LOSS)
+    cfg.MM_MIN_TIME_REMAINING = _int("mm_min_time_remaining_sec", cfg.MM_MIN_TIME_REMAINING)
+    cfg.MM_REBATE_RATE = _float("mm_rebate_rate", cfg.MM_REBATE_RATE)
+    # Compat legacy
+    cfg.MM_SPREAD_PCT = _float("mm_spread_pct", cfg.MM_SPREAD_PCT)
+    cfg.MM_ORDER_SIZE = cfg.MM_BET_SIZE
     cfg.FEATURE_EVENT_DRIVEN = _bool("feature_event_driven", cfg.FEATURE_EVENT_DRIVEN)
     cfg.ED_MIN_EDGE_PCT = _float("ed_min_edge_pct", cfg.ED_MIN_EDGE_PCT)
     cfg.FEATURE_SPIKE_DETECTION = _bool("feature_spike_detection", cfg.FEATURE_SPIKE_DETECTION)

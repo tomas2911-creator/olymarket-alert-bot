@@ -848,6 +848,7 @@
                 <button onclick="showCryptoSub('strategy')" id="csub-strategy" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Estrategia</button>
                 <button onclick="showCryptoSub('cconfig')" id="csub-cconfig" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Config</button>
                 <button onclick="showCryptoSub('pricesum')" id="csub-pricesum" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">Price-Sum Arb</button>
+                <button onclick="showCryptoSub('mmmaker')" id="csub-mmmaker" class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-gray-400">🏪 Market Making</button>
             </div>
 
             <!-- Crypto Sub: Señales en Vivo -->
@@ -1617,6 +1618,83 @@
                             <tr><td colspan="8" class="text-center text-gray-600 p-6">Click "Refrescar" para buscar oportunidades</td></tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+            <!-- Crypto Sub: Market Making Bilateral -->
+            <div id="cpanel-mmmaker" class="hidden">
+                <div class="p-4 space-y-4">
+                    <div class="bg-blue-900/30 border border-blue-700/50 rounded-lg p-3">
+                        <div class="flex items-center gap-2 text-blue-400 text-sm font-medium">🏪 Market Making Bilateral</div>
+                        <p class="text-blue-200/70 text-xs mt-1">Coloca BUY Up + BUY Down simultáneamente. Si ambos se llenan y la suma &lt; $1.00, captura spread garantizado.</p>
+                    </div>
+                    <!-- Toggle + Config -->
+                    <div class="flex items-center justify-between bg-gray-800/40 rounded-lg p-4">
+                        <div>
+                            <div class="text-sm font-medium">Market Maker Activado</div>
+                            <div class="text-xs text-gray-400">Quoting bilateral automático en mercados crypto</div>
+                        </div>
+                        <label class="toggle-switch"><input type="checkbox" id="mm-enabled"><div class="toggle-slider"></div></label>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div><label class="text-xs text-gray-400 block mb-1">Bet Size/Lado ($)</label><input type="number" id="mm-bet-size" value="5" min="1" max="500" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-blue-300"></div>
+                        <div><label class="text-xs text-gray-400 block mb-1">Spread Target ($)</label><input type="number" id="mm-spread" value="0.04" min="0.01" max="0.20" step="0.01" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-blue-300"></div>
+                        <div><label class="text-xs text-gray-400 block mb-1">Max Mercados</label><input type="number" id="mm-max-markets" value="3" min="1" max="10" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-blue-300"></div>
+                        <div><label class="text-xs text-gray-400 block mb-1">Max Inventario ($)</label><input type="number" id="mm-max-inv" value="50" min="10" max="500" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-blue-300"></div>
+                        <div><label class="text-xs text-gray-400 block mb-1">Re-quote (seg)</label><input type="number" id="mm-requote-sec" value="10" min="5" max="60" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-blue-300"></div>
+                        <div><label class="text-xs text-gray-400 block mb-1">Fill Timeout (seg)</label><input type="number" id="mm-fill-timeout" value="120" min="30" max="600" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-blue-300"></div>
+                        <div><label class="text-xs text-gray-400 block mb-1">Max Loss/Dia ($)</label><input type="number" id="mm-max-loss" value="20" min="5" max="200" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-blue-300"></div>
+                        <div><label class="text-xs text-gray-400 block mb-1">Modo</label><select id="mm-paper-mode" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm text-blue-300"><option value="true">Paper</option><option value="false">Real</option></select></div>
+                    </div>
+                    <div class="flex items-center gap-4 bg-gray-800/40 rounded-lg p-3">
+                        <label class="flex items-center gap-2 text-xs"><input type="checkbox" id="mm-bias-enabled" class="accent-blue-500"><span class="text-gray-300">Sesgo Direccional</span></label>
+                        <div class="flex items-center gap-1"><label class="text-xs text-gray-500">Fuerza $</label><input type="number" id="mm-bias-strength" value="0.02" min="0.01" max="0.10" step="0.01" class="w-20 bg-gray-800/70 border border-gray-600 rounded px-2 py-1 text-xs font-mono text-blue-300"></div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="saveMMConfig()" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition">Guardar Config</button>
+                        <button onclick="resetMM()" class="px-4 py-2 rounded bg-red-600/80 hover:bg-red-500 text-white text-sm font-medium transition">Resetear</button>
+                        <span id="mm-save-status" class="text-xs self-center hidden"></span>
+                    </div>
+                    <!-- Stats -->
+                    <div class="bg-gray-800/40 rounded-lg p-4 space-y-3">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Stats en Tiempo Real</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div><div class="text-[10px] text-gray-500 uppercase">PnL Total</div><div class="text-sm font-bold" id="mm-stat-pnl">$0.00</div></div>
+                            <div><div class="text-[10px] text-gray-500 uppercase">PnL Hoy</div><div class="text-sm font-bold" id="mm-stat-daily">$0.00</div></div>
+                            <div><div class="text-[10px] text-gray-500 uppercase">Win Rate</div><div class="text-sm font-bold" id="mm-stat-winrate">-</div></div>
+                            <div><div class="text-[10px] text-gray-500 uppercase">Fills</div><div class="text-sm font-bold" id="mm-stat-fills">0</div></div>
+                            <div><div class="text-[10px] text-gray-500 uppercase">Pares Completos</div><div class="text-sm font-bold" id="mm-stat-pairs">0</div></div>
+                            <div><div class="text-[10px] text-gray-500 uppercase">Rebates</div><div class="text-sm font-bold text-green-400" id="mm-stat-rebates">$0.00</div></div>
+                            <div><div class="text-[10px] text-gray-500 uppercase">Mercados Activos</div><div class="text-sm font-bold" id="mm-stat-markets">0</div></div>
+                            <div><div class="text-[10px] text-gray-500 uppercase">Requotes</div><div class="text-sm font-bold" id="mm-stat-requotes">0</div></div>
+                        </div>
+                    </div>
+                    <!-- Inventario -->
+                    <div class="space-y-2">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Inventario por Mercado</h4>
+                        <div class="overflow-x-auto" style="max-height:160px;overflow-y:auto">
+                            <table class="w-full text-xs"><thead class="sticky top-0 bg-dark-800"><tr class="text-gray-500 uppercase border-b border-gray-700/50"><th class="px-3 py-1.5 text-center">Moneda</th><th class="px-3 py-1.5 text-right">Up Shares</th><th class="px-3 py-1.5 text-right">Down Shares</th><th class="px-3 py-1.5 text-right">Costo Total</th><th class="px-3 py-1.5 text-right">PnL si Up</th><th class="px-3 py-1.5 text-right">PnL si Down</th></tr></thead>
+                                <tbody id="mm-inv-body"><tr><td colspan="6" class="text-center py-4 text-gray-600">Sin inventario</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <!-- Ordenes abiertas -->
+                    <div class="space-y-2">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Ordenes Abiertas</h4>
+                        <div class="overflow-x-auto" style="max-height:160px;overflow-y:auto">
+                            <table class="w-full text-xs"><thead class="sticky top-0 bg-dark-800"><tr class="text-gray-500 uppercase border-b border-gray-700/50"><th class="px-3 py-1.5 text-left">Hora</th><th class="px-3 py-1.5 text-center">Moneda</th><th class="px-3 py-1.5 text-center">Lado</th><th class="px-3 py-1.5 text-right">Precio</th><th class="px-3 py-1.5 text-right">Shares</th><th class="px-3 py-1.5 text-center">Estado</th><th class="px-3 py-1.5 text-right">Edad</th></tr></thead>
+                                <tbody id="mm-open-body"><tr><td colspan="7" class="text-center py-4 text-gray-600">Sin ordenes</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <!-- Trades resueltos -->
+                    <div class="space-y-2">
+                        <h4 class="text-xs text-gray-500 uppercase tracking-wider">Trades Resueltos</h4>
+                        <div class="overflow-x-auto" style="max-height:200px;overflow-y:auto">
+                            <table class="w-full text-xs"><thead class="sticky top-0 bg-dark-800"><tr class="text-gray-500 uppercase border-b border-gray-700/50"><th class="px-3 py-1.5 text-left">Hora</th><th class="px-3 py-1.5 text-center">Moneda</th><th class="px-3 py-1.5 text-center">Lado</th><th class="px-3 py-1.5 text-right">Precio</th><th class="px-3 py-1.5 text-center">Resultado</th><th class="px-3 py-1.5 text-right">PnL</th></tr></thead>
+                                <tbody id="mm-resolved-body"><tr><td colspan="6" class="text-center py-4 text-gray-600">Sin trades resueltos</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -4520,7 +4598,7 @@ async function loadCharts(){
 let cryptoRefreshInterval=null;
 
 function showCryptoSub(sub){
-    ['signals','history','autotrade','paper','strategy','cconfig','pricesum'].forEach(s=>{
+    ['signals','history','autotrade','paper','strategy','cconfig','pricesum','mmmaker'].forEach(s=>{
         const el=document.getElementById('cpanel-'+s);
         if(el)el.classList.toggle('hidden',s!==sub);
         const btn=document.getElementById('csub-'+s);
@@ -4537,6 +4615,7 @@ function showCryptoSub(sub){
     if(sub==='strategy')loadStrategyFullConfig();
     if(sub==='cconfig'){loadFeaturesV8();}
     if(sub==='pricesum')loadPriceSumArb();
+    if(sub==='mmmaker')loadMMStatus();
 }
 
 async function loadCryptoTab(){
@@ -4850,6 +4929,83 @@ async function resetPaperTrading(){
     if(!confirm('Resetear todo el paper trading? Se borran todos los trades simulados.'))return;
     await postJson('/api/crypto-arb/paper-trading/reset',{});
     await loadPaperTrading();
+}
+
+// ── Market Maker Bilateral ──
+async function loadMMStatus(){
+    try{
+        const d=await fetchJson('/api/market-maker/status');
+        if(!d)return;
+        const st=d.status||{};
+        const cfg=st.config||{};
+        const stats=st.stats||{};
+        // Config inputs
+        document.getElementById('mm-enabled').checked=st.enabled;
+        document.getElementById('mm-bet-size').value=cfg.bet_size||5;
+        document.getElementById('mm-spread').value=cfg.spread_target||0.04;
+        document.getElementById('mm-max-markets').value=cfg.max_markets||3;
+        document.getElementById('mm-max-inv').value=cfg.max_inventory||50;
+        document.getElementById('mm-requote-sec').value=cfg.requote_sec||10;
+        document.getElementById('mm-fill-timeout').value=cfg.fill_timeout_sec||120;
+        document.getElementById('mm-max-loss').value=cfg.max_daily_loss||20;
+        document.getElementById('mm-paper-mode').value=cfg.paper_mode?'true':'false';
+        document.getElementById('mm-bias-enabled').checked=cfg.bias_enabled||false;
+        document.getElementById('mm-bias-strength').value=cfg.bias_strength||0.02;
+        // Stats
+        const pnl=stats.total_pnl||0;
+        document.getElementById('mm-stat-pnl').textContent='$'+(pnl>=0?'+':'')+pnl.toFixed(2);
+        document.getElementById('mm-stat-pnl').className='text-sm font-bold '+(pnl>=0?'text-green-400':'text-red-400');
+        const dp=stats.daily_pnl||0;
+        document.getElementById('mm-stat-daily').textContent='$'+(dp>=0?'+':'')+dp.toFixed(2);
+        document.getElementById('mm-stat-daily').className='text-sm font-bold '+(dp>=0?'text-green-400':'text-red-400');
+        document.getElementById('mm-stat-winrate').textContent=stats.total_resolved>0?stats.win_rate+'%':'-';
+        document.getElementById('mm-stat-fills').textContent=stats.fills||0;
+        document.getElementById('mm-stat-pairs').textContent=stats.pairs_completed||0;
+        document.getElementById('mm-stat-rebates').textContent='$'+(stats.total_rebates||0).toFixed(4);
+        document.getElementById('mm-stat-markets').textContent=st.active_markets||0;
+        document.getElementById('mm-stat-requotes').textContent=stats.requotes||0;
+        // Inventory
+        const inv=d.inventory||[];
+        const invBody=document.getElementById('mm-inv-body');
+        if(inv.length===0){invBody.innerHTML='<tr><td colspan="6" class="text-center py-4 text-gray-600">Sin inventario</td></tr>';}
+        else{invBody.innerHTML=inv.map(i=>`<tr class="border-b border-gray-800/30"><td class="px-3 py-1.5 text-center font-bold">${i.coin}</td><td class="px-3 py-1.5 text-right font-mono">${i.up_shares}</td><td class="px-3 py-1.5 text-right font-mono">${i.down_shares}</td><td class="px-3 py-1.5 text-right font-mono">$${i.total_cost?.toFixed(2)}</td><td class="px-3 py-1.5 text-right font-mono ${i.est_pnl_if_up>=0?'text-green-400':'text-red-400'}">$${i.est_pnl_if_up?.toFixed(2)}</td><td class="px-3 py-1.5 text-right font-mono ${i.est_pnl_if_down>=0?'text-green-400':'text-red-400'}">$${i.est_pnl_if_down?.toFixed(2)}</td></tr>`).join('');}
+        // Open orders
+        const oo=d.open_orders||[];
+        const ooBody=document.getElementById('mm-open-body');
+        if(oo.length===0){ooBody.innerHTML='<tr><td colspan="7" class="text-center py-4 text-gray-600">Sin ordenes</td></tr>';}
+        else{ooBody.innerHTML=oo.map(o=>{const ts=o.created_ts?new Date(o.created_ts*1000).toLocaleTimeString():'';const age=o.age_sec||0;const ageStr=age<60?Math.round(age)+'s':Math.round(age/60)+'m';const sc=o.outcome==='Up'?'text-green-400':'text-red-400';const stC=o.status==='filled'?'<span class="text-green-400">Llenada</span>':'<span class="text-yellow-400">Abierta</span>';return`<tr class="border-b border-gray-800/30"><td class="px-3 py-1.5 text-gray-400">${ts}</td><td class="px-3 py-1.5 text-center font-bold">${o.coin}</td><td class="px-3 py-1.5 text-center ${sc} font-bold">${o.outcome}</td><td class="px-3 py-1.5 text-right font-mono">$${o.price?.toFixed(2)}</td><td class="px-3 py-1.5 text-right font-mono">${o.shares}</td><td class="px-3 py-1.5 text-center">${stC}</td><td class="px-3 py-1.5 text-right text-gray-400">${ageStr}</td></tr>`;}).join('');}
+        // Resolved
+        const res=d.resolved||[];
+        const resBody=document.getElementById('mm-resolved-body');
+        if(res.length===0){resBody.innerHTML='<tr><td colspan="6" class="text-center py-4 text-gray-600">Sin trades resueltos</td></tr>';}
+        else{resBody.innerHTML=res.map(o=>{const ts=o.created_ts?new Date(o.created_ts*1000).toLocaleTimeString():'';const sc=o.outcome==='Up'?'text-green-400':'text-red-400';let rb='<span class="text-gray-500">-</span>';if(o.result==='win')rb='<span class="px-2 py-0.5 rounded-full bg-green-900/50 text-green-400 text-[10px]">WIN</span>';else if(o.result==='loss')rb='<span class="px-2 py-0.5 rounded-full bg-red-900/50 text-red-400 text-[10px]">LOSS</span>';const p=o.pnl||0;return`<tr class="border-b border-gray-800/30"><td class="px-3 py-1.5 text-gray-400">${ts}</td><td class="px-3 py-1.5 text-center font-bold">${o.coin}</td><td class="px-3 py-1.5 text-center ${sc} font-bold">${o.outcome}</td><td class="px-3 py-1.5 text-right font-mono">$${o.price?.toFixed(2)}</td><td class="px-3 py-1.5 text-center">${rb}</td><td class="px-3 py-1.5 text-right font-mono ${p>=0?'text-green-400':'text-red-400'}">$${(p>=0?'+':'')}${p.toFixed(2)}</td></tr>`;}).join('');}
+    }catch(e){console.error('Error loading MM status:',e);}
+}
+async function saveMMConfig(){
+    const body={
+        enabled:document.getElementById('mm-enabled').checked,
+        bet_size:parseFloat(document.getElementById('mm-bet-size').value)||5,
+        spread_target:parseFloat(document.getElementById('mm-spread').value)||0.04,
+        max_markets:parseInt(document.getElementById('mm-max-markets').value)||3,
+        max_inventory:parseFloat(document.getElementById('mm-max-inv').value)||50,
+        requote_sec:parseInt(document.getElementById('mm-requote-sec').value)||10,
+        fill_timeout_sec:parseInt(document.getElementById('mm-fill-timeout').value)||120,
+        max_daily_loss:parseFloat(document.getElementById('mm-max-loss').value)||20,
+        paper_mode:document.getElementById('mm-paper-mode').value==='true',
+        bias_enabled:document.getElementById('mm-bias-enabled').checked,
+        bias_strength:parseFloat(document.getElementById('mm-bias-strength').value)||0.02,
+    };
+    const r=await postJson('/api/market-maker/config',body);
+    const st=document.getElementById('mm-save-status');
+    if(r&&r.status==='ok'){st.textContent='Guardado!';st.className='text-xs text-green-400 self-center';}
+    else{st.textContent='Error';st.className='text-xs text-red-400 self-center';}
+    st.classList.remove('hidden');setTimeout(()=>st.classList.add('hidden'),2000);
+    await loadMMStatus();
+}
+async function resetMM(){
+    if(!confirm('Resetear todo el market maker? Se borran ordenes e inventario.'))return;
+    await postJson('/api/market-maker/reset',{});
+    await loadMMStatus();
 }
 
 function toggleMakerConfig(){

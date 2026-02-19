@@ -94,6 +94,7 @@ class PolymarketAlertBot:
         self.alert_autotrader = None
         # v8.0: Nuevos módulos
         self.market_maker = None
+        self.crypto_market_maker = None  # Market Maker Bilateral
         self.spike_detector = None
         self.event_driven = None
         self.cross_platform = None
@@ -254,6 +255,12 @@ class PolymarketAlertBot:
             await self._configure_early_detector()
             # Inicializar paper trader maker
             self.paper_trader = MakerPaperTrader()
+            # Inicializar market maker bilateral (usa detector + feed)
+            from src.strategies.market_maker import CryptoMarketMaker
+            self.crypto_market_maker = CryptoMarketMaker(
+                self.db, binance_feed=self.binance_feed, detector=self.crypto_detector
+            )
+            await self.crypto_market_maker.initialize()
             # Cargar config paper trader desde DB
             try:
                 pt_raw = await self.db.get_config_bulk([
@@ -280,6 +287,7 @@ class PolymarketAlertBot:
             asyncio.create_task(self._run_crypto_detector())
             asyncio.create_task(self._run_early_detector())
             asyncio.create_task(self._run_crypto_autotrader())
+            asyncio.create_task(self._run_market_maker())
             early_status = "ON" if self.early_detector.enabled else "OFF"
             print(f"Crypto Arb iniciado: {len(pairs)} pares, modo={config.CRYPTO_ARB_MODE}, early_entry={early_status}", flush=True)
         except Exception as e:
@@ -338,6 +346,16 @@ class PolymarketAlertBot:
                 "early_entry_window": config.EARLY_ENTRY_WINDOW_SEC,
                 "early_entry_min_momentum": config.EARLY_ENTRY_MIN_MOMENTUM_PCT,
             })
+
+    async def _run_market_maker(self):
+        """Loop dedicado para market maker bilateral — tick cada 5s."""
+        await asyncio.sleep(12)  # Esperar que detector tenga mercados
+        while self._running and self.crypto_market_maker:
+            try:
+                await self.crypto_market_maker.tick()
+            except Exception as e:
+                print(f"[MarketMaker] Error en loop: {e}", flush=True)
+            await asyncio.sleep(5)
 
     async def _run_crypto_autotrader(self):
         """Loop rápido: evaluar señales crypto cada 5s, independiente del polling.
@@ -604,8 +622,7 @@ class PolymarketAlertBot:
                 # Cada 2 ciclos (~2 min): market maker + spike detector
                 if cycle % 2 == 0:
                     try:
-                        if self.market_maker:
-                            await self.market_maker.tick()
+                        # Market maker viejo deshabilitado — usa crypto_market_maker con loop propio
                         if self.spike_detector and self._last_markets:
                             spike_markets = [{
                                 "condition_id": m.condition_id,

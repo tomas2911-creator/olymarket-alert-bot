@@ -448,6 +448,29 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_push_user ON push_notifications(user_id, read);
                 CREATE INDEX IF NOT EXISTS idx_journal_user ON trade_journal(user_id);
             """)
+            # === Market Maker Bilateral Trades ===
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS mm_trades (
+                    id              SERIAL PRIMARY KEY,
+                    condition_id    TEXT NOT NULL,
+                    event_slug      TEXT DEFAULT '',
+                    coin            TEXT DEFAULT '',
+                    up_shares       DOUBLE PRECISION DEFAULT 0,
+                    down_shares     DOUBLE PRECISION DEFAULT 0,
+                    up_cost         DOUBLE PRECISION DEFAULT 0,
+                    down_cost       DOUBLE PRECISION DEFAULT 0,
+                    total_cost      DOUBLE PRECISION DEFAULT 0,
+                    payout          DOUBLE PRECISION DEFAULT 0,
+                    pnl             DOUBLE PRECISION DEFAULT 0,
+                    rebates         DOUBLE PRECISION DEFAULT 0,
+                    winner          TEXT DEFAULT '',
+                    is_paper        BOOLEAN DEFAULT TRUE,
+                    user_id         INTEGER DEFAULT 1,
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_mm_trades_created ON mm_trades(created_at);
+                CREATE INDEX IF NOT EXISTS idx_mm_trades_user ON mm_trades(user_id);
+            """)
             # === Whale Trades ===
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS whale_trades (
@@ -3912,6 +3935,62 @@ class Database:
                 "SELECT * FROM mm_orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2", user_id, limit
             )
             return [_serialize_row(r) for r in rows]
+
+    # ── Market Maker Bilateral ─────────────────────────────────────
+    async def record_mm_trade(self, data: dict, user_id: int = 1):
+        """Registrar un trade bilateral del market maker."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO mm_trades (condition_id, event_slug, coin,
+                    up_shares, down_shares, up_cost, down_cost,
+                    total_cost, payout, pnl, rebates, winner, is_paper, user_id)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            """,
+                data.get("condition_id", ""),
+                data.get("event_slug", ""),
+                data.get("coin", ""),
+                data.get("up_shares", 0),
+                data.get("down_shares", 0),
+                data.get("up_cost", 0),
+                data.get("down_cost", 0),
+                data.get("total_cost", 0),
+                data.get("payout", 0),
+                data.get("pnl", 0),
+                data.get("rebates", 0),
+                data.get("winner", ""),
+                data.get("is_paper", True),
+                user_id,
+            )
+
+    async def get_mm_trades(self, hours: int = 48, user_id: int = 1) -> list:
+        """Obtener trades bilaterales del market maker."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT * FROM mm_trades
+                WHERE user_id = $1 AND created_at > NOW() - $2::interval
+                ORDER BY created_at DESC
+            """, user_id, f"{hours} hours")
+            return [_serialize_row(r) for r in rows]
+
+    async def get_mm_stats(self, user_id: int = 1) -> dict:
+        """Estadísticas agregadas del market maker."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT
+                    COUNT(*) as total_trades,
+                    COALESCE(SUM(pnl), 0) as total_pnl,
+                    COALESCE(SUM(rebates), 0) as total_rebates,
+                    COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), 0) as wins,
+                    COALESCE(SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END), 0) as losses,
+                    COALESCE(SUM(total_cost), 0) as total_invested,
+                    COALESCE(SUM(payout), 0) as total_payout,
+                    COALESCE(AVG(pnl), 0) as avg_pnl,
+                    COALESCE(SUM(CASE WHEN created_at > NOW() - interval '24 hours' THEN pnl ELSE 0 END), 0) as daily_pnl
+                FROM mm_trades WHERE user_id = $1
+            """, user_id)
+            if not row:
+                return {"total_trades": 0, "total_pnl": 0, "wins": 0, "losses": 0}
+            return _serialize_row(row)
 
     # ── v8.0: Push Notifications ──────────────────────────────────
     async def create_notification(self, user_id: int, ntype: str, title: str, body: str = ""):

@@ -1604,6 +1604,101 @@ async def reset_paper_trading(request: Request):
     return {"status": "ok"}
 
 
+# ── Market Maker Bilateral ──────────────────────────────────────
+
+@router.get("/api/market-maker/status")
+async def get_market_maker_status(request: Request):
+    """Estado completo del market maker bilateral."""
+    bot = getattr(request.app.state, 'bot', None)
+    mm = getattr(bot, 'crypto_market_maker', None)
+    if not mm:
+        return {"enabled": False, "status": {}, "open_orders": [], "inventory": []}
+    return {
+        "status": mm.get_status(),
+        "open_orders": mm.get_open_orders(),
+        "inventory": mm.get_inventory(),
+        "resolved": mm.get_resolved(50),
+    }
+
+
+@router.get("/api/market-maker/config")
+async def get_market_maker_config(request: Request):
+    """Obtener config del market maker desde DB."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    raw = await db.get_config_bulk([
+        "mm_enabled", "mm_bet_size", "mm_spread_target",
+        "mm_max_inventory", "mm_max_markets", "mm_requote_sec",
+        "mm_requote_threshold", "mm_fill_timeout_sec",
+        "mm_bias_enabled", "mm_bias_strength",
+        "mm_paper_mode", "mm_max_daily_loss",
+        "mm_min_time_remaining_sec", "mm_rebate_rate",
+    ], user_id=uid)
+    return {"config": raw}
+
+
+@router.post("/api/market-maker/config")
+async def save_market_maker_config(request: Request):
+    """Guardar config del market maker y recargar."""
+    bot = getattr(request.app.state, 'bot', None)
+    mm = getattr(bot, 'crypto_market_maker', None)
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    body = await request.json()
+
+    # Mapear keys del body a keys de DB
+    key_map = {
+        "enabled": "mm_enabled",
+        "bet_size": "mm_bet_size",
+        "spread_target": "mm_spread_target",
+        "max_inventory": "mm_max_inventory",
+        "max_markets": "mm_max_markets",
+        "requote_sec": "mm_requote_sec",
+        "requote_threshold": "mm_requote_threshold",
+        "fill_timeout_sec": "mm_fill_timeout_sec",
+        "bias_enabled": "mm_bias_enabled",
+        "bias_strength": "mm_bias_strength",
+        "paper_mode": "mm_paper_mode",
+        "max_daily_loss": "mm_max_daily_loss",
+        "min_time_remaining_sec": "mm_min_time_remaining_sec",
+        "rebate_rate": "mm_rebate_rate",
+    }
+    data = {}
+    for body_key, db_key in key_map.items():
+        if body_key in body:
+            val = body[body_key]
+            if isinstance(val, bool):
+                data[db_key] = "true" if val else "false"
+            else:
+                data[db_key] = str(val)
+    if data:
+        await db.set_config_bulk(data, user_id=uid)
+    if mm:
+        await mm.reload_config()
+    return {"status": "ok"}
+
+
+@router.get("/api/market-maker/trades")
+async def get_market_maker_trades(request: Request):
+    """Historial de trades bilaterales del market maker."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    trades = await db.get_mm_trades(hours=48, user_id=uid)
+    stats = await db.get_mm_stats(user_id=uid)
+    return {"trades": trades, "stats": stats}
+
+
+@router.post("/api/market-maker/reset")
+async def reset_market_maker(request: Request):
+    """Resetear estado del market maker."""
+    bot = getattr(request.app.state, 'bot', None)
+    mm = getattr(bot, 'crypto_market_maker', None)
+    if not mm:
+        return {"status": "error", "error": "Market maker no disponible"}
+    mm.reset()
+    return {"status": "ok"}
+
+
 @router.post("/api/crypto-arb/generate-keys")
 async def generate_api_keys(request: Request):
     """Generar API Key, Secret y Passphrase a partir de la Private Key.
