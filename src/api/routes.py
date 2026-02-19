@@ -2978,11 +2978,19 @@ async def weather_arb_trades(request: Request, hours: int = 168, limit: int = 20
 
 @router.get("/api/weather-arb/paper-trades")
 async def weather_arb_paper_trades(request: Request, limit: int = 200):
-    """Paper trades del weather arb."""
+    """Paper trades del weather arb con PnL en tiempo real."""
     bot = request.app.state.bot
     if bot and getattr(bot, "weather_paper", None):
-        return {"trades": bot.weather_paper.get_trades(limit)}
-    return {"trades": []}
+        # Actualizar precios en vivo antes de devolver
+        try:
+            await bot.weather_paper.update_live_prices()
+        except Exception:
+            pass
+        return {
+            "trades": bot.weather_paper.get_trades(limit),
+            "stats": bot.weather_paper.get_stats(),
+        }
+    return {"trades": [], "stats": {}}
 
 
 @router.get("/api/weather-arb/pnl-history")

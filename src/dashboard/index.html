@@ -2922,14 +2922,42 @@
                 </div>
                 <!-- Sub-tab: Paper Trades -->
                 <div id="wa-tab-paper" class="hidden">
+                    <!-- Stats Paper Trading -->
+                    <div id="wa-paper-stats" class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Trades</div>
+                            <div id="wa-paper-total" class="text-sm font-bold text-white">0</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Pendientes</div>
+                            <div id="wa-paper-pending" class="text-sm font-bold text-sky-400">0</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Win Rate</div>
+                            <div id="wa-paper-wr" class="text-sm font-bold text-white">—</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">PnL Realizado</div>
+                            <div id="wa-paper-pnl" class="text-sm font-bold text-gray-400">$0.00</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">PnL No Realizado</div>
+                            <div id="wa-paper-upnl" class="text-sm font-bold text-gray-400">$0.00</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Edge Promedio</div>
+                            <div id="wa-paper-edge" class="text-sm font-bold text-yellow-400">—</div>
+                        </div>
+                    </div>
                     <div class="overflow-x-auto"><table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
                             <th class="text-left p-2">Ciudad</th><th class="text-left p-2">Fecha</th>
                             <th class="text-left p-2">Rango</th><th class="text-center p-2">Ensemble</th>
-                            <th class="text-center p-2">Poly Odds</th><th class="text-center p-2">Edge %</th>
+                            <th class="text-center p-2">Entrada</th><th class="text-center p-2">Actual</th>
+                            <th class="text-center p-2">Edge %</th>
                             <th class="text-right p-2">PnL Sim</th><th class="text-center p-2">Estado</th>
                         </tr></thead>
-                        <tbody id="wa-paper-body"><tr><td colspan="8" class="text-center text-gray-600 p-6">Sin paper trades aún</td></tr></tbody>
+                        <tbody id="wa-paper-body"><tr><td colspan="9" class="text-center text-gray-600 p-6">Sin paper trades aún</td></tr></tbody>
                     </table></div>
                 </div>
                 <!-- Sub-tab: Config -->
@@ -6701,24 +6729,47 @@ async function loadWeatherArb(){
                 </tr>`;
             }).join('');
         }
-        // Paper trades
+        // Paper trades + stats
         const pTbody=document.getElementById('wa-paper-body');
         const papers=paperR?.trades||[];
+        const pStats=paperR?.stats||{};
+        // Actualizar stats panel
+        document.getElementById('wa-paper-total').textContent=pStats.total_trades||0;
+        document.getElementById('wa-paper-pending').textContent=pStats.pending||0;
+        const pWr=pStats.win_rate;
+        document.getElementById('wa-paper-wr').textContent=pWr!=null&&(pStats.wins||0)+( pStats.losses||0)>0?pWr.toFixed(1)+'%':'—';
+        const rPnl=pStats.total_pnl||0;
+        const rPnlEl=document.getElementById('wa-paper-pnl');
+        rPnlEl.textContent='$'+rPnl.toFixed(2);rPnlEl.className='text-sm font-bold '+(rPnl>0?'text-green-400':rPnl<0?'text-red-400':'text-gray-400');
+        const uPnl=pStats.unrealized_pnl||0;
+        const uPnlEl=document.getElementById('wa-paper-upnl');
+        uPnlEl.textContent='$'+uPnl.toFixed(2);uPnlEl.className='text-sm font-bold '+(uPnl>0?'text-green-400':uPnl<0?'text-red-400':'text-gray-400');
+        document.getElementById('wa-paper-edge').textContent=(pStats.avg_edge||0).toFixed(1)+'%';
         if(papers.length===0){
-            pTbody.innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-6">Sin paper trades. Se registran automáticamente cuando hay señales.</td></tr>';
+            pTbody.innerHTML='<tr><td colspan="9" class="text-center text-gray-600 p-6">Sin paper trades. Se registran automáticamente cuando hay señales.</td></tr>';
         }else{
             pTbody.innerHTML=papers.map(p=>{
-                const pnl=p.pnl||0;
-                const pnlColor=pnl>0?'text-green-400':pnl<0?'text-red-400':'text-gray-400';
-                const status=p.resolved?(p.result==='win'?'<span class="text-green-400">WIN</span>':'<span class="text-red-400">LOSS</span>'):'<span class="text-sky-400">Pendiente</span>';
+                const pnl=p.resolved?p.pnl:p.unrealized_pnl;
+                const hasPnl=pnl!=null;
+                const pnlColor=hasPnl?(pnl>0?'text-green-400':pnl<0?'text-red-400':'text-gray-400'):'text-gray-600';
+                const pnlText=hasPnl?'$'+pnl.toFixed(2):'—';
+                let status;
+                if(p.resolved){
+                    status=p.result==='win'?'<span class="text-green-400 font-bold">WIN</span>':'<span class="text-red-400 font-bold">LOSS</span>';
+                }else{
+                    status='<span class="text-sky-400">Pendiente</span>';
+                }
+                const curOdds=p.current_odds!=null?p.current_odds.toFixed(2):'—';
+                const curColor=p.current_odds!=null?(p.current_odds>p.entry_odds?'text-green-400':p.current_odds<p.entry_odds?'text-red-400':'text-gray-400'):'text-gray-600';
                 return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
                     <td class="p-2 text-white">${p.city_name||p.city||''}</td>
                     <td class="p-2">${p.date||''}</td>
                     <td class="p-2 font-mono">${p.range_label||''}</td>
                     <td class="p-2 text-center font-mono text-sky-400">${((p.ensemble_prob||0)*100).toFixed(1)}%</td>
-                    <td class="p-2 text-center font-mono">${(p.entry_odds||p.poly_odds||0).toFixed(2)}</td>
+                    <td class="p-2 text-center font-mono">${(p.entry_odds||0).toFixed(2)}</td>
+                    <td class="p-2 text-center font-mono ${curColor}">${curOdds}</td>
                     <td class="p-2 text-center font-mono">${(p.edge_pct||0).toFixed(1)}%</td>
-                    <td class="p-2 text-right font-mono ${pnlColor}">${pnl?'$'+pnl.toFixed(2):'—'}</td>
+                    <td class="p-2 text-right font-mono ${pnlColor}">${pnlText}</td>
                     <td class="p-2 text-center">${status}</td>
                 </tr>`;
             }).join('');

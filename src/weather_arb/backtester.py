@@ -45,6 +45,9 @@ class PaperTrade:
     pnl: float = 0.0
     resolution_source: str = ""
     actual_temp: Optional[float] = None  # Temperatura real registrada
+    current_odds: Optional[float] = None  # Odds actuales en vivo
+    unrealized_pnl: Optional[float] = None  # PnL no realizado
+    last_price_update: Optional[float] = None  # Timestamp última actualización
 
     def to_dict(self) -> dict:
         return {
@@ -63,8 +66,10 @@ class PaperTrade:
             "created_at": self.created_at.isoformat() if isinstance(self.created_at, datetime) else str(self.created_at),
             "resolved": self.resolved,
             "result": self.result,
-            "pnl": round(self.pnl, 2),
+            "pnl": round(self.pnl, 2) if self.resolved else None,
             "actual_temp": self.actual_temp,
+            "current_odds": round(self.current_odds, 4) if self.current_odds is not None else None,
+            "unrealized_pnl": round(self.unrealized_pnl, 2) if self.unrealized_pnl is not None else None,
         }
 
 
@@ -83,6 +88,7 @@ class PaperTradeStats:
     roi_pct: float = 0.0
     best_trade: float = 0.0
     worst_trade: float = 0.0
+    unrealized_pnl: float = 0.0
     by_city: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -92,6 +98,7 @@ class PaperTradeStats:
             "losses": self.losses,
             "pending": self.pending,
             "total_pnl": round(self.total_pnl, 2),
+            "unrealized_pnl": round(self.unrealized_pnl, 2),
             "win_rate": round(self.win_rate, 1),
             "avg_edge": round(self.avg_edge, 1),
             "avg_confidence": round(self.avg_confidence, 1),
@@ -221,6 +228,44 @@ class WeatherPaperTrader:
         except Exception as e:
             print(f"[WeatherPaper] Error resolviendo: {e}", flush=True)
 
+    async def update_live_prices(self):
+        """Actualizar odds en vivo y PnL no realizado para trades pendientes."""
+        pending = [t for t in self._trades if not t.resolved]
+        if not pending:
+            return
+        now = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                for trade in pending:
+                    # Throttle: no actualizar más de 1 vez por minuto
+                    if trade.last_price_update and (now - trade.last_price_update) < 60:
+                        continue
+                    try:
+                        resp = await client.get(f"{CLOB_API}/markets/{trade.condition_id}")
+                        if resp.status_code != 200:
+                            continue
+                        data = resp.json()
+                        tokens = data.get("tokens", [])
+                        # Buscar token Yes (compramos Yes)
+                        for tok in tokens:
+                            if tok.get("outcome", "").lower() == "yes":
+                                try:
+                                    cur_price = float(tok.get("price", 0) or 0)
+                                    trade.current_odds = cur_price
+                                    # PnL = valor_actual - inversión
+                                    # shares = bet_size / entry_odds
+                                    if trade.entry_odds > 0:
+                                        shares = trade.bet_size / trade.entry_odds
+                                        trade.unrealized_pnl = round((shares * cur_price) - trade.bet_size, 2)
+                                    trade.last_price_update = now
+                                except (ValueError, TypeError):
+                                    pass
+                                break
+                    except Exception:
+                        continue
+        except Exception as e:
+            print(f"[WeatherPaper] Error actualizando precios: {e}", flush=True)
+
     def get_trades(self, limit: int = 200) -> list[dict]:
         """Obtener trades como dicts para API."""
         sorted_trades = sorted(self._trades, key=lambda t: t.created_at, reverse=True)
@@ -245,6 +290,10 @@ class WeatherPaperTrader:
 
         if stats.total_invested > 0:
             stats.roi_pct = (stats.total_pnl / stats.total_invested) * 100
+
+        # PnL no realizado de trades pendientes
+        pending_trades = [t for t in self._trades if not t.resolved]
+        stats.unrealized_pnl = sum(t.unrealized_pnl or 0 for t in pending_trades)
 
         if self._trades:
             stats.avg_edge = sum(t.edge_pct for t in self._trades) / len(self._trades)
