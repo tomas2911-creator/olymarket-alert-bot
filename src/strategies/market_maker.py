@@ -307,6 +307,21 @@ class CryptoMarketMaker:
         """Colocar pares de órdenes bilaterales en mercados elegibles."""
         now = time.time()
         cfg = self._config
+
+        # Limpiar quoted_markets donde ambas órdenes ya están filled/resolved
+        stale_slugs = []
+        for slug, qm in list(self._quoted_markets.items()):
+            up_oid = qm.get("up_order_id")
+            dn_oid = qm.get("down_order_id")
+            up_o = self._open_orders.get(up_oid)
+            dn_o = self._open_orders.get(dn_oid)
+            up_done = not up_o or up_o.status in ("filled", "resolved", "cancelled")
+            dn_done = not dn_o or dn_o.status in ("filled", "resolved", "cancelled")
+            if up_done and dn_done:
+                stale_slugs.append(slug)
+        for slug in stale_slugs:
+            self._quoted_markets.pop(slug, None)
+
         active_quotes = len(self._quoted_markets)
 
         for market in self._markets_cache:
@@ -314,6 +329,10 @@ class CryptoMarketMaker:
                 break
 
             slug = market["event_slug"]
+
+            # Skip si ya hay inventario pendiente de resolución para este slug
+            if slug in self._inventory:
+                continue
 
             # Ya tenemos quote activo para este mercado?
             if slug in self._quoted_markets:
@@ -414,6 +433,8 @@ class CryptoMarketMaker:
             "down_order_id": down_order.id,
             "last_quote_ts": now,
             "condition_id": cid,
+            "end_date": market.get("end_date"),
+            "interval": market.get("interval", 900),
         }
 
         spread_captured = round(1.0 - bid_up - bid_down, 4)
@@ -656,8 +677,17 @@ class CryptoMarketMaker:
                 "up_cost": 0.0, "down_cost": 0.0,
                 "condition_id": order.condition_id,
                 "coin": order.coin,
+                "filled_ts": time.time(),
             }
         inv = self._inventory[slug]
+        if "filled_ts" not in inv:
+            inv["filled_ts"] = time.time()
+        # Copy end_date from quoted_markets if available
+        qm = self._quoted_markets.get(slug, {})
+        if "end_date" not in inv and qm.get("end_date"):
+            inv["end_date"] = qm["end_date"]
+        if "interval" not in inv and qm.get("interval"):
+            inv["interval"] = qm["interval"]
         if order.outcome.lower() == "up":
             inv["up_shares"] += order.shares
             inv["up_cost"] += order.cost_usdc
@@ -668,8 +698,15 @@ class CryptoMarketMaker:
     # ── Resolución de mercados ─────────────────────────────────────
 
     async def _check_resolved(self):
-        """Verificar mercados cerrados y calcular PnL."""
+        """Verificar mercados cerrados y calcular PnL.
+        
+        Para paper mode: si el end_date del mercado ya pasó, resolver usando
+        precios del CLOB como referencia. Si no hay datos, usar spread capture
+        (ambos lados = ganancia garantizada del spread).
+        """
         to_remove_inv = []
+        now_ts = time.time()
+        now_dt = datetime.now(timezone.utc)
 
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -678,77 +715,78 @@ class CryptoMarketMaker:
                     if not cid:
                         continue
 
+                    # Skip inventario sin ambos lados (aún llenando)
+                    if inv["up_shares"] <= 0 or inv["down_shares"] <= 0:
+                        continue
+
+                    winner = None
+                    clob_data = None
+
                     try:
                         resp = await client.get(f"{CLOB_HOST}/markets/{cid}")
-                        if resp.status_code != 200:
-                            continue
-                        data = resp.json()
+                        if resp.status_code == 200:
+                            clob_data = resp.json()
 
-                        if not data.get("closed"):
-                            continue
-
-                        # Determinar ganador
-                        winner = self._get_winner(data)
-                        if not winner:
-                            continue
-
-                        # Calcular PnL
-                        total_cost = inv["up_cost"] + inv["down_cost"]
-                        if winner == "up":
-                            payout = inv["up_shares"] * 1.0  # Cada share Up paga $1
-                        else:
-                            payout = inv["down_shares"] * 1.0  # Cada share Down paga $1
-
-                        pnl = round(payout - total_cost, 2)
-                        rebates = 0.0
-
-                        # Calcular rebates de órdenes llenadas
-                        for oid, order in list(self._open_orders.items()):
-                            if order.event_slug == slug and order.status == "filled":
-                                rebates += order.rebate_est
-                                order.status = "resolved"
-                                order.resolved_ts = time.time()
-                                order.resolution = winner.capitalize()
-                                won = order.outcome.lower() == winner
-                                order.result = "win" if won else "loss"
-                                order.pnl = round(order.shares * 1.0 - order.cost_usdc, 2) if won else round(-order.cost_usdc, 2)
-                                self._resolved.append(order)
-
-                        total_pnl = round(pnl + rebates, 2)
-                        self._stats["total_pnl"] += total_pnl
-                        self._stats["daily_pnl"] += total_pnl
-                        if inv["up_shares"] > 0 and inv["down_shares"] > 0:
-                            self._stats["pairs_completed"] += 1
-
-                        emoji = "✅" if total_pnl >= 0 else "❌"
-                        print(f"[MarketMaker] {emoji} RESOLVED {inv['coin']}: winner={winner.upper()} "
-                              f"payout=${payout:.2f} cost=${total_cost:.2f} PnL=${total_pnl:+.2f} "
-                              f"(rebates=${rebates:.4f})", flush=True)
-
-                        # Registrar en DB
-                        try:
-                            await self.db.record_mm_trade({
-                                "condition_id": cid,
-                                "event_slug": slug,
-                                "coin": inv["coin"],
-                                "up_shares": inv["up_shares"],
-                                "down_shares": inv["down_shares"],
-                                "up_cost": inv["up_cost"],
-                                "down_cost": inv["down_cost"],
-                                "total_cost": total_cost,
-                                "payout": payout,
-                                "pnl": total_pnl,
-                                "rebates": rebates,
-                                "winner": winner,
-                                "is_paper": self._config["paper_mode"],
-                            })
-                        except Exception as e:
-                            print(f"[MarketMaker] Error guardando trade en DB: {e}", flush=True)
-
-                        to_remove_inv.append(slug)
+                            # Método 1: CLOB dice que cerró
+                            if clob_data.get("closed") or clob_data.get("resolved"):
+                                winner = self._get_winner(clob_data)
+                                if winner:
+                                    print(f"[MarketMaker] 🔍 CLOB closed → winner={winner} for {inv['coin']}", flush=True)
 
                     except Exception as e:
-                        print(f"[MarketMaker] Error resolviendo {slug}: {e}", flush=True)
+                        print(f"[MarketMaker] Error CLOB check {slug}: {e}", flush=True)
+
+                    # Método 2 (paper mode): resolución por tiempo
+                    if not winner and self._config.get("paper_mode"):
+                        end_date = inv.get("end_date")
+                        interval = inv.get("interval", 900)
+                        filled_ts = inv.get("filled_ts", 0)
+
+                        market_expired = False
+                        if end_date:
+                            if end_date.tzinfo is None:
+                                end_date = end_date.replace(tzinfo=timezone.utc)
+                            elapsed = (now_dt - end_date).total_seconds()
+                            market_expired = elapsed > 30  # 30s grace period
+                        elif filled_ts > 0:
+                            # Fallback: si no tenemos end_date, usar intervalo desde fill
+                            age_since_fill = now_ts - filled_ts
+                            market_expired = age_since_fill > interval + 60
+
+                        if market_expired:
+                            # Intentar determinar ganador desde precios CLOB
+                            if clob_data:
+                                tokens = clob_data.get("tokens", [])
+                                up_price = 0.0
+                                down_price = 0.0
+                                for tok in tokens:
+                                    outcome = tok.get("outcome", "").lower()
+                                    price = float(tok.get("price", 0))
+                                    if outcome == "up":
+                                        up_price = price
+                                    elif outcome == "down":
+                                        down_price = price
+
+                                if up_price > 0.65:
+                                    winner = "up"
+                                elif down_price > 0.65:
+                                    winner = "down"
+                                elif up_price > down_price + 0.05:
+                                    winner = "up"
+                                elif down_price > up_price + 0.05:
+                                    winner = "down"
+
+                            # Último fallback: random 50/50 (bilateral = spread ganado de todos modos)
+                            if not winner:
+                                winner = "up" if random.random() > 0.5 else "down"
+                                print(f"[MarketMaker] ⚠️ PAPER fallback random for {inv['coin']} "
+                                      f"(market expired, no CLOB winner)", flush=True)
+
+                    if not winner:
+                        continue
+
+                    # ── Resolver posición ──
+                    await self._resolve_inventory(slug, inv, winner, to_remove_inv)
 
         except Exception as e:
             print(f"[MarketMaker] Error en check_resolved: {e}", flush=True)
@@ -766,6 +804,63 @@ class CryptoMarketMaker:
         # Mantener máx 500 resueltas en historial
         if len(self._resolved) > 500:
             self._resolved = self._resolved[-500:]
+
+    async def _resolve_inventory(self, slug: str, inv: dict, winner: str, to_remove_inv: list):
+        """Resolver una posición de inventario con el ganador determinado."""
+        cid = inv.get("condition_id", "")
+        total_cost = inv["up_cost"] + inv["down_cost"]
+        if winner == "up":
+            payout = inv["up_shares"] * 1.0
+        else:
+            payout = inv["down_shares"] * 1.0
+
+        pnl = round(payout - total_cost, 2)
+        rebates = 0.0
+
+        # Resolver órdenes llenadas
+        for oid, order in list(self._open_orders.items()):
+            if order.event_slug == slug and order.status == "filled":
+                rebates += order.rebate_est
+                order.status = "resolved"
+                order.resolved_ts = time.time()
+                order.resolution = winner.capitalize()
+                won = order.outcome.lower() == winner
+                order.result = "win" if won else "loss"
+                order.pnl = round(order.shares * 1.0 - order.cost_usdc, 2) if won else round(-order.cost_usdc, 2)
+                self._resolved.append(order)
+
+        total_pnl = round(pnl + rebates, 2)
+        self._stats["total_pnl"] += total_pnl
+        self._stats["daily_pnl"] += total_pnl
+        if inv["up_shares"] > 0 and inv["down_shares"] > 0:
+            self._stats["pairs_completed"] += 1
+
+        emoji = "✅" if total_pnl >= 0 else "❌"
+        print(f"[MarketMaker] {emoji} RESOLVED {inv['coin']}: winner={winner.upper()} "
+              f"payout=${payout:.2f} cost=${total_cost:.2f} PnL=${total_pnl:+.2f} "
+              f"(rebates=${rebates:.4f})", flush=True)
+
+        # Registrar en DB
+        try:
+            await self.db.record_mm_trade({
+                "condition_id": cid,
+                "event_slug": slug,
+                "coin": inv["coin"],
+                "up_shares": inv["up_shares"],
+                "down_shares": inv["down_shares"],
+                "up_cost": inv["up_cost"],
+                "down_cost": inv["down_cost"],
+                "total_cost": total_cost,
+                "payout": payout,
+                "pnl": total_pnl,
+                "rebates": rebates,
+                "winner": winner,
+                "is_paper": self._config["paper_mode"],
+            })
+        except Exception as e:
+            print(f"[MarketMaker] Error guardando trade en DB: {e}", flush=True)
+
+        to_remove_inv.append(slug)
 
     def _get_winner(self, market_data: dict) -> Optional[str]:
         """Determinar ganador de un mercado cerrado."""
