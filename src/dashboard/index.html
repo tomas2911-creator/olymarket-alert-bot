@@ -5339,9 +5339,10 @@ async function resetAutotradeData(){
         if(data.status==='ok'){
             st.textContent=`✅ ${data.message}`;st.className='text-xs text-green-400 self-center';
             document.getElementById('at-trades-today').textContent='0';
-            document.getElementById('at-open-pos').textContent='0';
-            document.getElementById('at-pnl').textContent='$0.00';
-            document.getElementById('at-winrate').textContent='0%';
+            document.getElementById('at-open-positions').textContent='0';
+            document.getElementById('at-pnl-today').textContent='$0.00';
+            document.getElementById('at-total-pnl').textContent='$0.00';
+            document.getElementById('at-win-rate').textContent='-';
             const tbody=document.getElementById('at-trades-body');
             if(tbody)tbody.innerHTML='';
         }else{
