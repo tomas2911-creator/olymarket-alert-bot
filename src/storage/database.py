@@ -499,6 +499,31 @@ class Database:
                 ALTER TABLE whale_trades ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT NULL;
             """)
 
+            # === Wallet Scan Cache ===
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS wallet_scan_cache (
+                    address         TEXT PRIMARY KEY,
+                    source          TEXT DEFAULT '',
+                    name            TEXT DEFAULT '',
+                    profile_image   TEXT DEFAULT '',
+                    portfolio_value DOUBLE PRECISION DEFAULT 0,
+                    estimated_initial DOUBLE PRECISION DEFAULT 0,
+                    total_pnl       DOUBLE PRECISION DEFAULT 0,
+                    realized_pnl    DOUBLE PRECISION DEFAULT 0,
+                    roi_pct         DOUBLE PRECISION DEFAULT 0,
+                    win_rate        DOUBLE PRECISION DEFAULT 0,
+                    wins            INTEGER DEFAULT 0,
+                    losses          INTEGER DEFAULT 0,
+                    total_trades    INTEGER DEFAULT 0,
+                    days_active     INTEGER DEFAULT 0,
+                    open_positions  INTEGER DEFAULT 0,
+                    score           INTEGER DEFAULT 0,
+                    scanned_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_wscan_source ON wallet_scan_cache(source);
+                CREATE INDEX IF NOT EXISTS idx_wscan_scanned ON wallet_scan_cache(scanned_at);
+            """)
+
             # === v11: News, Sentiment, Insider, Copy Trading, AI, Spikes ===
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS news_items (
@@ -3991,6 +4016,113 @@ class Database:
             if not row:
                 return {"total_trades": 0, "total_pnl": 0, "wins": 0, "losses": 0}
             return _serialize_row(row)
+
+    # ── Batch Wallet Scan ────────────────────────────────────────
+    async def save_scan_result(self, data: dict):
+        """Guardar o actualizar resultado de scan de una wallet."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO wallet_scan_cache (address, source, name, profile_image,
+                    portfolio_value, estimated_initial, total_pnl, realized_pnl,
+                    roi_pct, win_rate, wins, losses, total_trades,
+                    days_active, open_positions, score, scanned_at)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
+                ON CONFLICT (address) DO UPDATE SET
+                    source = EXCLUDED.source,
+                    name = COALESCE(NULLIF(EXCLUDED.name,''), wallet_scan_cache.name),
+                    profile_image = COALESCE(NULLIF(EXCLUDED.profile_image,''), wallet_scan_cache.profile_image),
+                    portfolio_value = EXCLUDED.portfolio_value,
+                    estimated_initial = EXCLUDED.estimated_initial,
+                    total_pnl = EXCLUDED.total_pnl,
+                    realized_pnl = EXCLUDED.realized_pnl,
+                    roi_pct = EXCLUDED.roi_pct,
+                    win_rate = EXCLUDED.win_rate,
+                    wins = EXCLUDED.wins,
+                    losses = EXCLUDED.losses,
+                    total_trades = EXCLUDED.total_trades,
+                    days_active = EXCLUDED.days_active,
+                    open_positions = EXCLUDED.open_positions,
+                    score = EXCLUDED.score,
+                    scanned_at = NOW()
+            """,
+                data.get("address", ""),
+                data.get("source", ""),
+                data.get("name", ""),
+                data.get("profile_image", ""),
+                data.get("portfolio_value", 0),
+                data.get("estimated_initial", 0),
+                data.get("total_pnl", 0),
+                data.get("realized_pnl", 0),
+                data.get("roi_pct", 0),
+                data.get("win_rate", 0),
+                data.get("wins", 0),
+                data.get("losses", 0),
+                data.get("total_trades", 0),
+                data.get("days_active", 0),
+                data.get("open_positions", 0),
+                data.get("score", 0),
+            )
+
+    async def get_scan_results(self, source: str = "", min_trades: int = 0,
+                                sort_by: str = "total_pnl") -> list[dict]:
+        """Obtener resultados cacheados de batch scan."""
+        async with self._pool.acquire() as conn:
+            where = "WHERE 1=1"
+            params = []
+            idx = 1
+            if source:
+                where += f" AND source = ${idx}"
+                params.append(source)
+                idx += 1
+            if min_trades > 0:
+                where += f" AND total_trades >= ${idx}"
+                params.append(min_trades)
+                idx += 1
+            valid_sorts = {"total_pnl", "win_rate", "roi_pct", "total_trades", "portfolio_value", "score"}
+            order = sort_by if sort_by in valid_sorts else "total_pnl"
+            rows = await conn.fetch(
+                f"SELECT * FROM wallet_scan_cache {where} ORDER BY {order} DESC LIMIT 200",
+                *params
+            )
+            return [_serialize_row(r) for r in rows]
+
+    async def get_addresses_for_batch_scan(self, source: str, user_id: int = 1) -> list[dict]:
+        """Obtener direcciones únicas de wallets según la fuente."""
+        async with self._pool.acquire() as conn:
+            if source == "wallets":
+                rows = await conn.fetch("""
+                    SELECT DISTINCT a.wallet_address as address,
+                           COALESCE(w.name, w.pseudonym, '') as name,
+                           COALESCE(w.profile_image, '') as profile_image
+                    FROM alerts a
+                    LEFT JOIN wallets w ON a.wallet_address = w.address
+                    WHERE a.side = 'BUY' AND a.user_id = $1
+                    ORDER BY address
+                """, user_id)
+            elif source == "top_wallets":
+                rows = await conn.fetch("""
+                    SELECT DISTINCT a.wallet_address as address,
+                           COALESCE(w.name, w.pseudonym, '') as name,
+                           COALESCE(w.profile_image, '') as profile_image
+                    FROM alerts a
+                    LEFT JOIN wallets w ON a.wallet_address = w.address
+                    WHERE a.side = 'BUY' AND a.user_id = $1
+                      AND w.is_watchlisted = TRUE
+                    ORDER BY address
+                """, user_id)
+            elif source == "whales":
+                rows = await conn.fetch("""
+                    SELECT DISTINCT wt.wallet_address as address,
+                           COALESCE(w.name, w.pseudonym, wt.wallet_name, '') as name,
+                           COALESCE(w.profile_image, wt.wallet_image, '') as profile_image
+                    FROM whale_trades wt
+                    LEFT JOIN wallets w ON wt.wallet_address = w.address
+                    WHERE wt.size >= 10000
+                    ORDER BY address
+                """)
+            else:
+                return []
+            return [dict(r) for r in rows]
 
     # ── v8.0: Push Notifications ──────────────────────────────────
     async def create_notification(self, user_id: int, ntype: str, title: str, body: str = ""):

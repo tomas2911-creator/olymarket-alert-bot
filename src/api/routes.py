@@ -556,6 +556,278 @@ async def wallet_scan(request: Request, address: str):
         }
 
 
+# ── Batch Wallet Scan ─────────────────────────────────────────────────
+
+# Estado del batch scan en memoria (single-user bot)
+_batch_scan_state = {
+    "running": False,
+    "source": "",
+    "total": 0,
+    "scanned": 0,
+    "current": "",
+    "errors": 0,
+}
+
+
+@router.post("/api/wallets/batch-scan")
+async def start_batch_scan(request: Request):
+    """Iniciar batch scan de wallets desde una fuente (wallets, top_wallets, whales)."""
+    global _batch_scan_state
+    if _batch_scan_state["running"]:
+        return {"status": "already_running", "source": _batch_scan_state["source"],
+                "scanned": _batch_scan_state["scanned"], "total": _batch_scan_state["total"]}
+
+    body = await request.json()
+    source = body.get("source", "wallets")
+    if source not in ("wallets", "top_wallets", "whales"):
+        return JSONResponse({"error": "Fuente inválida"}, status_code=400)
+
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    addresses = await db.get_addresses_for_batch_scan(source, user_id=uid)
+
+    if not addresses:
+        return {"status": "empty", "total": 0, "message": "No hay wallets para analizar en esta fuente"}
+
+    # Limitar a 80 wallets por batch
+    addresses = addresses[:80]
+
+    _batch_scan_state = {
+        "running": True, "source": source,
+        "total": len(addresses), "scanned": 0, "current": "", "errors": 0,
+    }
+
+    # Lanzar task en background
+    asyncio.create_task(_run_batch_scan(db, addresses, source))
+
+    return {"status": "started", "source": source, "total": len(addresses)}
+
+
+async def _run_batch_scan(db, addresses: list[dict], source: str):
+    """Escanear wallets en background, de a 2 en paralelo."""
+    global _batch_scan_state
+    sem = asyncio.Semaphore(2)  # Max 2 concurrentes
+
+    async def scan_one(wallet_info: dict):
+        addr = wallet_info["address"]
+        name = wallet_info.get("name", "")
+        profile_image = wallet_info.get("profile_image", "")
+        _batch_scan_state["current"] = addr[:10] + "..."
+
+        try:
+            async with sem:
+                result = await _scan_wallet_for_batch(addr)
+                if result:
+                    # Calcular score (1-5 estrellas)
+                    score = _calc_wallet_score(result)
+                    await db.save_scan_result({
+                        "address": addr,
+                        "source": source,
+                        "name": name,
+                        "profile_image": profile_image,
+                        "portfolio_value": result.get("portfolio_value", 0),
+                        "estimated_initial": result.get("estimated_initial_capital", 0),
+                        "total_pnl": result.get("total_pnl", 0),
+                        "realized_pnl": result.get("realized_pnl", 0),
+                        "roi_pct": result.get("roi_pct", 0),
+                        "win_rate": result.get("win_rate", 0),
+                        "wins": result.get("wins", 0),
+                        "losses": result.get("losses", 0),
+                        "total_trades": result.get("total_trades", 0),
+                        "days_active": result.get("days_active", 0),
+                        "open_positions": result.get("open_positions_count", 0),
+                        "score": score,
+                    })
+                else:
+                    _batch_scan_state["errors"] += 1
+        except Exception as e:
+            print(f"[BatchScan] Error escaneando {addr[:12]}: {e}", flush=True)
+            _batch_scan_state["errors"] += 1
+        finally:
+            _batch_scan_state["scanned"] += 1
+
+    # Escanear todas en paralelo (limitado por semáforo a 2)
+    tasks = [scan_one(w) for w in addresses]
+    await asyncio.gather(*tasks)
+
+    _batch_scan_state["running"] = False
+    _batch_scan_state["current"] = ""
+    print(f"[BatchScan] Completado: {_batch_scan_state['scanned']}/{_batch_scan_state['total']} "
+          f"wallets de {source} ({_batch_scan_state['errors']} errores)", flush=True)
+
+
+async def _scan_wallet_for_batch(addr: str) -> dict | None:
+    """Versión simplificada del scan para batch (menos requests)."""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            portfolio_value = 0
+            try:
+                r = await client.get(f"{_POLY_DATA_API}/value", params={"user": addr})
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, list) and data:
+                        portfolio_value = float(data[0].get("value", 0))
+                    elif isinstance(data, dict):
+                        portfolio_value = float(data.get("value", 0))
+            except Exception:
+                pass
+
+            # Posiciones para métricas
+            positions = []
+            try:
+                r = await client.get(f"{_POLY_DATA_API}/positions",
+                                     params={"user": addr, "sizeThreshold": 0.1, "limit": 200})
+                if r.status_code == 200:
+                    positions = r.json() if isinstance(r.json(), list) else []
+            except Exception:
+                pass
+
+            # Actividad — solo recientes para estimar total_trades
+            activity_recent = []
+            total_trades = 0
+            first_trade_date = None
+            try:
+                r = await client.get(f"{_POLY_DATA_API}/activity",
+                                     params={"user": addr, "limit": 20, "offset": 0})
+                if r.status_code == 200:
+                    activity_recent = r.json() if isinstance(r.json(), list) else []
+
+                # Estimar total_trades rápido (binaria simplificada)
+                for off in [2000, 500, 100]:
+                    try:
+                        r2 = await client.get(f"{_POLY_DATA_API}/activity",
+                                              params={"user": addr, "limit": 1, "offset": off})
+                        if r2.status_code == 200:
+                            d2 = r2.json()
+                            if isinstance(d2, list) and len(d2) > 0:
+                                total_trades = max(total_trades, off + 1)
+                    except Exception:
+                        break
+                if total_trades == 0:
+                    total_trades = len(activity_recent)
+
+                # Fecha primer trade desde el último de la lista
+                if activity_recent:
+                    last_item = activity_recent[-1]
+                    ts_field = last_item.get("timestamp") or last_item.get("created_at") or last_item.get("createdAt")
+                    if ts_field:
+                        try:
+                            if isinstance(ts_field, (int, float)):
+                                first_trade_date = datetime.fromtimestamp(ts_field, tz=timezone.utc)
+                            else:
+                                first_trade_date = datetime.fromisoformat(str(ts_field).replace("Z", "+00:00"))
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # Calcular métricas desde posiciones
+            total_cash_pnl = 0
+            total_initial_value = 0
+            wins = 0
+            losses = 0
+            open_count = 0
+
+            for p in positions:
+                try:
+                    size = float(p.get("size", 0))
+                    initial_val = float(p.get("initialValue", 0))
+                    cash_pnl = float(p.get("cashPnl", 0))
+                    total_cash_pnl += cash_pnl
+                    total_initial_value += initial_val
+                    if size > 0.01:
+                        open_count += 1
+                    if cash_pnl > 0.5:
+                        wins += 1
+                    elif cash_pnl < -0.5:
+                        losses += 1
+                except (ValueError, TypeError):
+                    continue
+
+            total_pnl = total_cash_pnl
+            estimated_initial = total_initial_value if total_initial_value > 0 else max(portfolio_value - total_pnl, 0)
+            roi_pct = round(total_pnl / max(estimated_initial, 1) * 100, 2) if estimated_initial > 0 else 0
+            total_resolved = wins + losses
+            win_rate = round(wins / max(total_resolved, 1) * 100, 1)
+
+            days_active = None
+            if first_trade_date:
+                try:
+                    days_active = (datetime.now(timezone.utc) - first_trade_date).days
+                except Exception:
+                    pass
+
+            return {
+                "address": addr,
+                "portfolio_value": round(portfolio_value, 2),
+                "estimated_initial_capital": round(estimated_initial, 2),
+                "total_pnl": round(total_pnl, 2),
+                "realized_pnl": round(total_cash_pnl, 2),
+                "roi_pct": roi_pct,
+                "win_rate": win_rate,
+                "wins": wins,
+                "losses": losses,
+                "total_trades": total_trades,
+                "days_active": days_active or 0,
+                "open_positions_count": open_count,
+            }
+    except Exception as e:
+        print(f"[BatchScan] Error scan {addr[:12]}: {e}", flush=True)
+        return None
+
+
+def _calc_wallet_score(result: dict) -> int:
+    """Calcular score 1-5 basado en win_rate, PnL, trades, ROI."""
+    score = 0
+    wr = result.get("win_rate", 0)
+    pnl = result.get("total_pnl", 0)
+    trades = result.get("total_trades", 0)
+    roi = result.get("roi_pct", 0)
+
+    # Win rate
+    if wr >= 70:
+        score += 2
+    elif wr >= 55:
+        score += 1
+
+    # PnL positivo
+    if pnl >= 10000:
+        score += 2
+    elif pnl >= 1000:
+        score += 1
+    elif pnl > 0:
+        score += 0.5
+
+    # Volumen de trades (experiencia)
+    if trades >= 100:
+        score += 1
+    elif trades >= 20:
+        score += 0.5
+
+    # ROI
+    if roi >= 30:
+        score += 1
+    elif roi >= 10:
+        score += 0.5
+
+    return max(1, min(5, round(score)))
+
+
+@router.get("/api/wallets/batch-scan/status")
+async def get_batch_scan_status(request: Request):
+    """Estado actual del batch scan."""
+    return _batch_scan_state
+
+
+@router.get("/api/wallets/batch-scan/results")
+async def get_batch_scan_results(request: Request, source: str = "",
+                                  min_trades: int = 0, sort_by: str = "total_pnl"):
+    """Resultados cacheados del batch scan."""
+    db = request.app.state.db
+    results = await db.get_scan_results(source=source, min_trades=min_trades, sort_by=sort_by)
+    return {"results": results, "total": len(results)}
+
+
 # ── v11: News Feed ────────────────────────────────────────────────────
 
 @router.get("/api/news/feed")

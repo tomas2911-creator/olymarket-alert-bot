@@ -2667,6 +2667,79 @@
                     <input type="text" id="wscan-address" placeholder="0x... dirección de wallet" class="flex-1 bg-gray-800/60 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50" onkeydown="if(event.key==='Enter')runWalletScan()">
                     <button onclick="runWalletScan()" id="wscan-btn" class="px-5 py-2 bg-violet-600/50 hover:bg-violet-600/70 text-violet-200 rounded-lg text-sm font-semibold transition">🔍 Analizar</button>
                 </div>
+                <!-- Batch Analysis -->
+                <div class="bg-gray-800/30 border border-violet-900/30 rounded-lg p-4 mb-4">
+                    <h4 class="text-xs font-semibold text-violet-400 uppercase tracking-wider mb-3">📊 Análisis Batch — Escanear múltiples wallets</h4>
+                    <div class="flex flex-wrap gap-2 mb-3">
+                        <button onclick="startBatchScan('wallets')" id="bscan-btn-wallets" class="px-4 py-2 bg-violet-600/40 hover:bg-violet-600/60 text-violet-200 rounded-lg text-xs font-semibold transition">📋 Wallets Detectadas</button>
+                        <button onclick="startBatchScan('top_wallets')" id="bscan-btn-tops" class="px-4 py-2 bg-emerald-600/40 hover:bg-emerald-600/60 text-emerald-200 rounded-lg text-xs font-semibold transition">⭐ Top Wallets</button>
+                        <button onclick="startBatchScan('whales')" id="bscan-btn-whales" class="px-4 py-2 bg-cyan-600/40 hover:bg-cyan-600/60 text-cyan-200 rounded-lg text-xs font-semibold transition">🐋 Whale Trades</button>
+                        <button onclick="loadBatchResults()" class="px-3 py-2 bg-gray-700/40 hover:bg-gray-700/60 text-gray-300 rounded-lg text-xs transition">🔄 Ver Resultados</button>
+                    </div>
+                    <!-- Progress -->
+                    <div id="bscan-progress" class="hidden mb-3">
+                        <div class="flex items-center justify-between text-xs text-gray-400 mb-1">
+                            <span id="bscan-progress-text">Analizando...</span>
+                            <span id="bscan-progress-count">0/0</span>
+                        </div>
+                        <div class="w-full bg-gray-700/50 rounded-full h-2">
+                            <div id="bscan-progress-bar" class="bg-violet-500 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <!-- Mini Resumen -->
+                    <div id="bscan-summary" class="hidden grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Analizadas</div><div class="text-sm font-bold text-violet-400" id="bscan-total">0</div></div>
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Prom. WR</div><div class="text-sm font-bold" id="bscan-avg-wr">0%</div></div>
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Mejor PnL</div><div class="text-sm font-bold text-green-400" id="bscan-best-pnl">$0</div></div>
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">PnL Promedio</div><div class="text-sm font-bold" id="bscan-avg-pnl">$0</div></div>
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Score 4-5⭐</div><div class="text-sm font-bold text-yellow-400" id="bscan-top-count">0</div></div>
+                    </div>
+                    <!-- Filtros -->
+                    <div id="bscan-filters" class="hidden flex flex-wrap gap-2 mb-3 items-center">
+                        <label class="text-[10px] text-gray-500">Origen:</label>
+                        <select id="bscan-filter-source" onchange="filterBatchResults()" class="bg-gray-800/70 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300">
+                            <option value="">Todas</option>
+                            <option value="wallets">Wallets</option>
+                            <option value="top_wallets">Top Wallets</option>
+                            <option value="whales">Whales</option>
+                        </select>
+                        <label class="text-[10px] text-gray-500">Min Trades:</label>
+                        <select id="bscan-filter-trades" onchange="filterBatchResults()" class="bg-gray-800/70 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300">
+                            <option value="0">Todos</option>
+                            <option value="5">5+</option>
+                            <option value="20">20+</option>
+                            <option value="50">50+</option>
+                            <option value="100">100+</option>
+                        </select>
+                        <label class="text-[10px] text-gray-500">Ordenar:</label>
+                        <select id="bscan-filter-sort" onchange="filterBatchResults()" class="bg-gray-800/70 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300">
+                            <option value="total_pnl">PnL Total</option>
+                            <option value="win_rate">Win Rate</option>
+                            <option value="roi_pct">ROI %</option>
+                            <option value="total_trades">Trades</option>
+                            <option value="portfolio_value">Portfolio</option>
+                            <option value="score">Score</option>
+                        </select>
+                    </div>
+                    <!-- Tabla Ranking -->
+                    <div id="bscan-table-wrap" class="hidden overflow-x-auto" style="max-height:400px;overflow-y:auto">
+                        <table class="w-full text-xs">
+                            <thead class="sticky top-0 bg-dark-800"><tr class="text-gray-500 uppercase border-b border-gray-700/50">
+                                <th class="px-2 py-1.5 text-center">#</th>
+                                <th class="px-2 py-1.5 text-left">Wallet</th>
+                                <th class="px-2 py-1.5 text-center">Origen</th>
+                                <th class="px-2 py-1.5 text-right">Trades</th>
+                                <th class="px-2 py-1.5 text-right">Win Rate</th>
+                                <th class="px-2 py-1.5 text-right">PnL Total</th>
+                                <th class="px-2 py-1.5 text-right">ROI</th>
+                                <th class="px-2 py-1.5 text-right">Portfolio</th>
+                                <th class="px-2 py-1.5 text-center">Score</th>
+                                <th class="px-2 py-1.5 text-center">Acción</th>
+                            </tr></thead>
+                            <tbody id="bscan-ranking-body"><tr><td colspan="10" class="text-center py-4 text-gray-600">Click en un botón para iniciar análisis</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
                 <!-- Resultado -->
                 <div id="wscan-result" class="hidden">
                     <!-- KPIs -->
@@ -6414,6 +6487,119 @@ function renderWalletScan(d){
         }).join('');
     }else{actBody.innerHTML='<tr><td colspan="5" class="text-center text-gray-600 p-4">Sin actividad reciente</td></tr>';}
     document.getElementById('wscan-result').classList.remove('hidden');
+}
+
+// ── Batch Wallet Scan ──
+let _bscanPollTimer=null;
+async function startBatchScan(source){
+    const labels={wallets:'Wallets Detectadas',top_wallets:'Top Wallets',whales:'Whale Trades'};
+    // Deshabilitar botones
+    ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales'].forEach(id=>{
+        const b=document.getElementById(id);if(b){b.disabled=true;b.style.opacity='0.5';}
+    });
+    document.getElementById('bscan-progress').classList.remove('hidden');
+    document.getElementById('bscan-progress-text').textContent=`Iniciando análisis de ${labels[source]||source}...`;
+    document.getElementById('bscan-progress-count').textContent='0/0';
+    document.getElementById('bscan-progress-bar').style.width='0%';
+    try{
+        const r=await apiFetch('/api/wallets/batch-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source})});
+        if(r?.status==='empty'){
+            document.getElementById('bscan-progress-text').textContent='No hay wallets en esta fuente';
+            setTimeout(()=>document.getElementById('bscan-progress').classList.add('hidden'),3000);
+            _enableBscanBtns();return;
+        }
+        if(r?.status==='already_running'){
+            document.getElementById('bscan-progress-text').textContent=`Ya hay un scan en curso (${r.source})`;
+        }
+        // Iniciar polling
+        if(_bscanPollTimer)clearInterval(_bscanPollTimer);
+        _bscanPollTimer=setInterval(pollBatchStatus,2500);
+    }catch(e){
+        document.getElementById('bscan-progress-text').textContent='Error: '+e.message;
+        _enableBscanBtns();
+    }
+}
+function _enableBscanBtns(){
+    ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales'].forEach(id=>{
+        const b=document.getElementById(id);if(b){b.disabled=false;b.style.opacity='1';}
+    });
+}
+async function pollBatchStatus(){
+    try{
+        const s=await fetchJson('/api/wallets/batch-scan/status');
+        if(!s)return;
+        const pct=s.total>0?Math.round(s.scanned/s.total*100):0;
+        document.getElementById('bscan-progress-count').textContent=`${s.scanned}/${s.total}`;
+        document.getElementById('bscan-progress-bar').style.width=pct+'%';
+        const labels={wallets:'Wallets',top_wallets:'Top Wallets',whales:'Whales'};
+        document.getElementById('bscan-progress-text').textContent=s.running?`Analizando ${labels[s.source]||s.source}... ${s.current}`:`Completado! ${s.scanned} wallets analizadas (${s.errors} errores)`;
+        if(!s.running){
+            clearInterval(_bscanPollTimer);_bscanPollTimer=null;
+            _enableBscanBtns();
+            setTimeout(()=>{
+                document.getElementById('bscan-progress').classList.add('hidden');
+                loadBatchResults();
+            },1500);
+        }
+    }catch(e){console.error('pollBatchStatus error',e);}
+}
+async function loadBatchResults(){
+    const source=document.getElementById('bscan-filter-source')?.value||'';
+    const minTrades=parseInt(document.getElementById('bscan-filter-trades')?.value||'0');
+    const sortBy=document.getElementById('bscan-filter-sort')?.value||'total_pnl';
+    try{
+        const r=await fetchJson(`/api/wallets/batch-scan/results?source=${source}&min_trades=${minTrades}&sort_by=${sortBy}`);
+        if(r&&r.results){
+            renderBatchResults(r.results);
+        }
+    }catch(e){console.error('loadBatchResults error',e);}
+}
+function filterBatchResults(){loadBatchResults();}
+function renderBatchResults(results){
+    document.getElementById('bscan-summary').classList.remove('hidden');
+    document.getElementById('bscan-filters').classList.remove('hidden');
+    document.getElementById('bscan-table-wrap').classList.remove('hidden');
+    // Summary stats
+    const n=results.length;
+    document.getElementById('bscan-total').textContent=n;
+    if(n>0){
+        const avgWr=results.reduce((s,r)=>s+(r.win_rate||0),0)/n;
+        document.getElementById('bscan-avg-wr').textContent=avgWr.toFixed(1)+'%';
+        document.getElementById('bscan-avg-wr').className='text-sm font-bold '+(avgWr>=55?'text-green-400':avgWr>=40?'text-yellow-400':'text-red-400');
+        const bestPnl=Math.max(...results.map(r=>r.total_pnl||0));
+        document.getElementById('bscan-best-pnl').textContent='$'+fmt(Math.round(bestPnl));
+        const avgPnl=results.reduce((s,r)=>s+(r.total_pnl||0),0)/n;
+        const avgPnlEl=document.getElementById('bscan-avg-pnl');
+        avgPnlEl.textContent=(avgPnl>=0?'+':'-')+'$'+fmt(Math.abs(Math.round(avgPnl)));
+        avgPnlEl.className='text-sm font-bold '+(avgPnl>=0?'text-green-400':'text-red-400');
+        document.getElementById('bscan-top-count').textContent=results.filter(r=>(r.score||0)>=4).length;
+    }
+    // Tabla
+    const body=document.getElementById('bscan-ranking-body');
+    if(n===0){body.innerHTML='<tr><td colspan="10" class="text-center py-4 text-gray-600">Sin resultados. Ejecuta un análisis batch primero.</td></tr>';return;}
+    const srcLabels={wallets:'📋 Wallet',top_wallets:'⭐ Top',whales:'🐋 Whale'};
+    const srcColors={wallets:'text-violet-400',top_wallets:'text-emerald-400',whales:'text-cyan-400'};
+    const stars=s=>{if(s>=5)return'⭐⭐⭐⭐⭐';if(s>=4)return'⭐⭐⭐⭐';if(s>=3)return'⭐⭐⭐';if(s>=2)return'⭐⭐';return'⭐';};
+    body.innerHTML=results.map((r,i)=>{
+        const pnlC=(r.total_pnl||0)>=0?'text-green-400':'text-red-400';
+        const roiC=(r.roi_pct||0)>=0?'text-green-400':'text-red-400';
+        const wrC=(r.win_rate||0)>=60?'text-green-400':(r.win_rate||0)>=40?'text-yellow-400':'text-red-400';
+        const name=r.name||r.address.slice(0,8)+'...';
+        const addrShort=r.address.slice(0,6)+'...'+r.address.slice(-4);
+        const src=r.source||'';
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20 cursor-pointer" onclick="scanWalletFromAddr('${r.address}')">
+            <td class="px-2 py-1.5 text-center text-gray-500 font-mono">${i+1}</td>
+            <td class="px-2 py-1.5 text-left"><div class="font-medium text-gray-200">${name}</div><div class="text-[10px] text-gray-500 font-mono">${addrShort}</div></td>
+            <td class="px-2 py-1.5 text-center ${srcColors[src]||'text-gray-400'} text-[10px]">${srcLabels[src]||src}</td>
+            <td class="px-2 py-1.5 text-right font-mono">${fmt(r.total_trades||0)}</td>
+            <td class="px-2 py-1.5 text-right font-mono ${wrC}">${(r.win_rate||0).toFixed(1)}%</td>
+            <td class="px-2 py-1.5 text-right font-mono ${pnlC}">${(r.total_pnl||0)>=0?'+':''}$${fmt(Math.abs(Math.round(r.total_pnl||0)))}</td>
+            <td class="px-2 py-1.5 text-right font-mono ${roiC}">${(r.roi_pct||0)>=0?'+':''}${(r.roi_pct||0).toFixed(1)}%</td>
+            <td class="px-2 py-1.5 text-right font-mono text-gray-300">$${fmt(Math.round(r.portfolio_value||0))}</td>
+            <td class="px-2 py-1.5 text-center text-[10px]">${stars(r.score||0)}</td>
+            <td class="px-2 py-1.5 text-center"><button onclick="event.stopPropagation();scanWalletFromAddr('${r.address}')" class="text-violet-400 hover:text-violet-300 text-[10px]">🔍</button></td>
+        </tr>`;
+    }).join('');
 }
 
 // ── Whale Trades ──
