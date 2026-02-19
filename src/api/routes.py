@@ -347,6 +347,8 @@ async def get_whale_wallet_history(request: Request, address: str, limit: int = 
 # ── Wallet Scan ──────────────────────────────────────────────────────
 
 _POLY_DATA_API = "https://data-api.polymarket.com"
+_POLY_GAMMA_API = "https://gamma-api.polymarket.com"
+_POLY_CLOB_API = "https://clob.polymarket.com"
 
 
 @router.get("/api/wallet/scan")
@@ -357,69 +359,128 @@ async def wallet_scan(request: Request, address: str):
         return JSONResponse({"error": "Dirección inválida"}, status_code=400)
 
     async with httpx.AsyncClient(timeout=25) as client:
-        # 1. Portfolio value
-        portfolio_value = 0
-        try:
-            r = await client.get(f"{_POLY_DATA_API}/value", params={"user": addr})
-            if r.status_code == 200:
-                data = r.json()
-                if isinstance(data, list) and data:
-                    portfolio_value = float(data[0].get("value", 0))
-                elif isinstance(data, dict):
-                    portfolio_value = float(data.get("value", 0))
-        except Exception:
-            pass
+        # ── Fetch paralelo de datos independientes ──
+        async def _fetch_portfolio():
+            try:
+                r = await client.get(f"{_POLY_DATA_API}/value", params={"user": addr})
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, list) and data:
+                        return float(data[0].get("value", 0))
+                    elif isinstance(data, dict):
+                        return float(data.get("value", 0))
+            except Exception:
+                pass
+            return 0
 
-        # 2. Posiciones abiertas — solo con size > 0 (posiciones reales activas)
-        positions = []
-        try:
-            r = await client.get(f"{_POLY_DATA_API}/positions",
-                                 params={"user": addr, "sizeThreshold": 0.01, "limit": 500,
-                                         "sortBy": "CURRENT", "sortDirection": "DESC"})
-            if r.status_code == 200:
-                d = r.json()
-                positions = d if isinstance(d, list) else []
-        except Exception:
-            pass
+        async def _fetch_leaderboard():
+            """PnL oficial y volumen desde el leaderboard de Polymarket."""
+            try:
+                r = await client.get(f"{_POLY_DATA_API}/v1/leaderboard",
+                                     params={"user": addr, "period": "ALL", "order": "PNL"})
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, list) and data:
+                        return data[0]
+            except Exception:
+                pass
+            return None
 
-        # 3. Posiciones cerradas con paginación
-        closed_positions = []
-        closed_complete = True  # flag: ¿obtuvimos TODAS las cerradas?
-        try:
-            offset = 0
-            max_closed = 2500  # máx razonable para scan individual
-            while offset < max_closed:
-                r = await client.get(f"{_POLY_DATA_API}/closed-positions",
-                                     params={"user": addr, "limit": 50, "offset": offset})
-                if r.status_code != 200:
-                    break
-                d = r.json()
-                page = d if isinstance(d, list) else []
-                if not page:
-                    break
-                closed_positions.extend(page)
-                if len(page) < 50:
-                    break
-                offset += 50
-                if offset >= max_closed:
-                    closed_complete = False
-        except Exception:
-            pass
+        async def _fetch_traded():
+            """Número real de mercados operados desde /traded."""
+            try:
+                r = await client.get(f"{_POLY_DATA_API}/traded", params={"user": addr})
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, dict):
+                        return int(data.get("traded", 0))
+            except Exception:
+                pass
+            return 0
 
-        # 4. Actividad reciente (para mostrar trades recientes)
-        activity_recent = []
-        first_trade_date = None
-        try:
-            r = await client.get(f"{_POLY_DATA_API}/activity",
-                                 params={"user": addr, "limit": 100, "offset": 0})
-            if r.status_code == 200:
-                d = r.json()
-                activity_recent = d if isinstance(d, list) else []
-        except Exception:
-            pass
+        async def _fetch_profile():
+            """Perfil público desde Gamma API."""
+            try:
+                r = await client.get(f"{_POLY_GAMMA_API}/public-profile",
+                                     params={"address": addr})
+                if r.status_code == 200:
+                    return r.json()
+            except Exception:
+                pass
+            return None
 
-        # 5. Métricas desde posiciones ABIERTAS — usar cashPnl del API directamente
-        open_cash_pnl = 0  # PnL total de posiciones abiertas (realized + unrealized)
+        async def _fetch_positions():
+            try:
+                r = await client.get(f"{_POLY_DATA_API}/positions",
+                                     params={"user": addr, "sizeThreshold": 0.01, "limit": 500,
+                                             "sortBy": "CURRENT", "sortDirection": "DESC"})
+                if r.status_code == 200:
+                    d = r.json()
+                    return d if isinstance(d, list) else []
+            except Exception:
+                pass
+            return []
+
+        async def _fetch_closed():
+            closed = []
+            try:
+                offset = 0
+                max_closed = 2500
+                while offset < max_closed:
+                    r = await client.get(f"{_POLY_DATA_API}/closed-positions",
+                                         params={"user": addr, "limit": 50, "offset": offset})
+                    if r.status_code != 200:
+                        break
+                    d = r.json()
+                    page = d if isinstance(d, list) else []
+                    if not page:
+                        break
+                    closed.extend(page)
+                    if len(page) < 50:
+                        break
+                    offset += 50
+            except Exception:
+                pass
+            return closed
+
+        async def _fetch_activity():
+            try:
+                r = await client.get(f"{_POLY_DATA_API}/activity",
+                                     params={"user": addr, "limit": 100, "offset": 0})
+                if r.status_code == 200:
+                    d = r.json()
+                    return d if isinstance(d, list) else []
+            except Exception:
+                pass
+            return []
+
+        # Ejecutar todo en paralelo
+        (portfolio_value, leaderboard, traded_count, profile,
+         positions, closed_positions, activity_recent) = await asyncio.gather(
+            _fetch_portfolio(), _fetch_leaderboard(), _fetch_traded(),
+            _fetch_profile(), _fetch_positions(), _fetch_closed(), _fetch_activity()
+        )
+
+        # ── Perfil del trader ──
+        profile_name = ""
+        profile_image = ""
+        profile_username = ""
+        if profile and isinstance(profile, dict):
+            profile_name = profile.get("name", "") or profile.get("pseudonym", "")
+            profile_image = profile.get("profileImage", "") or profile.get("profileImageOptimized", "")
+            profile_username = profile.get("xUsername", "") or profile.get("pseudonym", "")
+
+        # ── PnL oficial del leaderboard ──
+        official_pnl = None
+        official_volume = None
+        official_rank = None
+        if leaderboard and isinstance(leaderboard, dict):
+            official_pnl = leaderboard.get("pnl")
+            official_volume = leaderboard.get("vol")
+            official_rank = leaderboard.get("rank")
+
+        # ── Métricas desde posiciones ABIERTAS — usar cashPnl del API ──
+        open_cash_pnl = 0
         open_total_bought = 0
         open_positions_list = []
 
@@ -454,7 +515,7 @@ async def wallet_scan(request: Request, address: str):
             except (ValueError, TypeError):
                 continue
 
-        # 6. Métricas desde posiciones CERRADAS — realizedPnl = net profit confirmado
+        # ── Métricas desde posiciones CERRADAS — realizedPnl = net profit ──
         closed_pnl = 0
         closed_total_bought = 0
         closed_wins = 0
@@ -473,30 +534,32 @@ async def wallet_scan(request: Request, address: str):
             except (ValueError, TypeError):
                 continue
 
-        # 7. Totales — SIN doble conteo
-        # cashPnl de API ya incluye realized+unrealized para cada posición abierta
-        # realizedPnl de closed-positions = net profit de mercados resueltos
-        # No hay overlap: /positions = mercados activos, /closed-positions = resueltos
-        total_pnl = open_cash_pnl + closed_pnl
-        realized_pnl = closed_pnl  # solo lo definitivamente cerrado
-        unrealized_pnl = open_cash_pnl  # PnL de posiciones activas (mix realized+unrealized)
+        # ── Totales — PREFERIR PnL oficial del leaderboard ──
+        calculated_pnl = open_cash_pnl + closed_pnl
+        # Usar PnL oficial si disponible, sino el calculado
+        total_pnl = round(official_pnl, 2) if official_pnl is not None else round(calculated_pnl, 2)
+        realized_pnl = closed_pnl
+        unrealized_pnl = open_cash_pnl
 
-        total_invested = open_total_bought + closed_total_bought
-        estimated_initial = total_invested if total_invested > 0 else max(portfolio_value - total_pnl, 0)
+        # Volumen oficial como base de inversión (más preciso que sumar posiciones parciales)
+        if official_volume and official_volume > 0:
+            estimated_initial = round(official_volume, 2)
+        else:
+            total_invested = open_total_bought + closed_total_bought
+            estimated_initial = total_invested if total_invested > 0 else max(portfolio_value - total_pnl, 0)
 
-        # Mercados operados
-        total_markets = len(positions) + len(closed_positions)
+        # Total de mercados — PREFERIR /traded count oficial
+        total_markets = traded_count if traded_count > 0 else (len(positions) + len(closed_positions))
 
-        # Win rate solo de posiciones cerradas (resultado definitivo)
+        # Win rate solo de posiciones cerradas (muestra parcial si hay muchas)
         total_resolved = closed_wins + closed_losses
         win_rate = round(closed_wins / max(total_resolved, 1) * 100, 1)
 
-        # ROI
+        # ROI basado en PnL oficial / volumen oficial
         roi_pct = round(total_pnl / max(estimated_initial, 1) * 100, 2) if estimated_initial > 0 else 0
 
-        # 8. Fecha primer trade — usar closed-positions (tienen datos más antiguos)
+        # ── Fecha primer trade ──
         earliest_ts = None
-        # Desde closed positions (el último de la lista suele ser el más antiguo)
         if closed_positions:
             for cp in reversed(closed_positions):
                 ts = cp.get("timestamp")
@@ -511,7 +574,6 @@ async def wallet_scan(request: Request, address: str):
                         break
                     except Exception:
                         pass
-        # Fallback: desde actividad reciente
         if earliest_ts is None and activity_recent:
             last_item = activity_recent[-1]
             ts_field = last_item.get("timestamp") or last_item.get("created_at") or last_item.get("createdAt")
@@ -532,19 +594,26 @@ async def wallet_scan(request: Request, address: str):
             except Exception:
                 pass
 
-        # 9. Ordenar posiciones por valor
+        # Ordenar posiciones por valor
         open_positions_list.sort(key=lambda x: abs(x["current_value"]), reverse=True)
 
-        # 10. Actividad reciente agrupada por mercado+lado en ventana de 5 min
+        # Actividad reciente agrupada
         recent_trades = _group_activity(activity_recent)
 
         return {
             "address": addr,
+            "profile_name": profile_name,
+            "profile_image": profile_image,
+            "profile_username": profile_username,
             "portfolio_value": round(portfolio_value, 2),
             "estimated_initial_capital": round(estimated_initial, 2),
-            "total_pnl": round(total_pnl, 2),
+            "total_pnl": total_pnl,
+            "official_pnl": round(official_pnl, 2) if official_pnl is not None else None,
+            "calculated_pnl": round(calculated_pnl, 2),
             "realized_pnl": round(realized_pnl, 2),
             "unrealized_pnl": round(unrealized_pnl, 2),
+            "official_volume": round(official_volume, 2) if official_volume is not None else None,
+            "official_rank": official_rank,
             "roi_pct": roi_pct,
             "win_rate": win_rate,
             "wins": closed_wins,
@@ -712,52 +781,89 @@ async def _run_batch_scan(db, addresses: list[dict], source: str):
 
 
 async def _scan_wallet_for_batch(addr: str) -> dict | None:
-    """Versión para batch: usa /positions + /closed-positions para datos reales."""
+    """Versión para batch: usa leaderboard + /traded + positions para datos reales."""
     try:
         async with httpx.AsyncClient(timeout=20) as client:
-            portfolio_value = 0
-            try:
-                r = await client.get(f"{_POLY_DATA_API}/value", params={"user": addr})
-                if r.status_code == 200:
-                    data = r.json()
-                    if isinstance(data, list) and data:
-                        portfolio_value = float(data[0].get("value", 0))
-                    elif isinstance(data, dict):
-                        portfolio_value = float(data.get("value", 0))
-            except Exception:
-                pass
+            # ── Fetch paralelo ──
+            async def _val():
+                try:
+                    r = await client.get(f"{_POLY_DATA_API}/value", params={"user": addr})
+                    if r.status_code == 200:
+                        data = r.json()
+                        if isinstance(data, list) and data:
+                            return float(data[0].get("value", 0))
+                        elif isinstance(data, dict):
+                            return float(data.get("value", 0))
+                except Exception:
+                    pass
+                return 0
 
-            # Posiciones abiertas — solo con size > 0
-            positions = []
-            try:
-                r = await client.get(f"{_POLY_DATA_API}/positions",
-                                     params={"user": addr, "sizeThreshold": 0.01, "limit": 500,
-                                             "sortBy": "CURRENT", "sortDirection": "DESC"})
-                if r.status_code == 200:
-                    d = r.json()
-                    positions = d if isinstance(d, list) else []
-            except Exception:
-                pass
+            async def _lb():
+                try:
+                    r = await client.get(f"{_POLY_DATA_API}/v1/leaderboard",
+                                         params={"user": addr, "period": "ALL", "order": "PNL"})
+                    if r.status_code == 200:
+                        data = r.json()
+                        if isinstance(data, list) and data:
+                            return data[0]
+                except Exception:
+                    pass
+                return None
 
-            # Posiciones cerradas con paginación (hasta 1000 para batch)
-            closed_positions = []
-            try:
-                offset = 0
-                while offset < 1000:
-                    r = await client.get(f"{_POLY_DATA_API}/closed-positions",
-                                         params={"user": addr, "limit": 50, "offset": offset})
-                    if r.status_code != 200:
-                        break
-                    d = r.json()
-                    page = d if isinstance(d, list) else []
-                    if not page:
-                        break
-                    closed_positions.extend(page)
-                    if len(page) < 50:
-                        break
-                    offset += 50
-            except Exception:
-                pass
+            async def _traded():
+                try:
+                    r = await client.get(f"{_POLY_DATA_API}/traded", params={"user": addr})
+                    if r.status_code == 200:
+                        data = r.json()
+                        if isinstance(data, dict):
+                            return int(data.get("traded", 0))
+                except Exception:
+                    pass
+                return 0
+
+            async def _pos():
+                try:
+                    r = await client.get(f"{_POLY_DATA_API}/positions",
+                                         params={"user": addr, "sizeThreshold": 0.01, "limit": 500,
+                                                 "sortBy": "CURRENT", "sortDirection": "DESC"})
+                    if r.status_code == 200:
+                        d = r.json()
+                        return d if isinstance(d, list) else []
+                except Exception:
+                    pass
+                return []
+
+            async def _closed():
+                closed = []
+                try:
+                    offset = 0
+                    while offset < 1000:
+                        r = await client.get(f"{_POLY_DATA_API}/closed-positions",
+                                             params={"user": addr, "limit": 50, "offset": offset})
+                        if r.status_code != 200:
+                            break
+                        d = r.json()
+                        page = d if isinstance(d, list) else []
+                        if not page:
+                            break
+                        closed.extend(page)
+                        if len(page) < 50:
+                            break
+                        offset += 50
+                except Exception:
+                    pass
+                return closed
+
+            portfolio_value, leaderboard, traded_count, positions, closed_positions = await asyncio.gather(
+                _val(), _lb(), _traded(), _pos(), _closed()
+            )
+
+            # PnL oficial y volumen del leaderboard
+            official_pnl = None
+            official_volume = None
+            if leaderboard and isinstance(leaderboard, dict):
+                official_pnl = leaderboard.get("pnl")
+                official_volume = leaderboard.get("vol")
 
             # Métricas desde posiciones abiertas — usar cashPnl del API
             open_cash_pnl = 0
@@ -794,16 +900,20 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 except (ValueError, TypeError):
                     continue
 
-            # Totales — SIN doble conteo
-            total_pnl = open_cash_pnl + closed_pnl
-            total_invested = open_total_bought + closed_total_bought
-            estimated_initial = total_invested if total_invested > 0 else max(portfolio_value - total_pnl, 0)
-            total_markets = len(positions) + len(closed_positions)
+            # Totales — PREFERIR PnL oficial del leaderboard
+            calculated_pnl = open_cash_pnl + closed_pnl
+            total_pnl = round(official_pnl, 2) if official_pnl is not None else round(calculated_pnl, 2)
+            if official_volume and official_volume > 0:
+                estimated_initial = round(official_volume, 2)
+            else:
+                total_invested = open_total_bought + closed_total_bought
+                estimated_initial = total_invested if total_invested > 0 else max(portfolio_value - total_pnl, 0)
+            total_markets = traded_count if traded_count > 0 else (len(positions) + len(closed_positions))
             total_resolved = wins + losses
             win_rate = round(wins / max(total_resolved, 1) * 100, 1)
             roi_pct = round(total_pnl / max(estimated_initial, 1) * 100, 2) if estimated_initial > 0 else 0
 
-            # Fecha primer trade desde closed-positions (tienen timestamp)
+            # Fecha primer trade desde closed-positions
             days_active = 0
             if closed_positions:
                 try:
@@ -821,8 +931,9 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 "address": addr,
                 "portfolio_value": round(portfolio_value, 2),
                 "estimated_initial_capital": round(estimated_initial, 2),
-                "total_pnl": round(total_pnl, 2),
+                "total_pnl": total_pnl,
                 "realized_pnl": round(closed_pnl, 2),
+                "official_pnl": round(official_pnl, 2) if official_pnl is not None else None,
                 "roi_pct": roi_pct,
                 "win_rate": win_rate,
                 "wins": wins,
@@ -894,6 +1005,90 @@ async def clear_batch_scan_cache(request: Request):
     db = request.app.state.db
     await db.clear_scan_results()
     return {"status": "ok", "message": "Cache de wallets limpiado"}
+
+
+# ── Polymarket Data Proxies ──────────────────────────────────────────
+
+@router.get("/api/polymarket/leaderboard")
+async def poly_leaderboard(request: Request, category: str = "OVERALL",
+                            period: str = "ALL", order: str = "PNL",
+                            limit: int = 20, offset: int = 0, user: str = ""):
+    """Proxy al leaderboard oficial de Polymarket."""
+    params = {"category": category, "period": period, "order": order,
+              "limit": min(limit, 50), "offset": offset}
+    if user:
+        params["user"] = user.strip().lower()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"{_POLY_DATA_API}/v1/leaderboard", params=params)
+            if r.status_code == 200:
+                return r.json()
+            return {"error": f"Leaderboard HTTP {r.status_code}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/api/polymarket/market-positions")
+async def poly_market_positions(request: Request, market: str, status: str = "OPEN",
+                                 sort_by: str = "TOKENS", sort_dir: str = "DESC",
+                                 limit: int = 50, offset: int = 0):
+    """Posiciones de todos los traders en un mercado específico."""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"{_POLY_DATA_API}/v1/market-positions",
+                                 params={"market": market, "status": status,
+                                         "sortBy": sort_by, "sortDirection": sort_dir,
+                                         "limit": min(limit, 500), "offset": offset})
+            if r.status_code == 200:
+                return r.json()
+            return {"error": f"Market positions HTTP {r.status_code}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/api/polymarket/price-history")
+async def poly_price_history(request: Request, market: str,
+                              interval: str = "1d", fidelity: int = 60):
+    """Historial de precios de un mercado (conditionId)."""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"{_POLY_CLOB_API}/prices-history",
+                                 params={"market": market, "interval": interval,
+                                         "fidelity": fidelity})
+            if r.status_code == 200:
+                return r.json()
+            return {"error": f"Price history HTTP {r.status_code}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/api/polymarket/profile")
+async def poly_profile(request: Request, address: str):
+    """Perfil público de un trader desde Gamma API."""
+    addr = address.strip().lower()
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(f"{_POLY_GAMMA_API}/public-profile",
+                                 params={"address": addr})
+            if r.status_code == 200:
+                return r.json()
+            return {"error": f"Profile HTTP {r.status_code}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/api/polymarket/holders")
+async def poly_holders(request: Request, market: str, limit: int = 50):
+    """Top holders de un mercado específico."""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"{_POLY_DATA_API}/holders",
+                                 params={"market": market, "limit": min(limit, 100)})
+            if r.status_code == 200:
+                return r.json()
+            return {"error": f"Holders HTTP {r.status_code}"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ── v11: News Feed ────────────────────────────────────────────────────
