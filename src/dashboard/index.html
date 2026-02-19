@@ -3004,10 +3004,14 @@
                         <!-- Filtros de Señal -->
                         <div class="bg-gray-900/40 rounded-lg p-3 border border-sky-900/20 mb-4">
                             <h5 class="text-[11px] font-semibold text-sky-300 mb-2">📊 Filtros de Señal</h5>
-                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div>
                                     <label class="text-[10px] text-gray-500 block mb-1">Min Edge %</label>
                                     <input type="number" id="wa-cfg-edge" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="8" min="1" max="50" step="0.5">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-gray-500 block mb-1">Min Odds (liquidez)</label>
+                                    <input type="number" id="wa-cfg-minodds" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="0.05" min="0" max="0.50" step="0.01">
                                 </div>
                                 <div>
                                     <label class="text-[10px] text-gray-500 block mb-1">Max Odds</label>
@@ -6748,6 +6752,7 @@ async function waLoadConfig(){
             document.getElementById('wa-cfg-conf').value=r.min_confidence||50;
             // Filtros
             document.getElementById('wa-cfg-edge').value=r.min_edge||8;
+            document.getElementById('wa-cfg-minodds').value=r.min_odds||0.05;
             document.getElementById('wa-cfg-odds').value=r.max_odds||0.55;
             document.getElementById('wa-cfg-ordertype').value=r.order_type||'market';
             // Badges de credenciales
@@ -6818,6 +6823,7 @@ async function waSaveConfig(){
             min_confidence:parseFloat(document.getElementById('wa-cfg-conf').value)||50,
             // Filtros
             min_edge:parseFloat(document.getElementById('wa-cfg-edge').value)||8,
+            min_odds:parseFloat(document.getElementById('wa-cfg-minodds').value)||0.05,
             max_odds:parseFloat(document.getElementById('wa-cfg-odds').value)||0.55,
             order_type:document.getElementById('wa-cfg-ordertype').value,
         };

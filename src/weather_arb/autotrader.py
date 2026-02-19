@@ -53,7 +53,7 @@ class WeatherAutoTrader:
         try:
             raw = await self.db.get_config_bulk([
                 "wt_enabled", "wt_bet_size", "wt_min_edge", "wt_min_confidence",
-                "wt_max_odds", "wt_max_positions", "wt_order_type",
+                "wt_min_odds", "wt_max_odds", "wt_max_positions", "wt_order_type",
                 "wt_max_daily_loss", "wt_max_daily_trades", "wt_cooldown_sec",
                 "wt_cities",
                 "wt_api_key", "wt_api_secret", "wt_private_key", "wt_passphrase",
@@ -72,6 +72,7 @@ class WeatherAutoTrader:
                 "bet_pct": float(raw.get("wt_bet_pct", 2)),
                 "min_edge": float(raw.get("wt_min_edge", 8)),
                 "min_confidence": float(raw.get("wt_min_confidence", 50)),
+                "min_odds": float(raw.get("wt_min_odds", 0.05)),
                 "max_odds": float(raw.get("wt_max_odds", 0.85)),
                 "max_positions": int(raw.get("wt_max_positions", 5)),
                 "order_type": raw.get("wt_order_type", "market"),
@@ -222,8 +223,13 @@ class WeatherAutoTrader:
         if confidence < cfg["min_confidence"]:
             return None
 
-        # Filtro: odds máximo
+        # Filtro: odds mínimo (evitar mercados sin liquidez)
         poly_odds = signal.get("poly_odds", 1.0)
+        if poly_odds < cfg["min_odds"]:
+            print(f"{tag} SKIP: odds {poly_odds} < min {cfg['min_odds']} (sin liquidez)", flush=True)
+            return None
+
+        # Filtro: odds máximo
         if poly_odds > cfg["max_odds"]:
             print(f"{tag} SKIP: odds {poly_odds} > max {cfg['max_odds']}", flush=True)
             return None

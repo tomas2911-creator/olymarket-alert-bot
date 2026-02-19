@@ -3000,7 +3000,7 @@ async def get_weather_autotrade_config(request: Request):
     uid = await get_user_id(request)
     raw = await db.get_config_bulk([
         "wt_enabled", "wt_bet_size", "wt_min_edge", "wt_min_confidence",
-        "wt_max_odds", "wt_max_positions", "wt_order_type",
+        "wt_min_odds", "wt_max_odds", "wt_max_positions", "wt_order_type",
         "wt_max_daily_loss", "wt_max_daily_trades", "wt_cooldown_sec",
         "wt_cities",
         "wt_api_key", "wt_api_secret", "wt_private_key", "wt_passphrase",
@@ -3029,6 +3029,7 @@ async def get_weather_autotrade_config(request: Request):
         "bet_pct": float(raw.get("wt_bet_pct", 2)),
         "min_edge": float(raw.get("wt_min_edge", 8)),
         "min_confidence": float(raw.get("wt_min_confidence", 50)),
+        "min_odds": float(raw.get("wt_min_odds", 0.05)),
         "max_odds": float(raw.get("wt_max_odds", 0.85)),
         "max_positions": int(raw.get("wt_max_positions", 5)),
         "order_type": raw.get("wt_order_type", "market"),
@@ -3075,6 +3076,7 @@ async def save_weather_autotrade_config(request: Request):
         "bet_pct": ("wt_bet_pct", str),
         "min_edge": ("wt_min_edge", str),
         "min_confidence": ("wt_min_confidence", str),
+        "min_odds": ("wt_min_odds", str),
         "max_odds": ("wt_max_odds", str),
         "max_positions": ("wt_max_positions", str),
         "order_type": ("wt_order_type", str),
