@@ -2727,13 +2727,13 @@
                             <thead class="sticky top-0 bg-dark-800"><tr class="text-gray-500 uppercase border-b border-gray-700/50">
                                 <th class="px-2 py-1.5 text-center">#</th>
                                 <th class="px-2 py-1.5 text-left">Wallet</th>
-                                <th class="px-2 py-1.5 text-center">Origen</th>
-                                <th class="px-2 py-1.5 text-right">Trades</th>
-                                <th class="px-2 py-1.5 text-right">Win Rate</th>
-                                <th class="px-2 py-1.5 text-right">PnL Total</th>
-                                <th class="px-2 py-1.5 text-right">ROI</th>
-                                <th class="px-2 py-1.5 text-right">Portfolio</th>
-                                <th class="px-2 py-1.5 text-center">Score</th>
+                                <th class="px-2 py-1.5 text-center cursor-pointer hover:text-violet-400" onclick="sortBatchBy('source')">Origen <span id="bsort-source"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('total_trades')">Trades <span id="bsort-total_trades"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('win_rate')">Win Rate <span id="bsort-win_rate"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('total_pnl')">PnL Total <span id="bsort-total_pnl"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('roi_pct')">ROI <span id="bsort-roi_pct"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('portfolio_value')">Portfolio <span id="bsort-portfolio_value"></span></th>
+                                <th class="px-2 py-1.5 text-center cursor-pointer hover:text-violet-400" onclick="sortBatchBy('score')">Score <span id="bsort-score"></span></th>
                                 <th class="px-2 py-1.5 text-center">Acción</th>
                             </tr></thead>
                             <tbody id="bscan-ranking-body"><tr><td colspan="10" class="text-center py-4 text-gray-600">Click en un botón para iniciar análisis</td></tr></tbody>
@@ -6491,6 +6491,25 @@ function renderWalletScan(d){
 
 // ── Batch Wallet Scan ──
 let _bscanPollTimer=null;
+let _bscanData=[];
+let _bscanSortCol='total_pnl';
+let _bscanSortDir='desc';
+function sortBatchBy(col){
+    if(_bscanData.length===0)return;
+    if(_bscanSortCol===col){_bscanSortDir=_bscanSortDir==='desc'?'asc':'desc';}
+    else{_bscanSortCol=col;_bscanSortDir='desc';}
+    // Actualizar indicadores en headers
+    ['source','total_trades','win_rate','total_pnl','roi_pct','portfolio_value','score'].forEach(c=>{
+        const el=document.getElementById('bsort-'+c);
+        if(el)el.textContent=c===col?(_bscanSortDir==='desc'?'▼':'▲'):'';
+    });
+    const sorted=[..._bscanData].sort((a,b)=>{
+        let va=a[col]||0,vb=b[col]||0;
+        if(typeof va==='string')return _bscanSortDir==='desc'?vb.localeCompare(va):va.localeCompare(vb);
+        return _bscanSortDir==='desc'?vb-va:va-vb;
+    });
+    _renderBatchTable(sorted);
+}
 async function startBatchScan(source){
     const labels={wallets:'Wallets Detectadas',top_wallets:'Top Wallets',whales:'Whale Trades'};
     // Deshabilitar botones
@@ -6556,6 +6575,7 @@ async function loadBatchResults(){
 }
 function filterBatchResults(){loadBatchResults();}
 function renderBatchResults(results){
+    _bscanData=results;
     document.getElementById('bscan-summary').classList.remove('hidden');
     document.getElementById('bscan-filters').classList.remove('hidden');
     document.getElementById('bscan-table-wrap').classList.remove('hidden');
@@ -6574,8 +6594,16 @@ function renderBatchResults(results){
         avgPnlEl.className='text-sm font-bold '+(avgPnl>=0?'text-green-400':'text-red-400');
         document.getElementById('bscan-top-count').textContent=results.filter(r=>(r.score||0)>=4).length;
     }
-    // Tabla
+    // Marcar columna activa
+    ['source','total_trades','win_rate','total_pnl','roi_pct','portfolio_value','score'].forEach(c=>{
+        const el=document.getElementById('bsort-'+c);
+        if(el)el.textContent=c===_bscanSortCol?(_bscanSortDir==='desc'?'▼':'▲'):'';
+    });
+    _renderBatchTable(results);
+}
+function _renderBatchTable(results){
     const body=document.getElementById('bscan-ranking-body');
+    const n=results.length;
     if(n===0){body.innerHTML='<tr><td colspan="10" class="text-center py-4 text-gray-600">Sin resultados. Ejecuta un análisis batch primero.</td></tr>';return;}
     const srcLabels={wallets:'📋 Wallet',top_wallets:'⭐ Top',whales:'🐋 Whale'};
     const srcColors={wallets:'text-violet-400',top_wallets:'text-emerald-400',whales:'text-cyan-400'};
