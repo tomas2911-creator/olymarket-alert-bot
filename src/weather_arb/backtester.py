@@ -113,7 +113,7 @@ class PaperTradeStats:
 class WeatherPaperTrader:
     """Paper trader: registra señales como trades simulados y resuelve con datos reales."""
 
-    def __init__(self, bet_size: float = 50.0):
+    def __init__(self, bet_size: float = 10.0):
         self.bet_size = bet_size
         self._trades: list[PaperTrade] = []
         self._resolved_cids: set[str] = set()  # Para evitar resolver dos veces
