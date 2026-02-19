@@ -356,7 +356,7 @@ async def wallet_scan(request: Request, address: str):
     if not addr or len(addr) < 10:
         return JSONResponse({"error": "Dirección inválida"}, status_code=400)
 
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=25) as client:
         # 1. Portfolio value
         portfolio_value = 0
         try:
@@ -370,96 +370,55 @@ async def wallet_scan(request: Request, address: str):
         except Exception:
             pass
 
-        # 2. Posiciones abiertas
+        # 2. Posiciones abiertas (limit=500, sin sizeThreshold para no perder datos)
         positions = []
         try:
             r = await client.get(f"{_POLY_DATA_API}/positions",
-                                 params={"user": addr, "sizeThreshold": 0.1, "limit": 200})
+                                 params={"user": addr, "sizeThreshold": 0, "limit": 500})
             if r.status_code == 200:
-                positions = r.json() if isinstance(r.json(), list) else []
+                d = r.json()
+                positions = d if isinstance(d, list) else []
         except Exception:
             pass
 
-        # 3. Actividad — buscar primeros y últimos trades para calcular capital inicial
-        activity_recent = []
-        activity_first = []
-        first_trade_date = None
-        total_trades = 0
-        wins = 0
-        losses = 0
-        total_bought = 0
-
+        # 3. Posiciones cerradas con paginación (máx 50/página según API)
+        closed_positions = []
         try:
-            # Últimos 50 trades
-            r = await client.get(f"{_POLY_DATA_API}/activity",
-                                 params={"user": addr, "limit": 50, "offset": 0})
-            if r.status_code == 200:
-                activity_recent = r.json() if isinstance(r.json(), list) else []
-
-            # Buscar los primeros trades iterativamente
-            offsets_to_try = [5000, 2000, 1000, 500, 200, 100, 50]
-            for off in offsets_to_try:
-                try:
-                    r2 = await client.get(f"{_POLY_DATA_API}/activity",
-                                          params={"user": addr, "limit": 10, "offset": off})
-                    if r2.status_code == 200:
-                        data2 = r2.json()
-                        if isinstance(data2, list) and len(data2) > 0:
-                            activity_first = data2
-                            total_trades = max(total_trades, off + len(data2))
-                            continue
-                        else:
-                            break
-                    else:
-                        break
-                except Exception:
+            offset = 0
+            max_pages = 20  # Máx 1000 closed positions
+            while offset < max_pages * 50:
+                r = await client.get(f"{_POLY_DATA_API}/closed-positions",
+                                     params={"user": addr, "limit": 50, "offset": offset})
+                if r.status_code != 200:
                     break
-
-            # Si no encontramos trades alejados, usar los recientes
-            if not activity_first and activity_recent:
-                activity_first = activity_recent
-
-            # Determinar total_trades más preciso con búsqueda binaria
-            if total_trades == 0 and activity_recent:
-                # Intento rápido con offsets crecientes
-                lo, hi = 0, 10000
-                while lo < hi:
-                    mid = (lo + hi) // 2
-                    try:
-                        r3 = await client.get(f"{_POLY_DATA_API}/activity",
-                                              params={"user": addr, "limit": 1, "offset": mid})
-                        if r3.status_code == 200:
-                            d3 = r3.json()
-                            if isinstance(d3, list) and len(d3) > 0:
-                                lo = mid + 1
-                            else:
-                                hi = mid
-                        else:
-                            hi = mid
-                    except Exception:
-                        hi = mid
-                total_trades = lo
-
-            # Fecha primer trade
-            if activity_first:
-                last_item = activity_first[-1]
-                ts_field = last_item.get("timestamp") or last_item.get("created_at") or last_item.get("createdAt")
-                if ts_field:
-                    try:
-                        if isinstance(ts_field, (int, float)):
-                            first_trade_date = datetime.fromtimestamp(ts_field, tz=timezone.utc).isoformat()
-                        else:
-                            first_trade_date = str(ts_field)
-                    except Exception:
-                        pass
-
+                d = r.json()
+                page = d if isinstance(d, list) else []
+                if not page:
+                    break
+                closed_positions.extend(page)
+                if len(page) < 50:
+                    break
+                offset += 50
         except Exception:
             pass
 
-        # 4. Calcular métricas desde posiciones
-        total_cash_pnl = 0
-        total_initial_value = 0
-        open_positions = []
+        # 4. Actividad reciente (para mostrar trades recientes)
+        activity_recent = []
+        first_trade_date = None
+        try:
+            r = await client.get(f"{_POLY_DATA_API}/activity",
+                                 params={"user": addr, "limit": 100, "offset": 0})
+            if r.status_code == 200:
+                d = r.json()
+                activity_recent = d if isinstance(d, list) else []
+        except Exception:
+            pass
+
+        # 5. Calcular métricas desde posiciones ABIERTAS
+        open_realized_pnl = 0
+        open_unrealized_pnl = 0
+        open_total_bought = 0
+        open_positions_list = []
 
         for p in positions:
             try:
@@ -468,16 +427,16 @@ async def wallet_scan(request: Request, address: str):
                 cur_price = float(p.get("curPrice", 0))
                 initial_val = float(p.get("initialValue", 0))
                 current_val = float(p.get("currentValue", 0))
-                cash_pnl = float(p.get("cashPnl", 0))
+                realized = float(p.get("realizedPnl", 0))
                 total_b = float(p.get("totalBought", 0))
                 pct_pnl = float(p.get("percentPnl", 0))
 
-                total_cash_pnl += cash_pnl
-                total_initial_value += initial_val
-                total_bought += total_b
-
+                open_realized_pnl += realized
+                open_total_bought += total_b
+                # Solo contar unrealized para posiciones con shares activos
                 if size > 0.01:
-                    open_positions.append({
+                    open_unrealized_pnl += (current_val - initial_val + realized)
+                    open_positions_list.append({
                         "title": p.get("title", ""),
                         "slug": p.get("slug", ""),
                         "size": round(size, 2),
@@ -485,75 +444,164 @@ async def wallet_scan(request: Request, address: str):
                         "cur_price": round(cur_price, 4),
                         "initial_value": round(initial_val, 2),
                         "current_value": round(current_val, 2),
-                        "cash_pnl": round(cash_pnl, 2),
+                        "cash_pnl": round(current_val - initial_val + realized, 2),
                         "pnl_pct": round(pct_pnl, 2),
                         "end_date": p.get("endDate", ""),
                     })
-
-                # Win/loss count usando cashPnl (el PnL real)
-                if cash_pnl > 0.5:
-                    wins += 1
-                elif cash_pnl < -0.5:
-                    losses += 1
-
             except (ValueError, TypeError):
                 continue
 
-        # 5. Capital inicial = suma de initialValue de todas las posiciones
-        total_pnl = total_cash_pnl
-        estimated_initial = total_initial_value if total_initial_value > 0 else max(portfolio_value - total_pnl, 0)
+        # 6. Calcular métricas desde posiciones CERRADAS (PnL real definitivo)
+        closed_realized_pnl = 0
+        closed_total_bought = 0
+        closed_wins = 0
+        closed_losses = 0
+
+        for cp in closed_positions:
+            try:
+                rpnl = float(cp.get("realizedPnl", 0))
+                tb = float(cp.get("totalBought", 0))
+                closed_realized_pnl += rpnl
+                closed_total_bought += tb
+                if rpnl > 0.5:
+                    closed_wins += 1
+                elif rpnl < -0.5:
+                    closed_losses += 1
+            except (ValueError, TypeError):
+                continue
+
+        # 7. Totales combinados
+        total_realized_pnl = open_realized_pnl + closed_realized_pnl
+        total_unrealized_pnl = open_unrealized_pnl - open_realized_pnl  # solo la parte no realizada
+        total_pnl = total_realized_pnl + total_unrealized_pnl
+        total_invested = open_total_bought + closed_total_bought
+        estimated_initial = total_invested if total_invested > 0 else max(portfolio_value - total_pnl, 0)
+
+        # Mercados operados = posiciones abiertas + cerradas (no transacciones on-chain)
+        total_markets = len(positions) + len(closed_positions)
+
+        # Win rate solo de posiciones cerradas (resultado definitivo)
+        total_resolved = closed_wins + closed_losses
+        win_rate = round(closed_wins / max(total_resolved, 1) * 100, 1)
 
         # ROI
         roi_pct = round(total_pnl / max(estimated_initial, 1) * 100, 2) if estimated_initial > 0 else 0
 
-        # Win rate
-        total_resolved = wins + losses
-        win_rate = round(wins / max(total_resolved, 1) * 100, 1)
+        # 8. Fecha primer trade — usar closed-positions (tienen datos más antiguos)
+        earliest_ts = None
+        # Desde closed positions (el último de la lista suele ser el más antiguo)
+        if closed_positions:
+            for cp in reversed(closed_positions):
+                ts = cp.get("timestamp")
+                if ts:
+                    try:
+                        if isinstance(ts, (int, float)):
+                            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+                        else:
+                            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                        if earliest_ts is None or dt < earliest_ts:
+                            earliest_ts = dt
+                        break
+                    except Exception:
+                        pass
+        # Fallback: desde actividad reciente
+        if earliest_ts is None and activity_recent:
+            last_item = activity_recent[-1]
+            ts_field = last_item.get("timestamp") or last_item.get("created_at") or last_item.get("createdAt")
+            if ts_field:
+                try:
+                    if isinstance(ts_field, (int, float)):
+                        earliest_ts = datetime.fromtimestamp(ts_field, tz=timezone.utc)
+                    else:
+                        earliest_ts = datetime.fromisoformat(str(ts_field).replace("Z", "+00:00"))
+                except Exception:
+                    pass
 
-        # Tiempo activo
+        first_trade_date = earliest_ts.isoformat() if earliest_ts else None
         days_active = None
-        if first_trade_date:
+        if earliest_ts:
             try:
-                ft = datetime.fromisoformat(first_trade_date.replace("Z", "+00:00"))
-                days_active = (datetime.now(timezone.utc) - ft).days
+                days_active = (datetime.now(timezone.utc) - earliest_ts).days
             except Exception:
                 pass
 
-        # Ordenar posiciones por valor
-        open_positions.sort(key=lambda x: abs(x["current_value"]), reverse=True)
+        # 9. Ordenar posiciones por valor
+        open_positions_list.sort(key=lambda x: abs(x["current_value"]), reverse=True)
 
-        # Actividad reciente formateada
-        recent_trades = []
-        for a in activity_recent[:20]:
-            try:
-                recent_trades.append({
-                    "title": a.get("title", a.get("question", "")),
-                    "side": a.get("side", a.get("type", "")),
-                    "size": round(float(a.get("size", a.get("amount", 0))), 2),
-                    "price": round(float(a.get("price", 0)), 4),
-                    "timestamp": a.get("timestamp") or a.get("created_at") or a.get("createdAt"),
-                    "outcome": a.get("outcome", ""),
-                })
-            except Exception:
-                continue
+        # 10. Actividad reciente agrupada por mercado+lado en ventana de 5 min
+        recent_trades = _group_activity(activity_recent)
 
         return {
             "address": addr,
             "portfolio_value": round(portfolio_value, 2),
             "estimated_initial_capital": round(estimated_initial, 2),
             "total_pnl": round(total_pnl, 2),
-            "realized_pnl": round(total_cash_pnl, 2),
+            "realized_pnl": round(total_realized_pnl, 2),
+            "unrealized_pnl": round(total_unrealized_pnl, 2),
             "roi_pct": roi_pct,
             "win_rate": win_rate,
-            "wins": wins,
-            "losses": losses,
-            "total_trades": total_trades if total_trades > 0 else len(activity_recent),
+            "wins": closed_wins,
+            "losses": closed_losses,
+            "total_trades": total_markets,
             "first_trade_date": first_trade_date,
             "days_active": days_active,
-            "open_positions_count": len(open_positions),
-            "open_positions": open_positions[:30],
+            "open_positions_count": len(open_positions_list),
+            "open_positions": open_positions_list[:30],
             "recent_trades": recent_trades,
         }
+
+
+def _group_activity(activity: list, max_groups: int = 25) -> list:
+    """Agrupar transacciones on-chain por mercado+lado en ventana de 5 min."""
+    groups = {}
+    for a in activity:
+        try:
+            title = a.get("title", a.get("question", ""))
+            side = (a.get("side", a.get("type", "")) or "").upper()
+            ts_raw = a.get("timestamp") or a.get("created_at") or a.get("createdAt")
+            size = float(a.get("size", a.get("amount", 0)))
+            price = float(a.get("price", 0))
+
+            # Ventana temporal de 5 min
+            ts_val = 0
+            if isinstance(ts_raw, (int, float)):
+                ts_val = int(ts_raw)
+            elif ts_raw:
+                try:
+                    ts_val = int(datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00")).timestamp())
+                except Exception:
+                    pass
+            window = ts_val // 300  # 5 min buckets
+
+            key = f"{title}|{side}|{window}"
+            if key not in groups:
+                groups[key] = {
+                    "title": title, "side": side, "size": 0, "price_sum": 0,
+                    "count": 0, "timestamp": ts_raw, "outcome": a.get("outcome", ""),
+                }
+            g = groups[key]
+            g["size"] += size
+            g["price_sum"] += price * size
+            g["count"] += 1
+        except Exception:
+            continue
+
+    # Formatear y ordenar por timestamp desc
+    result = []
+    for g in groups.values():
+        avg_price = g["price_sum"] / max(g["size"], 0.01)
+        result.append({
+            "title": g["title"],
+            "side": g["side"],
+            "size": round(g["size"], 2),
+            "price": round(avg_price, 4),
+            "timestamp": g["timestamp"],
+            "outcome": g["outcome"],
+            "tx_count": g["count"],
+        })
+
+    result.sort(key=lambda x: str(x.get("timestamp", "")), reverse=True)
+    return result[:max_groups]
 
 
 # ── Batch Wallet Scan ─────────────────────────────────────────────────
@@ -657,9 +705,9 @@ async def _run_batch_scan(db, addresses: list[dict], source: str):
 
 
 async def _scan_wallet_for_batch(addr: str) -> dict | None:
-    """Versión simplificada del scan para batch (menos requests)."""
+    """Versión para batch: usa /positions + /closed-positions para datos reales."""
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=20) as client:
             portfolio_value = 0
             try:
                 r = await client.get(f"{_POLY_DATA_API}/value", params={"user": addr})
@@ -672,88 +720,100 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
             except Exception:
                 pass
 
-            # Posiciones para métricas
+            # Posiciones abiertas (limit=500, sizeThreshold=0)
             positions = []
             try:
                 r = await client.get(f"{_POLY_DATA_API}/positions",
-                                     params={"user": addr, "sizeThreshold": 0.1, "limit": 200})
+                                     params={"user": addr, "sizeThreshold": 0, "limit": 500})
                 if r.status_code == 200:
-                    positions = r.json() if isinstance(r.json(), list) else []
+                    d = r.json()
+                    positions = d if isinstance(d, list) else []
             except Exception:
                 pass
 
-            # Actividad — solo recientes para estimar total_trades
-            activity_recent = []
-            total_trades = 0
-            first_trade_date = None
+            # Posiciones cerradas con paginación (máx 50/página, hasta 500 para batch)
+            closed_positions = []
             try:
-                r = await client.get(f"{_POLY_DATA_API}/activity",
-                                     params={"user": addr, "limit": 20, "offset": 0})
-                if r.status_code == 200:
-                    activity_recent = r.json() if isinstance(r.json(), list) else []
-
-                # Estimar total_trades rápido (binaria simplificada)
-                for off in [2000, 500, 100]:
-                    try:
-                        r2 = await client.get(f"{_POLY_DATA_API}/activity",
-                                              params={"user": addr, "limit": 1, "offset": off})
-                        if r2.status_code == 200:
-                            d2 = r2.json()
-                            if isinstance(d2, list) and len(d2) > 0:
-                                total_trades = max(total_trades, off + 1)
-                    except Exception:
+                offset = 0
+                while offset < 500:
+                    r = await client.get(f"{_POLY_DATA_API}/closed-positions",
+                                         params={"user": addr, "limit": 50, "offset": offset})
+                    if r.status_code != 200:
                         break
-                if total_trades == 0:
-                    total_trades = len(activity_recent)
-
-                # Fecha primer trade desde el último de la lista
-                if activity_recent:
-                    last_item = activity_recent[-1]
-                    ts_field = last_item.get("timestamp") or last_item.get("created_at") or last_item.get("createdAt")
-                    if ts_field:
-                        try:
-                            if isinstance(ts_field, (int, float)):
-                                first_trade_date = datetime.fromtimestamp(ts_field, tz=timezone.utc)
-                            else:
-                                first_trade_date = datetime.fromisoformat(str(ts_field).replace("Z", "+00:00"))
-                        except Exception:
-                            pass
+                    d = r.json()
+                    page = d if isinstance(d, list) else []
+                    if not page:
+                        break
+                    closed_positions.extend(page)
+                    if len(page) < 50:
+                        break
+                    offset += 50
             except Exception:
                 pass
 
-            # Calcular métricas desde posiciones
-            total_cash_pnl = 0
-            total_initial_value = 0
-            wins = 0
-            losses = 0
+            # Métricas desde posiciones abiertas
+            open_realized_pnl = 0
+            open_unrealized_pnl = 0
+            open_total_bought = 0
             open_count = 0
 
             for p in positions:
                 try:
                     size = float(p.get("size", 0))
                     initial_val = float(p.get("initialValue", 0))
-                    cash_pnl = float(p.get("cashPnl", 0))
-                    total_cash_pnl += cash_pnl
-                    total_initial_value += initial_val
+                    current_val = float(p.get("currentValue", 0))
+                    realized = float(p.get("realizedPnl", 0))
+                    total_b = float(p.get("totalBought", 0))
+                    open_realized_pnl += realized
+                    open_total_bought += total_b
+                    # Solo contar unrealized para posiciones con shares activos
                     if size > 0.01:
+                        open_unrealized_pnl += (current_val - initial_val + realized)
                         open_count += 1
-                    if cash_pnl > 0.5:
+                except (ValueError, TypeError):
+                    continue
+
+            # Métricas desde posiciones cerradas
+            closed_realized_pnl = 0
+            closed_total_bought = 0
+            wins = 0
+            losses = 0
+
+            for cp in closed_positions:
+                try:
+                    rpnl = float(cp.get("realizedPnl", 0))
+                    tb = float(cp.get("totalBought", 0))
+                    closed_realized_pnl += rpnl
+                    closed_total_bought += tb
+                    if rpnl > 0.5:
                         wins += 1
-                    elif cash_pnl < -0.5:
+                    elif rpnl < -0.5:
                         losses += 1
                 except (ValueError, TypeError):
                     continue
 
-            total_pnl = total_cash_pnl
-            estimated_initial = total_initial_value if total_initial_value > 0 else max(portfolio_value - total_pnl, 0)
-            roi_pct = round(total_pnl / max(estimated_initial, 1) * 100, 2) if estimated_initial > 0 else 0
+            # Totales
+            total_realized_pnl = open_realized_pnl + closed_realized_pnl
+            total_unrealized = open_unrealized_pnl - open_realized_pnl
+            total_pnl = total_realized_pnl + total_unrealized
+            total_invested = open_total_bought + closed_total_bought
+            estimated_initial = total_invested if total_invested > 0 else max(portfolio_value - total_pnl, 0)
+            total_markets = len(positions) + len(closed_positions)
             total_resolved = wins + losses
             win_rate = round(wins / max(total_resolved, 1) * 100, 1)
+            roi_pct = round(total_pnl / max(estimated_initial, 1) * 100, 2) if estimated_initial > 0 else 0
 
-            days_active = None
-            if first_trade_date:
+            # Fecha primer trade desde closed-positions (tienen timestamp)
+            days_active = 0
+            if closed_positions:
                 try:
-                    days_active = (datetime.now(timezone.utc) - first_trade_date).days
+                    ts = closed_positions[-1].get("timestamp")
+                    if ts:
+                        if isinstance(ts, (int, float)):
+                            ft = datetime.fromtimestamp(ts, tz=timezone.utc)
+                        else:
+                            ft = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                        days_active = (datetime.now(timezone.utc) - ft).days
                 except Exception:
                     pass
 
@@ -762,13 +822,13 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 "portfolio_value": round(portfolio_value, 2),
                 "estimated_initial_capital": round(estimated_initial, 2),
                 "total_pnl": round(total_pnl, 2),
-                "realized_pnl": round(total_cash_pnl, 2),
+                "realized_pnl": round(total_realized_pnl, 2),
                 "roi_pct": roi_pct,
                 "win_rate": win_rate,
                 "wins": wins,
                 "losses": losses,
-                "total_trades": total_trades,
-                "days_active": days_active or 0,
+                "total_trades": total_markets,
+                "days_active": days_active,
                 "open_positions_count": open_count,
             }
     except Exception as e:
@@ -826,6 +886,14 @@ async def get_batch_scan_results(request: Request, source: str = "",
     db = request.app.state.db
     results = await db.get_scan_results(source=source, min_trades=min_trades, sort_by=sort_by)
     return {"results": results, "total": len(results)}
+
+
+@router.delete("/api/wallets/batch-scan/clear")
+async def clear_batch_scan_cache(request: Request):
+    """Limpiar todos los resultados cacheados del batch scan."""
+    db = request.app.state.db
+    await db.clear_scan_results()
+    return {"status": "ok", "message": "Cache de wallets limpiado"}
 
 
 # ── v11: News Feed ────────────────────────────────────────────────────

@@ -2675,6 +2675,7 @@
                         <button onclick="startBatchScan('top_wallets')" id="bscan-btn-tops" class="px-4 py-2 bg-emerald-600/40 hover:bg-emerald-600/60 text-emerald-200 rounded-lg text-xs font-semibold transition">⭐ Top Wallets</button>
                         <button onclick="startBatchScan('whales')" id="bscan-btn-whales" class="px-4 py-2 bg-cyan-600/40 hover:bg-cyan-600/60 text-cyan-200 rounded-lg text-xs font-semibold transition">🐋 Whale Trades</button>
                         <button onclick="loadBatchResults()" class="px-3 py-2 bg-gray-700/40 hover:bg-gray-700/60 text-gray-300 rounded-lg text-xs transition">🔄 Ver Resultados</button>
+                        <button onclick="clearBatchCache()" class="px-3 py-2 bg-red-900/40 hover:bg-red-900/60 text-red-300 rounded-lg text-xs transition">🗑️ Limpiar</button>
                     </div>
                     <!-- Progress -->
                     <div id="bscan-progress" class="hidden mb-3">
@@ -2770,7 +2771,7 @@
                         </div>
                     </div>
                     <!-- Detalle extra -->
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+                    <div class="grid grid-cols-3 md:grid-cols-5 gap-2 mb-4">
                         <div class="bg-gray-800/30 rounded-lg p-2 text-center">
                             <div class="text-[10px] text-gray-500">W / L</div>
                             <div class="text-sm font-bold"><span class="text-green-400" id="wscan-wins">0</span> / <span class="text-red-400" id="wscan-losses">0</span></div>
@@ -2778,6 +2779,10 @@
                         <div class="bg-gray-800/30 rounded-lg p-2 text-center">
                             <div class="text-[10px] text-gray-500">PnL Realizado</div>
                             <div class="text-sm font-bold" id="wscan-realized">$0</div>
+                        </div>
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">PnL No Realizado</div>
+                            <div class="text-sm font-bold" id="wscan-unrealized">$0</div>
                         </div>
                         <div class="bg-gray-800/30 rounded-lg p-2 text-center">
                             <div class="text-[10px] text-gray-500">Primer Trade</div>
@@ -2819,8 +2824,9 @@
                                 <th class="text-center p-2">Side</th>
                                 <th class="text-right p-2">Monto</th>
                                 <th class="text-right p-2">Precio</th>
+                                <th class="text-right p-2">Txs</th>
                             </tr></thead>
-                            <tbody id="wscan-activity-body"><tr><td colspan="5" class="text-center text-gray-600 p-4">Sin datos</td></tr></tbody>
+                            <tbody id="wscan-activity-body"><tr><td colspan="6" class="text-center text-gray-600 p-4">Sin datos</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -6442,6 +6448,13 @@ function renderWalletScan(d){
     const realEl=document.getElementById('wscan-realized');
     realEl.textContent=(d.realized_pnl>=0?'+':'-')+`$${fmt(Math.abs(Math.round(d.realized_pnl)))}`;
     realEl.className='text-sm font-bold '+(d.realized_pnl>=0?'text-green-400':'text-red-400');
+    // Unrealized PnL (nuevo)
+    const unrEl=document.getElementById('wscan-unrealized');
+    if(unrEl){
+        const ur=d.unrealized_pnl||0;
+        unrEl.textContent=(ur>=0?'+':'-')+`$${fmt(Math.abs(Math.round(ur)))}`;
+        unrEl.className='text-sm font-bold '+(ur>=0?'text-green-400':'text-red-400');
+    }
     if(d.first_trade_date){
         try{const dt=new Date(d.first_trade_date);document.getElementById('wscan-first').textContent=dt.toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'});}
         catch(e){document.getElementById('wscan-first').textContent=d.first_trade_date.slice(0,10);}
@@ -6477,15 +6490,17 @@ function renderWalletScan(d){
             if(a.timestamp){try{ts=new Date(a.timestamp).toLocaleString('es-CL',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});}catch(e){ts=String(a.timestamp).slice(0,16);}}
             const sC=(a.side||'').toUpperCase()==='BUY'||a.side==='Buy'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400';
             const title=(a.title||'').length>45?a.title.slice(0,45)+'…':a.title||'';
+            const txCount=a.tx_count||1;
             return`<tr class="border-b border-gray-800/30">
                 <td class="p-2 text-gray-400 whitespace-nowrap">${ts}</td>
                 <td class="p-2 max-w-[200px] truncate text-gray-300">${title}</td>
                 <td class="p-2 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${sC}">${(a.side||'').toUpperCase()}</span></td>
                 <td class="p-2 text-right font-mono">$${fmt(a.size)}</td>
                 <td class="p-2 text-right font-mono text-gray-400">${a.price.toFixed(2)}</td>
+                <td class="p-2 text-right font-mono text-gray-500">${txCount>1?txCount+'x':'1'}</td>
             </tr>`;
         }).join('');
-    }else{actBody.innerHTML='<tr><td colspan="5" class="text-center text-gray-600 p-4">Sin actividad reciente</td></tr>';}
+    }else{actBody.innerHTML='<tr><td colspan="6" class="text-center text-gray-600 p-4">Sin actividad reciente</td></tr>';}
     document.getElementById('wscan-result').classList.remove('hidden');
 }
 
@@ -6574,6 +6589,19 @@ async function loadBatchResults(){
     }catch(e){console.error('loadBatchResults error',e);}
 }
 function filterBatchResults(){loadBatchResults();}
+async function clearBatchCache(){
+    if(!confirm('¿Limpiar todos los resultados de wallets analizadas?'))return;
+    try{
+        const r=await apiFetch('/api/wallets/batch-scan/clear',{method:'DELETE'});
+        if(r&&r.status==='ok'){
+            _bscanData=[];
+            document.getElementById('bscan-summary').classList.add('hidden');
+            document.getElementById('bscan-filters').classList.add('hidden');
+            document.getElementById('bscan-table-wrap').classList.add('hidden');
+            document.getElementById('bscan-ranking-body').innerHTML='<tr><td colspan="10" class="text-center py-4 text-gray-600">Sin resultados. Ejecuta un análisis batch primero.</td></tr>';
+        }
+    }catch(e){console.error('clearBatchCache error',e);}
+}
 function renderBatchResults(results){
     _bscanData=results;
     document.getElementById('bscan-summary').classList.remove('hidden');

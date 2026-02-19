@@ -4086,6 +4086,11 @@ class Database:
             )
             return [_serialize_row(r) for r in rows]
 
+    async def clear_scan_results(self):
+        """Limpiar todos los resultados cacheados del batch scan."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("DELETE FROM wallet_scan_cache")
+
     async def get_addresses_for_batch_scan(self, source: str, user_id: int = 1) -> list[dict]:
         """Obtener direcciones únicas de wallets según la fuente."""
         async with self._pool.acquire() as conn:
