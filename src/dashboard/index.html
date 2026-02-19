@@ -1218,13 +1218,14 @@
                                     <th class="px-3 py-1.5 text-left">Hora</th>
                                     <th class="px-3 py-1.5 text-center">Moneda</th>
                                     <th class="px-3 py-1.5 text-center">Dir</th>
+                                    <th class="px-3 py-1.5 text-center">Tipo</th>
                                     <th class="px-3 py-1.5 text-right">Size</th>
                                     <th class="px-3 py-1.5 text-right">Precio</th>
                                     <th class="px-3 py-1.5 text-center">Estado</th>
                                     <th class="px-3 py-1.5 text-right">PnL</th>
                                 </tr></thead>
                                 <tbody id="at-trades-body">
-                                    <tr><td colspan="7" class="text-center py-4 text-gray-600 text-xs">Sin trades ejecutados aún</td></tr>
+                                    <tr><td colspan="8" class="text-center py-4 text-gray-600 text-xs">Sin trades ejecutados aún</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -5279,10 +5280,16 @@ async function loadAutotradeHistory(){
         }
         const pnl=t.pnl||0;
         const pnlColor=pnl>=0?'text-green-400':'text-red-400';
+        const ot=t.order_type||'limit';
+        const otBadge=ot==='maker'?'<span class="px-1.5 py-0.5 rounded text-[10px] bg-green-900/50 text-green-400">Maker</span>'
+            :ot==='hybrid'?'<span class="px-1.5 py-0.5 rounded text-[10px] bg-yellow-900/50 text-yellow-400">Hybrid</span>'
+            :ot==='market'?'<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-900/50 text-purple-400">FOK</span>'
+            :'<span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-700 text-gray-400">Limit</span>';
         return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
             <td class="px-3 py-1.5 text-gray-400">${date} ${time}</td>
             <td class="px-3 py-1.5 text-center font-bold">${t.coin}</td>
             <td class="px-3 py-1.5 text-center ${dirColor} font-bold">${dirIcon}</td>
+            <td class="px-3 py-1.5 text-center">${otBadge}</td>
             <td class="px-3 py-1.5 text-right font-mono">$${(t.size_usd||0).toFixed(0)}</td>
             <td class="px-3 py-1.5 text-right font-mono">${(t.price||0).toFixed(2)}</td>
             <td class="px-3 py-1.5 text-center">${statusBadge}</td>
