@@ -832,8 +832,10 @@ class AlertAutoTrader:
             print(f"[AlertTrader] ❌ Error ejecutando trade: {error}", flush=True)
             return {"success": False, "error": error}
 
-    def _calc_shares(self, bet_size: float, order_price: float) -> float:
-        """Calcular shares con precisión Decimal para CLOB."""
+    def _calc_shares(self, bet_size: float, order_price: float) -> tuple[float, float]:
+        """Calcular shares con precisión Decimal para CLOB.
+        Retorna (shares, actual_usdc) — actual_usdc es el costo real (shares × price).
+        Si MIN_CLOB_SHARES fuerza más shares, actual_usdc > bet_size."""
         from decimal import Decimal, ROUND_DOWN
         MIN_CLOB_SHARES = Decimal('5')
         d_price = Decimal(str(order_price))
@@ -848,7 +850,8 @@ class AlertAutoTrader:
                 break
         if d_shares < MIN_CLOB_SHARES:
             d_shares = MIN_CLOB_SHARES
-        return float(d_shares)
+        actual_usdc = float((d_shares * d_price).quantize(Decimal('0.01')))
+        return float(d_shares), actual_usdc
 
     async def _post_and_poll_order(self, order_args, token_id: str) -> tuple:
         """Postear orden GTC y hacer polling. Retorna (success, order_id, error_msg)."""
@@ -920,13 +923,18 @@ class AlertAutoTrader:
         # Bump precio para cruzar el spread (midpoint → ask side)
         bump = self._config.get("buy_price_bump", 0.02)
         order_price = round(min(price + bump, 0.99), 2)
-        shares = self._calc_shares(bet_size, order_price)
+        shares, actual_usdc = self._calc_shares(bet_size, order_price)
         if shares <= 0:
             return {"success": False, "error": f"No se pudo calcular shares para price={order_price} bet={bet_size}"}
 
+        # Log si el mínimo de shares forzó un gasto mayor
+        if actual_usdc > bet_size * 1.05:
+            print(f"[AlertTrader] ⚠️ MIN_SHARES ajuste: bet=${bet_size:.2f} → real=${actual_usdc:.2f} "
+                  f"({shares} shares × ${order_price})", flush=True)
+
         from py_clob_client.clob_types import OrderArgs
         order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
-        print(f"[AlertTrader] Order: price={order_price} shares={shares} usdc={round(shares*order_price,2)} type=GTC", flush=True)
+        print(f"[AlertTrader] Order: price={order_price} shares={shares} usdc=${actual_usdc:.2f} type=GTC", flush=True)
 
         success, order_id, error_msg = await self._post_and_poll_order(order_args, token_id)
 
@@ -944,7 +952,7 @@ class AlertAutoTrader:
             "side": "BUY",
             "outcome": outcome,
             "price": price,
-            "size_usd": bet_size,
+            "size_usd": actual_usdc,
             "shares": shares,
             "token_id": token_id,
             "category": trade_info["category"],
@@ -961,10 +969,11 @@ class AlertAutoTrader:
             self._trades_today.append(trade_record)
             self._open_positions[cid] = trade_record
             print(f"[AlertTrader] ✅ COPY-TRADE: {outcome} en {trade_info['market_slug'][:40]} "
-                  f"${bet_size} @ {price:.2f} (score={trade_info['alert_score']} "
+                  f"${actual_usdc:.2f} @ {price:.2f} (score={trade_info['alert_score']} "
                   f"insider=${trade_info['insider_size']:.0f}) order={order_id}",
                   flush=True)
-            return {"success": True, "order_id": order_id, "trade": trade_record}
+            return {"success": True, "order_id": order_id, "trade": trade_record,
+                    "actual_usdc": actual_usdc}
         else:
             print(f"[AlertTrader] ❌ Orden rechazada: {error_msg}", flush=True)
             return {"success": False, "error": error_msg}
@@ -1002,18 +1011,18 @@ class AlertAutoTrader:
 
             bump = self._config.get("buy_price_bump", 0.02)
             order_price = round(min(price + bump, 0.99), 2)
-            shares = self._calc_shares(split_size, order_price)
+            shares, split_actual_usdc = self._calc_shares(split_size, order_price)
             if shares <= 0:
                 continue
 
             from py_clob_client.clob_types import OrderArgs
             order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
-            print(f"[AlertTrader]   DCA [{i+1}/{splits}]: {shares} shares @ {order_price}", flush=True)
+            print(f"[AlertTrader]   DCA [{i+1}/{splits}]: {shares} shares @ {order_price} (${split_actual_usdc:.2f})", flush=True)
 
             success, order_id, error_msg = await self._post_and_poll_order(order_args, token_id)
             if success:
                 total_shares += shares
-                total_cost += shares * order_price
+                total_cost += split_actual_usdc
                 order_ids.append(order_id)
                 fills += 1
 
@@ -1052,7 +1061,8 @@ class AlertAutoTrader:
         print(f"[AlertTrader] ✅ DCA COPY-TRADE: {outcome} en {trade_info['market_slug'][:40]} "
               f"${total_cost:.2f} @ avg {avg_price:.3f} ({fills}/{splits} fills, {total_shares:.2f} shares)",
               flush=True)
-        return {"success": True, "order_id": order_ids[0] if order_ids else "", "trade": trade_record}
+        return {"success": True, "order_id": order_ids[0] if order_ids else "", "trade": trade_record,
+                "actual_usdc": round(total_cost, 2)}
 
     async def _get_token_and_price(self, condition_id: str, outcome: str) -> tuple:
         """Obtener token_id y precio actual del outcome (Yes/No)."""
@@ -1443,6 +1453,16 @@ class AlertAutoTrader:
             print(f"[CopyTrade] ⚠️ Bet size calculado = 0 para {trade.wallet_address[:10]}", flush=True)
             return
 
+        # Pre-check: el CLOB exige mínimo 5 shares. Si el precio es alto,
+        # 5 shares pueden costar más que el bet_size o el presupuesto restante.
+        estimated_price = trade.price if trade.price and 0 < trade.price < 1 else 0.50
+        min_clob_cost = 5 * estimated_price  # Costo mínimo real del CLOB
+        remaining = budget - budget_used if budget > 0 else float('inf')
+        if budget > 0 and min_clob_cost > remaining:
+            print(f"[CopyTrade] ⚠️ Presupuesto insuficiente: min CLOB=${min_clob_cost:.2f} > "
+                  f"remaining=${remaining:.2f} para {trade.wallet_address[:10]}", flush=True)
+            return
+
         trade_info = {
             "condition_id": trade.market_id,
             "market_slug": trade.market_slug,
@@ -1469,15 +1489,16 @@ class AlertAutoTrader:
 
         result = await self.execute_trade(trade_info)
         if result.get("success"):
-            # Actualizar presupuesto usado
+            # Actualizar presupuesto usado con el monto REAL gastado (no el planeado)
+            real_spent = result.get("actual_usdc", bet_size)
             if budget > 0:
-                await self.db.update_wallet_budget_used(trade.wallet_address, bet_size)
+                await self.db.update_wallet_budget_used(trade.wallet_address, real_spent)
             logger.info("copy_trade_executed",
                         market=trade.market_slug,
                         wallet=trade.wallet_address[:10],
                         side=trade.side,
                         outcome=trade.outcome,
-                        size=bet_size,
+                        size=real_spent,
                         mode=mode_label)
         else:
             print(f"[CopyTrade] ❌ Error: {result.get('error', 'unknown')}", flush=True)
@@ -1862,10 +1883,16 @@ class AlertAutoTrader:
                         our_outcome = trade.get("outcome", "")
                         won = our_outcome.lower() == winning_outcome.lower()
 
-                        price = trade.get("price", 0)
                         size_usd = trade.get("size_usd", 0)
+                        shares = trade.get("shares", 0)
                         if won:
-                            pnl = size_usd * ((1.0 / price) - 1)
+                            # Cada share ganadora paga $1.00
+                            if shares > 0:
+                                pnl = round(shares - size_usd, 2)
+                            else:
+                                # Fallback para trades antiguos sin shares
+                                price = trade.get("price", 0.5)
+                                pnl = round(size_usd * ((1.0 / max(price, 0.01)) - 1), 2)
                             result = "win"
                         else:
                             pnl = -size_usd
