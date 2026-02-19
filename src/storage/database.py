@@ -4096,14 +4096,12 @@ class Database:
         async with self._pool.acquire() as conn:
             if source == "wallets":
                 rows = await conn.fetch("""
-                    SELECT DISTINCT a.wallet_address as address,
-                           COALESCE(w.name, w.pseudonym, '') as name,
-                           COALESCE(w.profile_image, '') as profile_image
-                    FROM alerts a
-                    LEFT JOIN wallets w ON a.wallet_address = w.address
-                    WHERE a.side = 'BUY' AND a.user_id = $1
+                    SELECT address,
+                           COALESCE(name, pseudonym, '') as name,
+                           COALESCE(profile_image, '') as profile_image
+                    FROM wallets
                     ORDER BY address
-                """, user_id)
+                """)
             elif source == "top_wallets":
                 rows = await conn.fetch("""
                     SELECT DISTINCT a.wallet_address as address,

@@ -713,9 +713,6 @@ async def start_batch_scan(request: Request):
     if not addresses:
         return {"status": "empty", "total": 0, "message": "No hay wallets para analizar en esta fuente"}
 
-    # Limitar a 80 wallets por batch
-    addresses = addresses[:80]
-
     _batch_scan_state = {
         "running": True, "source": source,
         "total": len(addresses), "scanned": 0, "current": "", "errors": 0,
