@@ -370,23 +370,25 @@ async def wallet_scan(request: Request, address: str):
         except Exception:
             pass
 
-        # 2. Posiciones abiertas (limit=500, sin sizeThreshold para no perder datos)
+        # 2. Posiciones abiertas — solo con size > 0 (posiciones reales activas)
         positions = []
         try:
             r = await client.get(f"{_POLY_DATA_API}/positions",
-                                 params={"user": addr, "sizeThreshold": 0, "limit": 500})
+                                 params={"user": addr, "sizeThreshold": 0.01, "limit": 500,
+                                         "sortBy": "CURRENT", "sortDirection": "DESC"})
             if r.status_code == 200:
                 d = r.json()
                 positions = d if isinstance(d, list) else []
         except Exception:
             pass
 
-        # 3. Posiciones cerradas con paginación (máx 50/página según API)
+        # 3. Posiciones cerradas con paginación
         closed_positions = []
+        closed_complete = True  # flag: ¿obtuvimos TODAS las cerradas?
         try:
             offset = 0
-            max_pages = 20  # Máx 1000 closed positions
-            while offset < max_pages * 50:
+            max_closed = 2500  # máx razonable para scan individual
+            while offset < max_closed:
                 r = await client.get(f"{_POLY_DATA_API}/closed-positions",
                                      params={"user": addr, "limit": 50, "offset": offset})
                 if r.status_code != 200:
@@ -399,6 +401,8 @@ async def wallet_scan(request: Request, address: str):
                 if len(page) < 50:
                     break
                 offset += 50
+                if offset >= max_closed:
+                    closed_complete = False
         except Exception:
             pass
 
@@ -414,45 +418,44 @@ async def wallet_scan(request: Request, address: str):
         except Exception:
             pass
 
-        # 5. Calcular métricas desde posiciones ABIERTAS
-        open_realized_pnl = 0
-        open_unrealized_pnl = 0
+        # 5. Métricas desde posiciones ABIERTAS — usar cashPnl del API directamente
+        open_cash_pnl = 0  # PnL total de posiciones abiertas (realized + unrealized)
         open_total_bought = 0
         open_positions_list = []
 
         for p in positions:
             try:
                 size = float(p.get("size", 0))
+                if size < 0.01:
+                    continue
+                cash_pnl = float(p.get("cashPnl", 0))
                 avg_price = float(p.get("avgPrice", 0))
                 cur_price = float(p.get("curPrice", 0))
                 initial_val = float(p.get("initialValue", 0))
                 current_val = float(p.get("currentValue", 0))
-                realized = float(p.get("realizedPnl", 0))
                 total_b = float(p.get("totalBought", 0))
                 pct_pnl = float(p.get("percentPnl", 0))
 
-                open_realized_pnl += realized
+                open_cash_pnl += cash_pnl
                 open_total_bought += total_b
-                # Solo contar unrealized para posiciones con shares activos
-                if size > 0.01:
-                    open_unrealized_pnl += (current_val - initial_val + realized)
-                    open_positions_list.append({
-                        "title": p.get("title", ""),
-                        "slug": p.get("slug", ""),
-                        "size": round(size, 2),
-                        "avg_price": round(avg_price, 4),
-                        "cur_price": round(cur_price, 4),
-                        "initial_value": round(initial_val, 2),
-                        "current_value": round(current_val, 2),
-                        "cash_pnl": round(current_val - initial_val + realized, 2),
-                        "pnl_pct": round(pct_pnl, 2),
-                        "end_date": p.get("endDate", ""),
-                    })
+
+                open_positions_list.append({
+                    "title": p.get("title", ""),
+                    "slug": p.get("slug", ""),
+                    "size": round(size, 2),
+                    "avg_price": round(avg_price, 4),
+                    "cur_price": round(cur_price, 4),
+                    "initial_value": round(initial_val, 2),
+                    "current_value": round(current_val, 2),
+                    "cash_pnl": round(cash_pnl, 2),
+                    "pnl_pct": round(pct_pnl, 2),
+                    "end_date": p.get("endDate", ""),
+                })
             except (ValueError, TypeError):
                 continue
 
-        # 6. Calcular métricas desde posiciones CERRADAS (PnL real definitivo)
-        closed_realized_pnl = 0
+        # 6. Métricas desde posiciones CERRADAS — realizedPnl = net profit confirmado
+        closed_pnl = 0
         closed_total_bought = 0
         closed_wins = 0
         closed_losses = 0
@@ -461,7 +464,7 @@ async def wallet_scan(request: Request, address: str):
             try:
                 rpnl = float(cp.get("realizedPnl", 0))
                 tb = float(cp.get("totalBought", 0))
-                closed_realized_pnl += rpnl
+                closed_pnl += rpnl
                 closed_total_bought += tb
                 if rpnl > 0.5:
                     closed_wins += 1
@@ -470,14 +473,18 @@ async def wallet_scan(request: Request, address: str):
             except (ValueError, TypeError):
                 continue
 
-        # 7. Totales combinados
-        total_realized_pnl = open_realized_pnl + closed_realized_pnl
-        total_unrealized_pnl = open_unrealized_pnl - open_realized_pnl  # solo la parte no realizada
-        total_pnl = total_realized_pnl + total_unrealized_pnl
+        # 7. Totales — SIN doble conteo
+        # cashPnl de API ya incluye realized+unrealized para cada posición abierta
+        # realizedPnl de closed-positions = net profit de mercados resueltos
+        # No hay overlap: /positions = mercados activos, /closed-positions = resueltos
+        total_pnl = open_cash_pnl + closed_pnl
+        realized_pnl = closed_pnl  # solo lo definitivamente cerrado
+        unrealized_pnl = open_cash_pnl  # PnL de posiciones activas (mix realized+unrealized)
+
         total_invested = open_total_bought + closed_total_bought
         estimated_initial = total_invested if total_invested > 0 else max(portfolio_value - total_pnl, 0)
 
-        # Mercados operados = posiciones abiertas + cerradas (no transacciones on-chain)
+        # Mercados operados
         total_markets = len(positions) + len(closed_positions)
 
         # Win rate solo de posiciones cerradas (resultado definitivo)
@@ -536,8 +543,8 @@ async def wallet_scan(request: Request, address: str):
             "portfolio_value": round(portfolio_value, 2),
             "estimated_initial_capital": round(estimated_initial, 2),
             "total_pnl": round(total_pnl, 2),
-            "realized_pnl": round(total_realized_pnl, 2),
-            "unrealized_pnl": round(total_unrealized_pnl, 2),
+            "realized_pnl": round(realized_pnl, 2),
+            "unrealized_pnl": round(unrealized_pnl, 2),
             "roi_pct": roi_pct,
             "win_rate": win_rate,
             "wins": closed_wins,
@@ -720,22 +727,23 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
             except Exception:
                 pass
 
-            # Posiciones abiertas (limit=500, sizeThreshold=0)
+            # Posiciones abiertas — solo con size > 0
             positions = []
             try:
                 r = await client.get(f"{_POLY_DATA_API}/positions",
-                                     params={"user": addr, "sizeThreshold": 0, "limit": 500})
+                                     params={"user": addr, "sizeThreshold": 0.01, "limit": 500,
+                                             "sortBy": "CURRENT", "sortDirection": "DESC"})
                 if r.status_code == 200:
                     d = r.json()
                     positions = d if isinstance(d, list) else []
             except Exception:
                 pass
 
-            # Posiciones cerradas con paginación (máx 50/página, hasta 500 para batch)
+            # Posiciones cerradas con paginación (hasta 1000 para batch)
             closed_positions = []
             try:
                 offset = 0
-                while offset < 500:
+                while offset < 1000:
                     r = await client.get(f"{_POLY_DATA_API}/closed-positions",
                                          params={"user": addr, "limit": 50, "offset": offset})
                     if r.status_code != 200:
@@ -751,30 +759,24 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
             except Exception:
                 pass
 
-            # Métricas desde posiciones abiertas
-            open_realized_pnl = 0
-            open_unrealized_pnl = 0
+            # Métricas desde posiciones abiertas — usar cashPnl del API
+            open_cash_pnl = 0
             open_total_bought = 0
             open_count = 0
 
             for p in positions:
                 try:
                     size = float(p.get("size", 0))
-                    initial_val = float(p.get("initialValue", 0))
-                    current_val = float(p.get("currentValue", 0))
-                    realized = float(p.get("realizedPnl", 0))
-                    total_b = float(p.get("totalBought", 0))
-                    open_realized_pnl += realized
-                    open_total_bought += total_b
-                    # Solo contar unrealized para posiciones con shares activos
-                    if size > 0.01:
-                        open_unrealized_pnl += (current_val - initial_val + realized)
-                        open_count += 1
+                    if size < 0.01:
+                        continue
+                    open_cash_pnl += float(p.get("cashPnl", 0))
+                    open_total_bought += float(p.get("totalBought", 0))
+                    open_count += 1
                 except (ValueError, TypeError):
                     continue
 
-            # Métricas desde posiciones cerradas
-            closed_realized_pnl = 0
+            # Métricas desde posiciones cerradas — realizedPnl = net profit
+            closed_pnl = 0
             closed_total_bought = 0
             wins = 0
             losses = 0
@@ -783,7 +785,7 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 try:
                     rpnl = float(cp.get("realizedPnl", 0))
                     tb = float(cp.get("totalBought", 0))
-                    closed_realized_pnl += rpnl
+                    closed_pnl += rpnl
                     closed_total_bought += tb
                     if rpnl > 0.5:
                         wins += 1
@@ -792,10 +794,8 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 except (ValueError, TypeError):
                     continue
 
-            # Totales
-            total_realized_pnl = open_realized_pnl + closed_realized_pnl
-            total_unrealized = open_unrealized_pnl - open_realized_pnl
-            total_pnl = total_realized_pnl + total_unrealized
+            # Totales — SIN doble conteo
+            total_pnl = open_cash_pnl + closed_pnl
             total_invested = open_total_bought + closed_total_bought
             estimated_initial = total_invested if total_invested > 0 else max(portfolio_value - total_pnl, 0)
             total_markets = len(positions) + len(closed_positions)
@@ -822,7 +822,7 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 "portfolio_value": round(portfolio_value, 2),
                 "estimated_initial_capital": round(estimated_initial, 2),
                 "total_pnl": round(total_pnl, 2),
-                "realized_pnl": round(total_realized_pnl, 2),
+                "realized_pnl": round(closed_pnl, 2),
                 "roi_pct": roi_pct,
                 "win_rate": win_rate,
                 "wins": wins,
