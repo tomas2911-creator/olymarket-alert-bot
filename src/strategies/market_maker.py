@@ -13,6 +13,7 @@ Flujo:
 """
 import asyncio
 import os
+import random
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
@@ -566,8 +567,22 @@ class CryptoMarketMaker:
                                 continue
 
                             if order.is_paper:
-                                # Paper: fill si precio actual <= nuestro bid
+                                # Paper: simular fills realistas para maker orders
+                                age = now - order.created_ts
+                                price_diff = current_price - order.price  # >0 = mercado encima de nuestro bid
+
+                                should_fill = False
                                 if current_price <= order.price:
+                                    # Caso 1: precio de mercado tocó nuestro bid
+                                    should_fill = True
+                                elif price_diff < 0.08:
+                                    # Caso 2: simular fill natural — en mercados reales,
+                                    # maker orders 2-4 cents debajo del mid se llenan en 10-60s
+                                    # Probabilidad crece con tiempo, decrece con distancia al precio
+                                    fill_prob = min(0.4, (age / 90.0) * max(0.05, 1.0 - price_diff * 12))
+                                    should_fill = random.random() < fill_prob
+
+                                if should_fill:
                                     order.status = "filled"
                                     order.filled_ts = now
                                     self._stats["fills"] += 1
@@ -576,8 +591,9 @@ class CryptoMarketMaker:
                                     order.rebate_est = rebate
                                     self._stats["total_rebates"] += rebate
                                     print(f"[MarketMaker] ✅ FILL: {order.coin} {order.outcome} "
-                                          f"@${order.price:.2f} (mercado=${current_price:.2f})", flush=True)
-                                elif now - order.created_ts > self._config["fill_timeout_sec"]:
+                                          f"@${order.price:.2f} (mercado=${current_price:.2f}) "
+                                          f"age={age:.0f}s", flush=True)
+                                elif age > self._config["fill_timeout_sec"]:
                                     order.status = "cancelled"
                                     to_remove.append(oid)
                                     self._stats["cancels"] += 1
