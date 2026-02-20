@@ -533,17 +533,42 @@ class AutoTrader:
                     print(f"[AutoTrader] FOK rechazada (sin orderID), reintentando como GTC...", flush=True)
 
             # Fallback: reintentar como GTC si FOK falló (excepción o rechazo)
+            # GTC es orden maker (bid pasivo). Usar precio competitivo cerca del ask
+            # en vez del precio FOK con slippage agresivo que queda lejos del mercado.
             if fok_failed:
                 try:
+                    gtc_price = min(round(price + 0.02, 2), 0.99)
+
+                    # Recalcular shares para el nuevo precio (mantener precisión CLOB)
+                    d_gtc_price = Decimal(str(gtc_price))
+                    d_gtc_raw = Decimal(str(bet_size)) / d_gtc_price
+                    d_gtc_shares = Decimal('0')
+                    for dec in [4, 3, 2, 1, 0]:
+                        q = Decimal(10) ** -dec
+                        d_cand = d_gtc_raw.quantize(q, rounding=ROUND_DOWN)
+                        d_mk = d_cand * d_gtc_price
+                        if d_mk == d_mk.quantize(Decimal('0.01')):
+                            d_gtc_shares = d_cand
+                            break
+                    if d_gtc_shares < MIN_CLOB_SHARES:
+                        d_gtc_shares = MIN_CLOB_SHARES
+                    gtc_shares = float(d_gtc_shares)
+
+                    print(f"[AutoTrader] GTC fallback: price={gtc_price} (FOK was {order_price}) "
+                          f"shares={gtc_shares} usdc={round(gtc_shares*gtc_price,2)}", flush=True)
+
                     gtc_args = OrderArgs(
-                        price=order_price,
-                        size=shares,
+                        price=gtc_price,
+                        size=gtc_shares,
                         side="BUY",
                         token_id=token_id,
                     )
                     signed_order = await loop.run_in_executor(None, self._client.create_order, gtc_args)
                     resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
                     used_order_type = OrderType.GTC
+                    # Actualizar price/shares para que el trade_record refleje lo real
+                    order_price = gtc_price
+                    shares = gtc_shares
                 except Exception as gtc_err:
                     print(f"[AutoTrader] GTC fallback también falló: {gtc_err}", flush=True)
                     raise
