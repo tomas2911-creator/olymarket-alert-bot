@@ -4176,6 +4176,16 @@ class Database:
                 WHERE id=$1
             """, job_id, scanned, errors)
 
+    async def cancel_scan_job(self, job_id: int, scanned: int, errors: int):
+        """Marcar job como cancelado."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE batch_scan_jobs
+                SET status='cancelled', scanned=$2, errors=$3, current_wallet='',
+                    updated_at=NOW(), finished_at=NOW()
+                WHERE id=$1
+            """, job_id, scanned, errors)
+
     async def get_active_scan_job(self) -> dict | None:
         """Obtener job activo (running) si existe."""
         async with self._pool.acquire() as conn:

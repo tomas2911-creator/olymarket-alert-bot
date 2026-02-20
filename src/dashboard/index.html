@@ -2682,7 +2682,10 @@
                     <div id="bscan-progress" class="hidden mb-3">
                         <div class="flex items-center justify-between text-xs text-gray-400 mb-1">
                             <span id="bscan-progress-text">Analizando...</span>
-                            <span id="bscan-progress-count">0/0</span>
+                            <div class="flex items-center gap-2">
+                                <span id="bscan-progress-count">0/0</span>
+                                <button onclick="cancelBatchScan()" id="bscan-cancel-btn" class="px-2 py-0.5 bg-red-900/50 hover:bg-red-900/70 text-red-300 rounded text-[10px] font-semibold transition">✕ Cancelar</button>
+                            </div>
                         </div>
                         <div class="w-full bg-gray-700/50 rounded-full h-2">
                             <div id="bscan-progress-bar" class="bg-violet-500 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
@@ -6614,34 +6617,51 @@ async function pollBatchStatus(){
         const s=await fetchJson('/api/wallets/batch-scan/status');
         if(!s)return;
         const pct=s.total>0?Math.round(s.scanned/s.total*100):0;
+        const jobTag=s.job_id?` [Job #${s.job_id}]`:'';
         document.getElementById('bscan-progress').classList.remove('hidden');
         document.getElementById('bscan-progress-count').textContent=`${s.scanned||0}/${s.total||0}`;
         document.getElementById('bscan-progress-bar').style.width=pct+'%';
         const labels={wallets:'Wallets',top_wallets:'Top Wallets',whales:'Whales'};
+        const cancelBtn=document.getElementById('bscan-cancel-btn');
         if(s.running){
-            document.getElementById('bscan-progress-text').textContent=`Analizando ${labels[s.source]||s.source}... ${s.current||''}`;
+            document.getElementById('bscan-progress-text').textContent=`Analizando ${labels[s.source]||s.source}${jobTag}... ${s.current||''}`;
+            if(cancelBtn)cancelBtn.classList.remove('hidden');
             ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales'].forEach(id=>{
                 const b=document.getElementById(id);if(b){b.disabled=true;b.style.opacity='0.5';}
             });
         }else{
             clearInterval(_bscanPollTimer);_bscanPollTimer=null;
             _enableBscanBtns();
-            document.getElementById('bscan-progress-text').textContent=`Completado! ${s.scanned||0} wallets analizadas (${s.errors||0} errores)`;
+            if(cancelBtn)cancelBtn.classList.add('hidden');
+            const statusText=s.status==='cancelled'?`Cancelado${jobTag}: ${s.scanned||0} wallets procesadas`:`Completado${jobTag}! ${s.scanned||0} wallets analizadas (${s.errors||0} errores)`;
+            document.getElementById('bscan-progress-text').textContent=statusText;
             setTimeout(()=>{
                 document.getElementById('bscan-progress').classList.add('hidden');
                 loadBatchResults();
-            },1500);
+            },2000);
         }
     }catch(e){console.error('pollBatchStatus error',e);}
 }
 // Auto-recovery: al cargar la página, verificar si hay job en curso
+async function cancelBatchScan(){
+    if(!confirm('¿Cancelar el scan en curso? Los resultados ya escaneados se conservan.'))return;
+    try{
+        const r=await apiFetch('/api/wallets/batch-scan/cancel',{method:'POST'});
+        if(r){
+            document.getElementById('bscan-progress-text').textContent=r.message||'Cancelando...';
+            const cancelBtn=document.getElementById('bscan-cancel-btn');
+            if(cancelBtn){cancelBtn.disabled=true;cancelBtn.textContent='Cancelando...';}
+        }
+    }catch(e){console.error('cancelBatchScan error',e);}
+}
 async function _checkBscanJobOnLoad(){
     try{
         const s=await fetchJson('/api/wallets/batch-scan/status');
         if(!s)return;
         if(s.running){
+            const jobTag=s.job_id?` [Job #${s.job_id}]`:'';
             document.getElementById('bscan-progress').classList.remove('hidden');
-            document.getElementById('bscan-progress-text').textContent=`Scan en curso... ${s.scanned||0}/${s.total||0}`;
+            document.getElementById('bscan-progress-text').textContent=`Scan en curso${jobTag}... ${s.scanned||0}/${s.total||0}`;
             document.getElementById('bscan-progress-count').textContent=`${s.scanned||0}/${s.total||0}`;
             const pct=s.total>0?Math.round(s.scanned/s.total*100):0;
             document.getElementById('bscan-progress-bar').style.width=pct+'%';
