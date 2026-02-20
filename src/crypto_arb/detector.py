@@ -719,7 +719,7 @@ class CryptoArbDetector:
 
             # Calcular fair_odds basado en el movimiento (backtested)
             if abs_move >= 0.10:
-                fair_odds = 0.88
+                fair_odds = 0.93
             elif abs_move >= 0.08:
                 fair_odds = 0.90
             elif abs_move >= 0.05:
