@@ -1048,15 +1048,17 @@ async def get_batch_scan_results(request: Request, source: str = "",
 
 @router.post("/api/wallets/batch-scan/cancel")
 async def cancel_batch_scan(request: Request):
-    """Cancelar el job de batch scan activo."""
+    """Cancelar el job de batch scan activo. Marca en DB + flag in-memory."""
     db = request.app.state.db
     active = await db.get_active_scan_job()
     if not active:
         return {"status": "no_active_job", "message": "No hay job activo para cancelar"}
     job_id = active["id"]
     _cancel_job_ids.add(job_id)
-    return {"status": "cancelling", "job_id": job_id,
-            "message": f"Cancelando job #{job_id}..."}
+    # Marcar directamente en DB como cancelado (funciona incluso si el proceso murió)
+    await db.cancel_scan_job(job_id, active.get("scanned", 0), active.get("errors", 0))
+    return {"status": "cancelled", "job_id": job_id,
+            "message": f"Job #{job_id} cancelado. {active.get('scanned', 0)} wallets procesadas."}
 
 
 @router.delete("/api/wallets/batch-scan/clear")

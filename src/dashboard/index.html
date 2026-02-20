@@ -6648,9 +6648,16 @@ async function cancelBatchScan(){
     try{
         const r=await apiFetch('/api/wallets/batch-scan/cancel',{method:'POST'});
         if(r){
-            document.getElementById('bscan-progress-text').textContent=r.message||'Cancelando...';
+            document.getElementById('bscan-progress-text').textContent=r.message||'Cancelado';
             const cancelBtn=document.getElementById('bscan-cancel-btn');
-            if(cancelBtn){cancelBtn.disabled=true;cancelBtn.textContent='Cancelando...';}
+            if(cancelBtn){cancelBtn.classList.add('hidden');cancelBtn.disabled=false;cancelBtn.textContent='✕ Cancelar';}
+            // Parar polling y rehabilitar botones
+            if(_bscanPollTimer){clearInterval(_bscanPollTimer);_bscanPollTimer=null;}
+            _enableBscanBtns();
+            setTimeout(()=>{
+                document.getElementById('bscan-progress').classList.add('hidden');
+                loadBatchResults();
+            },2000);
         }
     }catch(e){console.error('cancelBatchScan error',e);}
 }
