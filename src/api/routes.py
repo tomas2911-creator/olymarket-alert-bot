@@ -680,66 +680,57 @@ def _group_activity(activity: list, max_groups: int = 25) -> list:
     return result[:max_groups]
 
 
-# ── Batch Wallet Scan ─────────────────────────────────────────────────
-
-# Estado del batch scan en memoria (single-user bot)
-_batch_scan_state = {
-    "running": False,
-    "source": "",
-    "total": 0,
-    "scanned": 0,
-    "current": "",
-    "errors": 0,
-}
-
+# ── Batch Wallet Scan (Job persistente en DB) ────────────────────────
 
 @router.post("/api/wallets/batch-scan")
 async def start_batch_scan(request: Request):
-    """Iniciar batch scan de wallets desde una fuente (wallets, top_wallets, whales)."""
-    global _batch_scan_state
-    if _batch_scan_state["running"]:
-        return {"status": "already_running", "source": _batch_scan_state["source"],
-                "scanned": _batch_scan_state["scanned"], "total": _batch_scan_state["total"]}
+    """Iniciar batch scan de wallets. El progreso se guarda en DB."""
+    db = request.app.state.db
+
+    # Verificar si hay job activo en DB
+    active = await db.get_active_scan_job()
+    if active:
+        return {"status": "already_running", "source": active.get("source", ""),
+                "scanned": active.get("scanned", 0), "total": active.get("total", 0),
+                "job_id": active.get("id")}
 
     body = await request.json()
     source = body.get("source", "wallets")
     if source not in ("wallets", "top_wallets", "whales"):
         return JSONResponse({"error": "Fuente inválida"}, status_code=400)
 
-    db = request.app.state.db
     uid = await get_user_id(request)
     addresses = await db.get_addresses_for_batch_scan(source, user_id=uid)
 
     if not addresses:
         return {"status": "empty", "total": 0, "message": "No hay wallets para analizar en esta fuente"}
 
-    _batch_scan_state = {
-        "running": True, "source": source,
-        "total": len(addresses), "scanned": 0, "current": "", "errors": 0,
-    }
+    # Crear job persistente en DB
+    job_id = await db.create_scan_job(source, len(addresses))
 
     # Lanzar task en background
-    asyncio.create_task(_run_batch_scan(db, addresses, source))
+    asyncio.create_task(_run_batch_scan(db, addresses, source, job_id))
 
-    return {"status": "started", "source": source, "total": len(addresses)}
+    return {"status": "started", "source": source, "total": len(addresses), "job_id": job_id}
 
 
-async def _run_batch_scan(db, addresses: list[dict], source: str):
-    """Escanear wallets en background, de a 2 en paralelo."""
-    global _batch_scan_state
-    sem = asyncio.Semaphore(2)  # Max 2 concurrentes
+async def _run_batch_scan(db, addresses: list[dict], source: str, job_id: int):
+    """Escanear wallets en background. Progreso persistido en DB."""
+    sem = asyncio.Semaphore(3)  # Max 3 concurrentes
+    scanned = 0
+    errors = 0
+    _lock = asyncio.Lock()
 
     async def scan_one(wallet_info: dict):
+        nonlocal scanned, errors
         addr = wallet_info["address"]
         name = wallet_info.get("name", "")
         profile_image = wallet_info.get("profile_image", "")
-        _batch_scan_state["current"] = addr[:10] + "..."
 
         try:
             async with sem:
                 result = await _scan_wallet_for_batch(addr)
                 if result:
-                    # Calcular score (1-5 estrellas)
                     score = _calc_wallet_score(result)
                     await db.save_scan_result({
                         "address": addr,
@@ -760,21 +751,30 @@ async def _run_batch_scan(db, addresses: list[dict], source: str):
                         "score": score,
                     })
                 else:
-                    _batch_scan_state["errors"] += 1
+                    async with _lock:
+                        errors += 1
         except Exception as e:
             print(f"[BatchScan] Error escaneando {addr[:12]}: {e}", flush=True)
-            _batch_scan_state["errors"] += 1
+            async with _lock:
+                errors += 1
         finally:
-            _batch_scan_state["scanned"] += 1
+            async with _lock:
+                scanned += 1
+            # Actualizar progreso en DB cada 5 wallets o al terminar
+            if scanned % 5 == 0 or scanned >= len(addresses):
+                try:
+                    await db.update_scan_job(job_id, scanned, errors, addr[:12] + "...")
+                except Exception:
+                    pass
 
-    # Escanear todas en paralelo (limitado por semáforo a 2)
+    # Escanear todas en paralelo (limitado por semáforo)
     tasks = [scan_one(w) for w in addresses]
     await asyncio.gather(*tasks)
 
-    _batch_scan_state["running"] = False
-    _batch_scan_state["current"] = ""
-    print(f"[BatchScan] Completado: {_batch_scan_state['scanned']}/{_batch_scan_state['total']} "
-          f"wallets de {source} ({_batch_scan_state['errors']} errores)", flush=True)
+    # Marcar job como completado en DB
+    await db.finish_scan_job(job_id, scanned, errors)
+    print(f"[BatchScan] Completado job #{job_id}: {scanned}/{len(addresses)} "
+          f"wallets de {source} ({errors} errores)", flush=True)
 
 
 async def _scan_wallet_for_batch(addr: str) -> dict | None:
@@ -983,17 +983,56 @@ def _calc_wallet_score(result: dict) -> int:
 
 @router.get("/api/wallets/batch-scan/status")
 async def get_batch_scan_status(request: Request):
-    """Estado actual del batch scan."""
-    return _batch_scan_state
+    """Estado del batch scan desde DB (persiste entre recargas)."""
+    db = request.app.state.db
+    active = await db.get_active_scan_job()
+    if active:
+        return {"running": True, "source": active.get("source", ""),
+                "total": active.get("total", 0), "scanned": active.get("scanned", 0),
+                "errors": active.get("errors", 0), "current": active.get("current_wallet", ""),
+                "job_id": active.get("id"), "started_at": active.get("started_at")}
+    # Sin job activo — retornar último completado
+    latest = await db.get_latest_scan_job()
+    if latest:
+        return {"running": False, "source": latest.get("source", ""),
+                "total": latest.get("total", 0), "scanned": latest.get("scanned", 0),
+                "errors": latest.get("errors", 0), "current": "",
+                "job_id": latest.get("id"), "status": latest.get("status", ""),
+                "started_at": latest.get("started_at"), "finished_at": latest.get("finished_at")}
+    return {"running": False, "total": 0, "scanned": 0}
 
 
 @router.get("/api/wallets/batch-scan/results")
 async def get_batch_scan_results(request: Request, source: str = "",
-                                  min_trades: int = 0, sort_by: str = "total_pnl"):
-    """Resultados cacheados del batch scan."""
+                                  sort_by: str = "total_pnl", sort_dir: str = "DESC",
+                                  limit: int = 500, offset: int = 0,
+                                  # Filtros de rango
+                                  pnl_min: float = None, pnl_max: float = None,
+                                  portfolio_min: float = None, portfolio_max: float = None,
+                                  roi_min: float = None, roi_max: float = None,
+                                  wr_min: float = None, wr_max: float = None,
+                                  score_min: float = None, score_max: float = None,
+                                  trades_min: float = None, trades_max: float = None,
+                                  capital_min: float = None, capital_max: float = None,
+                                  days_min: float = None, days_max: float = None,
+                                  positions_min: float = None, positions_max: float = None):
+    """Resultados con filtros avanzados. Todos los filtros son opcionales y acumulativos."""
     db = request.app.state.db
-    results = await db.get_scan_results(source=source, min_trades=min_trades, sort_by=sort_by)
-    return {"results": results, "total": len(results)}
+    filters = {}
+    for key, val in [("pnl_min", pnl_min), ("pnl_max", pnl_max),
+                     ("portfolio_min", portfolio_min), ("portfolio_max", portfolio_max),
+                     ("roi_min", roi_min), ("roi_max", roi_max),
+                     ("wr_min", wr_min), ("wr_max", wr_max),
+                     ("score_min", score_min), ("score_max", score_max),
+                     ("trades_min", trades_min), ("trades_max", trades_max),
+                     ("capital_min", capital_min), ("capital_max", capital_max),
+                     ("days_min", days_min), ("days_max", days_max),
+                     ("positions_min", positions_min), ("positions_max", positions_max)]:
+        if val is not None:
+            filters[key] = val
+    data = await db.get_scan_results(source=source, sort_by=sort_by, sort_dir=sort_dir,
+                                      limit=limit, offset=offset, filters=filters)
+    return data
 
 
 @router.delete("/api/wallets/batch-scan/clear")

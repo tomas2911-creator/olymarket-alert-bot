@@ -522,6 +522,24 @@ class Database:
                 );
                 CREATE INDEX IF NOT EXISTS idx_wscan_source ON wallet_scan_cache(source);
                 CREATE INDEX IF NOT EXISTS idx_wscan_scanned ON wallet_scan_cache(scanned_at);
+                CREATE INDEX IF NOT EXISTS idx_wscan_pnl ON wallet_scan_cache(total_pnl);
+                CREATE INDEX IF NOT EXISTS idx_wscan_score ON wallet_scan_cache(score);
+                CREATE INDEX IF NOT EXISTS idx_wscan_portfolio ON wallet_scan_cache(portfolio_value);
+                CREATE INDEX IF NOT EXISTS idx_wscan_winrate ON wallet_scan_cache(win_rate);
+
+                CREATE TABLE IF NOT EXISTS batch_scan_jobs (
+                    id              SERIAL PRIMARY KEY,
+                    source          TEXT NOT NULL,
+                    status          TEXT DEFAULT 'running',
+                    total           INTEGER DEFAULT 0,
+                    scanned         INTEGER DEFAULT 0,
+                    errors          INTEGER DEFAULT 0,
+                    current_wallet  TEXT DEFAULT '',
+                    started_at      TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+                    finished_at     TIMESTAMPTZ
+                );
+                CREATE INDEX IF NOT EXISTS idx_bsjob_status ON batch_scan_jobs(status);
             """)
 
             # === v11: News, Sentiment, Insider, Copy Trading, AI, Spikes ===
@@ -4063,9 +4081,10 @@ class Database:
                 data.get("score", 0),
             )
 
-    async def get_scan_results(self, source: str = "", min_trades: int = 0,
-                                sort_by: str = "total_pnl") -> list[dict]:
-        """Obtener resultados cacheados de batch scan."""
+    async def get_scan_results(self, source: str = "", sort_by: str = "total_pnl",
+                                sort_dir: str = "DESC", limit: int = 500, offset: int = 0,
+                                filters: dict | None = None) -> dict:
+        """Obtener resultados con filtros avanzados. Retorna {results, total, filtered}."""
         async with self._pool.acquire() as conn:
             where = "WHERE 1=1"
             params = []
@@ -4074,22 +4093,105 @@ class Database:
                 where += f" AND source = ${idx}"
                 params.append(source)
                 idx += 1
-            if min_trades > 0:
-                where += f" AND total_trades >= ${idx}"
-                params.append(min_trades)
-                idx += 1
-            valid_sorts = {"total_pnl", "win_rate", "roi_pct", "total_trades", "portfolio_value", "score"}
+            # Filtros de rango
+            f = filters or {}
+            range_filters = [
+                ("pnl_min", "total_pnl", ">="), ("pnl_max", "total_pnl", "<="),
+                ("portfolio_min", "portfolio_value", ">="), ("portfolio_max", "portfolio_value", "<="),
+                ("roi_min", "roi_pct", ">="), ("roi_max", "roi_pct", "<="),
+                ("wr_min", "win_rate", ">="), ("wr_max", "win_rate", "<="),
+                ("score_min", "score", ">="), ("score_max", "score", "<="),
+                ("trades_min", "total_trades", ">="), ("trades_max", "total_trades", "<="),
+                ("capital_min", "estimated_initial", ">="), ("capital_max", "estimated_initial", "<="),
+                ("days_min", "days_active", ">="), ("days_max", "days_active", "<="),
+                ("positions_min", "open_positions", ">="), ("positions_max", "open_positions", "<="),
+            ]
+            for key, col, op in range_filters:
+                val = f.get(key)
+                if val is not None:
+                    where += f" AND {col} {op} ${idx}"
+                    params.append(float(val))
+                    idx += 1
+
+            valid_sorts = {"total_pnl", "win_rate", "roi_pct", "total_trades",
+                           "portfolio_value", "score", "estimated_initial",
+                           "days_active", "open_positions", "realized_pnl"}
             order = sort_by if sort_by in valid_sorts else "total_pnl"
-            rows = await conn.fetch(
-                f"SELECT * FROM wallet_scan_cache {where} ORDER BY {order} DESC LIMIT 200",
-                *params
+            direction = "ASC" if sort_dir.upper() == "ASC" else "DESC"
+
+            # Total sin filtro
+            total_row = await conn.fetchval("SELECT COUNT(*) FROM wallet_scan_cache")
+            # Total filtrado
+            filtered_row = await conn.fetchval(
+                f"SELECT COUNT(*) FROM wallet_scan_cache {where}", *params
             )
-            return [_serialize_row(r) for r in rows]
+            rows = await conn.fetch(
+                f"SELECT * FROM wallet_scan_cache {where} ORDER BY {order} {direction} LIMIT ${idx} OFFSET ${idx+1}",
+                *params, min(limit, 5000), offset
+            )
+            return {
+                "results": [_serialize_row(r) for r in rows],
+                "total": total_row or 0,
+                "filtered": filtered_row or 0,
+            }
 
     async def clear_scan_results(self):
         """Limpiar todos los resultados cacheados del batch scan."""
         async with self._pool.acquire() as conn:
             await conn.execute("DELETE FROM wallet_scan_cache")
+            await conn.execute("DELETE FROM batch_scan_jobs")
+
+    # ── Batch Scan Jobs (persistente) ──
+
+    async def create_scan_job(self, source: str, total: int) -> int:
+        """Crear un nuevo job de batch scan. Retorna el ID."""
+        async with self._pool.acquire() as conn:
+            # Cancelar jobs anteriores running
+            await conn.execute(
+                "UPDATE batch_scan_jobs SET status='cancelled', finished_at=NOW() WHERE status='running'"
+            )
+            row = await conn.fetchrow("""
+                INSERT INTO batch_scan_jobs (source, status, total, scanned, errors, started_at, updated_at)
+                VALUES ($1, 'running', $2, 0, 0, NOW(), NOW())
+                RETURNING id
+            """, source, total)
+            return row["id"]
+
+    async def update_scan_job(self, job_id: int, scanned: int, errors: int, current_wallet: str = ""):
+        """Actualizar progreso del job."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE batch_scan_jobs
+                SET scanned=$2, errors=$3, current_wallet=$4, updated_at=NOW()
+                WHERE id=$1
+            """, job_id, scanned, errors, current_wallet)
+
+    async def finish_scan_job(self, job_id: int, scanned: int, errors: int):
+        """Marcar job como completado."""
+        async with self._pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE batch_scan_jobs
+                SET status='completed', scanned=$2, errors=$3, current_wallet='',
+                    updated_at=NOW(), finished_at=NOW()
+                WHERE id=$1
+            """, job_id, scanned, errors)
+
+    async def get_active_scan_job(self) -> dict | None:
+        """Obtener job activo (running) si existe."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT * FROM batch_scan_jobs WHERE status='running'
+                ORDER BY started_at DESC LIMIT 1
+            """)
+            return _serialize_row(row) if row else None
+
+    async def get_latest_scan_job(self) -> dict | None:
+        """Obtener último job (cualquier status)."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT * FROM batch_scan_jobs ORDER BY started_at DESC LIMIT 1
+            """)
+            return _serialize_row(row) if row else None
 
     async def get_addresses_for_batch_scan(self, source: str, user_id: int = 1) -> list[dict]:
         """Obtener direcciones únicas de wallets según la fuente."""

@@ -2696,32 +2696,82 @@
                         <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">PnL Promedio</div><div class="text-sm font-bold" id="bscan-avg-pnl">$0</div></div>
                         <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Score 4-5⭐</div><div class="text-sm font-bold text-yellow-400" id="bscan-top-count">0</div></div>
                     </div>
-                    <!-- Filtros -->
-                    <div id="bscan-filters" class="hidden flex flex-wrap gap-2 mb-3 items-center">
-                        <label class="text-[10px] text-gray-500">Origen:</label>
-                        <select id="bscan-filter-source" onchange="filterBatchResults()" class="bg-gray-800/70 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300">
-                            <option value="">Todas</option>
-                            <option value="wallets">Wallets</option>
-                            <option value="top_wallets">Top Wallets</option>
-                            <option value="whales">Whales</option>
-                        </select>
-                        <label class="text-[10px] text-gray-500">Min Trades:</label>
-                        <select id="bscan-filter-trades" onchange="filterBatchResults()" class="bg-gray-800/70 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300">
-                            <option value="0">Todos</option>
-                            <option value="5">5+</option>
-                            <option value="20">20+</option>
-                            <option value="50">50+</option>
-                            <option value="100">100+</option>
-                        </select>
-                        <label class="text-[10px] text-gray-500">Ordenar:</label>
-                        <select id="bscan-filter-sort" onchange="filterBatchResults()" class="bg-gray-800/70 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300">
-                            <option value="total_pnl">PnL Total</option>
-                            <option value="win_rate">Win Rate</option>
-                            <option value="roi_pct">ROI %</option>
-                            <option value="total_trades">Trades</option>
-                            <option value="portfolio_value">Portfolio</option>
-                            <option value="score">Score</option>
-                        </select>
+                    <!-- Filtros Avanzados -->
+                    <div id="bscan-filters" class="hidden mb-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Filtros Avanzados</span>
+                            <div class="flex gap-2">
+                                <button onclick="applyBatchFilters()" class="px-3 py-1 bg-violet-600/50 hover:bg-violet-600/70 text-violet-200 rounded text-[10px] font-semibold">Aplicar</button>
+                                <button onclick="clearBatchFilters()" class="px-3 py-1 bg-gray-700/50 hover:bg-gray-700/70 text-gray-300 rounded text-[10px]">Limpiar</button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+                            <!-- PnL -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">PnL ($)</div>
+                                <div class="flex gap-1"><input id="bf-pnl-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-pnl-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- Portfolio -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Portfolio ($)</div>
+                                <div class="flex gap-1"><input id="bf-port-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-port-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- ROI -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">ROI (%)</div>
+                                <div class="flex gap-1"><input id="bf-roi-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-roi-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- Win Rate -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Win Rate (%)</div>
+                                <div class="flex gap-1"><input id="bf-wr-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-wr-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- Score -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Score (1-5)</div>
+                                <div class="flex gap-1"><input id="bf-score-min" type="number" placeholder="Min" min="1" max="5" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-score-max" type="number" placeholder="Max" min="1" max="5" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- Trades -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Trades</div>
+                                <div class="flex gap-1"><input id="bf-trades-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-trades-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- Capital Inicial -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Capital Inicial ($)</div>
+                                <div class="flex gap-1"><input id="bf-cap-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-cap-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- Días Activo -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Días Activo</div>
+                                <div class="flex gap-1"><input id="bf-days-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-days-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- Posiciones Abiertas -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Posiciones Abiertas</div>
+                                <div class="flex gap-1"><input id="bf-pos-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-pos-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- Origen + Ordenar -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Origen / Ordenar</div>
+                                <div class="flex gap-1">
+                                    <select id="bscan-filter-source" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1 py-0.5 text-[10px] text-gray-300">
+                                        <option value="">Todas</option><option value="wallets">Wallets</option><option value="top_wallets">Top</option><option value="whales">Whales</option>
+                                    </select>
+                                    <select id="bscan-filter-sort" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1 py-0.5 text-[10px] text-gray-300">
+                                        <option value="total_pnl">PnL</option><option value="win_rate">WR</option><option value="roi_pct">ROI</option><option value="total_trades">Trades</option><option value="portfolio_value">Portfolio</option><option value="score">Score</option><option value="estimated_initial">Capital</option><option value="days_active">Días</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between mt-2 text-[10px] text-gray-500">
+                            <span id="bscan-filter-info">Mostrando todos los resultados</span>
+                            <div class="flex gap-2">
+                                <button onclick="bscanPrevPage()" id="bscan-prev-btn" class="px-2 py-0.5 bg-gray-700/50 rounded text-gray-400 hover:text-white disabled:opacity-30" disabled>← Anterior</button>
+                                <span id="bscan-page-info" class="text-gray-400">Pág 1</span>
+                                <button onclick="bscanNextPage()" id="bscan-next-btn" class="px-2 py-0.5 bg-gray-700/50 rounded text-gray-400 hover:text-white disabled:opacity-30">Siguiente →</button>
+                            </div>
+                        </div>
                     </div>
                     <!-- Tabla Ranking -->
                     <div id="bscan-table-wrap" class="hidden overflow-x-auto" style="max-height:400px;overflow-y:auto">
@@ -6505,30 +6555,28 @@ function renderWalletScan(d){
     document.getElementById('wscan-result').classList.remove('hidden');
 }
 
-// ── Batch Wallet Scan ──
+// ── Batch Wallet Scan (Job persistente) ──
 let _bscanPollTimer=null;
 let _bscanData=[];
 let _bscanSortCol='total_pnl';
-let _bscanSortDir='desc';
+let _bscanSortDir='DESC';
+let _bscanPage=0;
+const _bscanPageSize=200;
+let _bscanTotal=0;
+let _bscanFiltered=0;
+
 function sortBatchBy(col){
-    if(_bscanData.length===0)return;
-    if(_bscanSortCol===col){_bscanSortDir=_bscanSortDir==='desc'?'asc':'desc';}
-    else{_bscanSortCol=col;_bscanSortDir='desc';}
-    // Actualizar indicadores en headers
+    if(_bscanSortCol===col){_bscanSortDir=_bscanSortDir==='DESC'?'ASC':'DESC';}
+    else{_bscanSortCol=col;_bscanSortDir='DESC';}
     ['source','total_trades','win_rate','total_pnl','roi_pct','portfolio_value','score'].forEach(c=>{
         const el=document.getElementById('bsort-'+c);
-        if(el)el.textContent=c===col?(_bscanSortDir==='desc'?'▼':'▲'):'';
+        if(el)el.textContent=c===col?(_bscanSortDir==='DESC'?'▼':'▲'):'';
     });
-    const sorted=[..._bscanData].sort((a,b)=>{
-        let va=a[col]||0,vb=b[col]||0;
-        if(typeof va==='string')return _bscanSortDir==='desc'?vb.localeCompare(va):va.localeCompare(vb);
-        return _bscanSortDir==='desc'?vb-va:va-vb;
-    });
-    _renderBatchTable(sorted);
+    _bscanPage=0;
+    loadBatchResults();
 }
 async function startBatchScan(source){
     const labels={wallets:'Wallets Detectadas',top_wallets:'Top Wallets',whales:'Whale Trades'};
-    // Deshabilitar botones
     ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales'].forEach(id=>{
         const b=document.getElementById(id);if(b){b.disabled=true;b.style.opacity='0.5';}
     });
@@ -6544,15 +6592,17 @@ async function startBatchScan(source){
             _enableBscanBtns();return;
         }
         if(r?.status==='already_running'){
-            document.getElementById('bscan-progress-text').textContent=`Ya hay un scan en curso (${r.source})`;
+            document.getElementById('bscan-progress-text').textContent=`Ya hay un scan en curso (${r.source}) — ${r.scanned||0}/${r.total||0}`;
         }
-        // Iniciar polling
-        if(_bscanPollTimer)clearInterval(_bscanPollTimer);
-        _bscanPollTimer=setInterval(pollBatchStatus,2500);
+        _startBscanPolling();
     }catch(e){
         document.getElementById('bscan-progress-text').textContent='Error: '+e.message;
         _enableBscanBtns();
     }
+}
+function _startBscanPolling(){
+    if(_bscanPollTimer)clearInterval(_bscanPollTimer);
+    _bscanPollTimer=setInterval(pollBatchStatus,3000);
 }
 function _enableBscanBtns(){
     ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales'].forEach(id=>{
@@ -6564,13 +6614,19 @@ async function pollBatchStatus(){
         const s=await fetchJson('/api/wallets/batch-scan/status');
         if(!s)return;
         const pct=s.total>0?Math.round(s.scanned/s.total*100):0;
-        document.getElementById('bscan-progress-count').textContent=`${s.scanned}/${s.total}`;
+        document.getElementById('bscan-progress').classList.remove('hidden');
+        document.getElementById('bscan-progress-count').textContent=`${s.scanned||0}/${s.total||0}`;
         document.getElementById('bscan-progress-bar').style.width=pct+'%';
         const labels={wallets:'Wallets',top_wallets:'Top Wallets',whales:'Whales'};
-        document.getElementById('bscan-progress-text').textContent=s.running?`Analizando ${labels[s.source]||s.source}... ${s.current}`:`Completado! ${s.scanned} wallets analizadas (${s.errors} errores)`;
-        if(!s.running){
+        if(s.running){
+            document.getElementById('bscan-progress-text').textContent=`Analizando ${labels[s.source]||s.source}... ${s.current||''}`;
+            ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales'].forEach(id=>{
+                const b=document.getElementById(id);if(b){b.disabled=true;b.style.opacity='0.5';}
+            });
+        }else{
             clearInterval(_bscanPollTimer);_bscanPollTimer=null;
             _enableBscanBtns();
+            document.getElementById('bscan-progress-text').textContent=`Completado! ${s.scanned||0} wallets analizadas (${s.errors||0} errores)`;
             setTimeout(()=>{
                 document.getElementById('bscan-progress').classList.add('hidden');
                 loadBatchResults();
@@ -6578,24 +6634,92 @@ async function pollBatchStatus(){
         }
     }catch(e){console.error('pollBatchStatus error',e);}
 }
-async function loadBatchResults(){
-    const source=document.getElementById('bscan-filter-source')?.value||'';
-    const minTrades=parseInt(document.getElementById('bscan-filter-trades')?.value||'0');
-    const sortBy=document.getElementById('bscan-filter-sort')?.value||'total_pnl';
+// Auto-recovery: al cargar la página, verificar si hay job en curso
+async function _checkBscanJobOnLoad(){
     try{
-        const r=await fetchJson(`/api/wallets/batch-scan/results?source=${source}&min_trades=${minTrades}&sort_by=${sortBy}`);
-        if(r&&r.results){
-            renderBatchResults(r.results);
+        const s=await fetchJson('/api/wallets/batch-scan/status');
+        if(!s)return;
+        if(s.running){
+            document.getElementById('bscan-progress').classList.remove('hidden');
+            document.getElementById('bscan-progress-text').textContent=`Scan en curso... ${s.scanned||0}/${s.total||0}`;
+            document.getElementById('bscan-progress-count').textContent=`${s.scanned||0}/${s.total||0}`;
+            const pct=s.total>0?Math.round(s.scanned/s.total*100):0;
+            document.getElementById('bscan-progress-bar').style.width=pct+'%';
+            _startBscanPolling();
+        }else if(s.total>0){
+            loadBatchResults();
+        }
+    }catch(e){}
+}
+function _getBscanFilterParams(){
+    const p=new URLSearchParams();
+    const source=document.getElementById('bscan-filter-source')?.value||'';
+    const sortBy=document.getElementById('bscan-filter-sort')?.value||_bscanSortCol;
+    if(source)p.set('source',source);
+    p.set('sort_by',sortBy);
+    p.set('sort_dir',_bscanSortDir);
+    p.set('limit',_bscanPageSize);
+    p.set('offset',_bscanPage*_bscanPageSize);
+    const fields=[
+        ['bf-pnl-min','pnl_min'],['bf-pnl-max','pnl_max'],
+        ['bf-port-min','portfolio_min'],['bf-port-max','portfolio_max'],
+        ['bf-roi-min','roi_min'],['bf-roi-max','roi_max'],
+        ['bf-wr-min','wr_min'],['bf-wr-max','wr_max'],
+        ['bf-score-min','score_min'],['bf-score-max','score_max'],
+        ['bf-trades-min','trades_min'],['bf-trades-max','trades_max'],
+        ['bf-cap-min','capital_min'],['bf-cap-max','capital_max'],
+        ['bf-days-min','days_min'],['bf-days-max','days_max'],
+        ['bf-pos-min','positions_min'],['bf-pos-max','positions_max'],
+    ];
+    fields.forEach(([elId,param])=>{
+        const el=document.getElementById(elId);
+        if(el&&el.value!=='')p.set(param,el.value);
+    });
+    return p.toString();
+}
+function applyBatchFilters(){_bscanPage=0;loadBatchResults();}
+function clearBatchFilters(){
+    ['bf-pnl-min','bf-pnl-max','bf-port-min','bf-port-max','bf-roi-min','bf-roi-max',
+     'bf-wr-min','bf-wr-max','bf-score-min','bf-score-max','bf-trades-min','bf-trades-max',
+     'bf-cap-min','bf-cap-max','bf-days-min','bf-days-max','bf-pos-min','bf-pos-max'].forEach(id=>{
+        const el=document.getElementById(id);if(el)el.value='';
+    });
+    const srcEl=document.getElementById('bscan-filter-source');if(srcEl)srcEl.value='';
+    _bscanPage=0;
+    loadBatchResults();
+}
+function bscanNextPage(){_bscanPage++;loadBatchResults();}
+function bscanPrevPage(){if(_bscanPage>0){_bscanPage--;loadBatchResults();}}
+async function loadBatchResults(){
+    try{
+        const qs=_getBscanFilterParams();
+        const r=await fetchJson(`/api/wallets/batch-scan/results?${qs}`);
+        if(r){
+            _bscanTotal=r.total||0;
+            _bscanFiltered=r.filtered||0;
+            const results=r.results||[];
+            _bscanData=results;
+            renderBatchResults(results);
+            // Paginación info
+            const start=_bscanPage*_bscanPageSize+1;
+            const end=Math.min(start+results.length-1,_bscanFiltered);
+            const infoEl=document.getElementById('bscan-filter-info');
+            if(infoEl)infoEl.textContent=`Mostrando ${results.length>0?start+'-'+end:'0'} de ${fmt(_bscanFiltered)} filtradas (${fmt(_bscanTotal)} total)`;
+            const prevBtn=document.getElementById('bscan-prev-btn');
+            const nextBtn=document.getElementById('bscan-next-btn');
+            const pageInfo=document.getElementById('bscan-page-info');
+            if(prevBtn)prevBtn.disabled=_bscanPage===0;
+            if(nextBtn)nextBtn.disabled=end>=_bscanFiltered;
+            if(pageInfo)pageInfo.textContent=`Pág ${_bscanPage+1}`;
         }
     }catch(e){console.error('loadBatchResults error',e);}
 }
-function filterBatchResults(){loadBatchResults();}
 async function clearBatchCache(){
     if(!confirm('¿Limpiar todos los resultados de wallets analizadas?'))return;
     try{
         const r=await apiFetch('/api/wallets/batch-scan/clear',{method:'DELETE'});
         if(r&&r.status==='ok'){
-            _bscanData=[];
+            _bscanData=[];_bscanTotal=0;_bscanFiltered=0;_bscanPage=0;
             document.getElementById('bscan-summary').classList.add('hidden');
             document.getElementById('bscan-filters').classList.add('hidden');
             document.getElementById('bscan-table-wrap').classList.add('hidden');
@@ -6608,9 +6732,8 @@ function renderBatchResults(results){
     document.getElementById('bscan-summary').classList.remove('hidden');
     document.getElementById('bscan-filters').classList.remove('hidden');
     document.getElementById('bscan-table-wrap').classList.remove('hidden');
-    // Summary stats
     const n=results.length;
-    document.getElementById('bscan-total').textContent=n;
+    document.getElementById('bscan-total').textContent=fmt(_bscanFiltered||n);
     if(n>0){
         const avgWr=results.reduce((s,r)=>s+(r.win_rate||0),0)/n;
         document.getElementById('bscan-avg-wr').textContent=avgWr.toFixed(1)+'%';
@@ -6623,20 +6746,20 @@ function renderBatchResults(results){
         avgPnlEl.className='text-sm font-bold '+(avgPnl>=0?'text-green-400':'text-red-400');
         document.getElementById('bscan-top-count').textContent=results.filter(r=>(r.score||0)>=4).length;
     }
-    // Marcar columna activa
     ['source','total_trades','win_rate','total_pnl','roi_pct','portfolio_value','score'].forEach(c=>{
         const el=document.getElementById('bsort-'+c);
-        if(el)el.textContent=c===_bscanSortCol?(_bscanSortDir==='desc'?'▼':'▲'):'';
+        if(el)el.textContent=c===_bscanSortCol?(_bscanSortDir==='DESC'?'▼':'▲'):'';
     });
     _renderBatchTable(results);
 }
 function _renderBatchTable(results){
     const body=document.getElementById('bscan-ranking-body');
     const n=results.length;
-    if(n===0){body.innerHTML='<tr><td colspan="10" class="text-center py-4 text-gray-600">Sin resultados. Ejecuta un análisis batch primero.</td></tr>';return;}
+    if(n===0){body.innerHTML='<tr><td colspan="10" class="text-center py-4 text-gray-600">Sin resultados con estos filtros.</td></tr>';return;}
     const srcLabels={wallets:'📋 Wallet',top_wallets:'⭐ Top',whales:'🐋 Whale'};
     const srcColors={wallets:'text-violet-400',top_wallets:'text-emerald-400',whales:'text-cyan-400'};
     const stars=s=>{if(s>=5)return'⭐⭐⭐⭐⭐';if(s>=4)return'⭐⭐⭐⭐';if(s>=3)return'⭐⭐⭐';if(s>=2)return'⭐⭐';return'⭐';};
+    const offset=_bscanPage*_bscanPageSize;
     body.innerHTML=results.map((r,i)=>{
         const pnlC=(r.total_pnl||0)>=0?'text-green-400':'text-red-400';
         const roiC=(r.roi_pct||0)>=0?'text-green-400':'text-red-400';
@@ -6645,7 +6768,7 @@ function _renderBatchTable(results){
         const addrShort=r.address.slice(0,6)+'...'+r.address.slice(-4);
         const src=r.source||'';
         return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20 cursor-pointer" onclick="scanWalletFromAddr('${r.address}')">
-            <td class="px-2 py-1.5 text-center text-gray-500 font-mono">${i+1}</td>
+            <td class="px-2 py-1.5 text-center text-gray-500 font-mono">${offset+i+1}</td>
             <td class="px-2 py-1.5 text-left"><div class="font-medium text-gray-200">${name}</div><div class="text-[10px] text-gray-500 font-mono">${addrShort}</div></td>
             <td class="px-2 py-1.5 text-center ${srcColors[src]||'text-gray-400'} text-[10px]">${srcLabels[src]||src}</td>
             <td class="px-2 py-1.5 text-right font-mono">${fmt(r.total_trades||0)}</td>
@@ -7600,6 +7723,8 @@ async function refresh(){await Promise.all([loadStats(),loadAlerts(),loadWallets
     _currentUser={id:1,username:'admin',display_name:'Admin'};
     enterApp();
     setInterval(()=>refresh(),30000);
+    // Recuperar estado del batch scan al cargar
+    _checkBscanJobOnLoad();
 })();
 </script>
 </body>
