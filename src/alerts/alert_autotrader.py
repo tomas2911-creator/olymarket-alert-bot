@@ -112,6 +112,7 @@ class AlertAutoTrader:
                 # Copy Trade automático
                 "aat_copy_trade_enabled", "aat_copy_trade_bet_size",
                 "aat_copy_trade_max_positions", "aat_copy_trade_max_daily",
+                "aat_copy_trade_slippage",
                 # Slippage para cruzar el spread en órdenes BUY
                 "aat_buy_price_bump",
             ])
@@ -185,6 +186,7 @@ class AlertAutoTrader:
                 "copy_trade_bet_size": float(raw.get("aat_copy_trade_bet_size", 10)),
                 "copy_trade_max_positions": int(raw.get("aat_copy_trade_max_positions", 3)),
                 "copy_trade_max_daily": int(raw.get("aat_copy_trade_max_daily", 10)),
+                "copy_trade_slippage": float(raw.get("aat_copy_trade_slippage", 3.0)),
                 # Bump de precio para cruzar el spread (default 2 centavos)
                 "buy_price_bump": float(raw.get("aat_buy_price_bump", 0.02)),
             }
@@ -807,7 +809,7 @@ class AlertAutoTrader:
             # v10: Orderbook Depth Check — verificar price impact antes de ejecutar
             if cfg.get("orderbook_check_enabled"):
                 ob_result = await self._check_orderbook_depth(token_id, "BUY", bet_size)
-                max_impact = cfg.get("max_price_impact_pct", 3.0)
+                max_impact = cfg.get("copy_trade_slippage", 3.0) if trade_info.get("is_copy_trade") else cfg.get("max_price_impact_pct", 3.0)
                 if ob_result["price_impact_pct"] > max_impact:
                     return {"success": False,
                             "error": f"Price impact {ob_result['price_impact_pct']:.1f}% > max {max_impact}% "

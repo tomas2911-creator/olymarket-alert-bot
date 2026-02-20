@@ -2942,7 +2942,7 @@
                             <input type="checkbox" id="ct-enabled" class="accent-emerald-500" onchange="saveCopyTradeConfig()">
                         </label>
                     </div>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
                         <div>
                             <label class="text-[10px] text-gray-500 block mb-1">Bet Size ($)</label>
                             <input type="number" id="ct-bet-size" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="10" min="1" max="1000" onchange="saveCopyTradeConfig()">
@@ -2954,6 +2954,10 @@
                         <div>
                             <label class="text-[10px] text-gray-500 block mb-1">Max Trades/Día</label>
                             <input type="number" id="ct-max-daily" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="10" min="1" max="50" onchange="saveCopyTradeConfig()">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-gray-500 block mb-1">Slippage (%)</label>
+                            <input type="number" id="ct-slippage" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="3" min="0.5" max="20" step="0.5" onchange="saveCopyTradeConfig()">
                         </div>
                         <div>
                             <label class="text-[10px] text-gray-500 block mb-1">Estado</label>
@@ -7094,6 +7098,7 @@ async function loadCopyTradeConfig(){
         document.getElementById('ct-bet-size').value=cfg.copy_trade_bet_size||10;
         document.getElementById('ct-max-pos').value=cfg.copy_trade_max_positions||3;
         document.getElementById('ct-max-daily').value=cfg.copy_trade_max_daily||10;
+        document.getElementById('ct-slippage').value=cfg.copy_trade_slippage||3;
         const on=!!cfg.copy_trade_enabled;
         const badge=document.getElementById('ct-status-badge');
         const hasWallet=cfg.wallet_connected||cfg.has_own_wallet;
@@ -7107,8 +7112,9 @@ async function saveCopyTradeConfig(){
         const betSize=document.getElementById('ct-bet-size').value;
         const maxPos=document.getElementById('ct-max-pos').value;
         const maxDaily=document.getElementById('ct-max-daily').value;
+        const slippage=document.getElementById('ct-slippage').value;
         await fetch('/api/alert-trading/config',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+_authToken},
-            body:JSON.stringify({copy_trade_enabled:enabled,copy_trade_bet_size:parseFloat(betSize),copy_trade_max_positions:parseInt(maxPos),copy_trade_max_daily:parseInt(maxDaily)})});
+            body:JSON.stringify({copy_trade_enabled:enabled,copy_trade_bet_size:parseFloat(betSize),copy_trade_max_positions:parseInt(maxPos),copy_trade_max_daily:parseInt(maxDaily),copy_trade_slippage:parseFloat(slippage)})});
         const badge=document.getElementById('ct-status-badge');
         badge.textContent=enabled?'🟢 ACTIVO':'🔴 INACTIVO';
         badge.className='px-2 py-1 rounded text-xs text-center font-bold '+(enabled?'bg-emerald-900/40 text-emerald-400':'bg-red-900/40 text-red-400');
