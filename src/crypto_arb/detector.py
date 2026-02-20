@@ -103,10 +103,125 @@ class CryptoArbDetector:
         self._sniper_entry_delay_sec = cfg.get("sniper_entry_delay_sec")
         self._sniper_entry_max_sec = cfg.get("sniper_entry_max_sec")
 
+    def _get_slug_templates(self, enabled_coins=None):
+        """Get list of (coin, prefix, interval) tuples for slug generation."""
+        if enabled_coins is None:
+            enabled_coins = {c["symbol"] for c in config.CRYPTO_ARB_COINS}
+        templates = []
+        if "BTC" in enabled_coins:
+            templates.append(("BTC", "btc-updown-5m", 300))
+            templates.append(("BTC", "btc-updown-15m", 900))
+            templates.append(("BTC", "btc-updown-1h", 3600))
+        if "ETH" in enabled_coins:
+            templates.append(("ETH", "eth-updown-15m", 900))
+            templates.append(("ETH", "eth-updown-1h", 3600))
+        if "SOL" in enabled_coins:
+            templates.append(("SOL", "sol-updown-15m", 900))
+            templates.append(("SOL", "sol-updown-1h", 3600))
+        if "XRP" in enabled_coins:
+            templates.append(("XRP", "xrp-updown-15m", 900))
+            templates.append(("XRP", "xrp-updown-1h", 3600))
+        return templates
+
+    async def _fetch_slug(self, client, sem, coin, prefix, interval, ts):
+        """Fetch a single slug from Gamma API. Returns list of market dicts."""
+        slug = f"{prefix}-{ts}"
+        async with sem:
+            try:
+                resp = await client.get(
+                    f"{config.GAMMA_API_URL}/events",
+                    params={"slug": slug},
+                )
+                if resp.status_code != 200:
+                    return []
+                events = resp.json()
+                if not events:
+                    return []
+                ev = events[0]
+                if ev.get("closed") or not ev.get("active"):
+                    return []
+                markets = []
+                for m in ev.get("markets", []):
+                    if m.get("closed"):
+                        continue
+                    cid = m.get("conditionId", "")
+                    if not cid:
+                        continue
+                    end_str = m.get("endDate") or ev.get("endDate")
+                    end_date = None
+                    if end_str:
+                        try:
+                            ed = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                            if ed.tzinfo is None:
+                                ed = ed.replace(tzinfo=timezone.utc)
+                            end_date = ed
+                        except Exception:
+                            pass
+                    markets.append({
+                        "condition_id": cid,
+                        "question": m.get("question", "") or ev.get("title", ""),
+                        "coin": coin,
+                        "end_date": end_date,
+                        "event_slug": slug,
+                        "open_ts": ts,
+                        "interval": interval,
+                        "tokens": [],
+                        "price_to_beat": None,
+                    })
+                return markets
+            except Exception:
+                return []
+
+    async def _enrich_markets(self, client, sem, markets):
+        """Fetch tokens (CLOB) and price_to_beat (Binance) for markets in parallel."""
+        if not markets:
+            return
+
+        async def _fetch_tokens(c, md):
+            async with sem:
+                try:
+                    resp = await client.get(f"{config.CLOB_API_URL}/markets/{c}")
+                    if resp.status_code == 200:
+                        md["tokens"] = resp.json().get("tokens", [])
+                except Exception:
+                    pass
+
+        async def _fetch_price(c, md):
+            if md.get("price_to_beat"):
+                return
+            pair = PAIR_MAP.get(md["coin"], "")
+            open_ts = md.get("open_ts", 0)
+            if not pair or not open_ts:
+                return
+            local_price = self.feed.get_price_at_time(pair, float(open_ts), tolerance_sec=10.0)
+            if local_price:
+                md["price_to_beat"] = local_price
+                return
+            async with sem:
+                try:
+                    resp = await client.get(
+                        "https://api.binance.com/api/v3/klines",
+                        params={"symbol": pair.upper(), "interval": "1m",
+                                "startTime": int(open_ts * 1000), "limit": 1},
+                    )
+                    if resp.status_code == 200:
+                        klines = resp.json()
+                        if klines:
+                            md["price_to_beat"] = float(klines[0][1])
+                except Exception:
+                    pass
+
+        await asyncio.gather(
+            *[_fetch_tokens(cid, md) for cid, md in markets.items()],
+            *[_fetch_price(cid, md) for cid, md in markets.items()],
+            return_exceptions=True,
+        )
+
     async def start(self):
         """Loop principal: escanear mercados y detectar divergencias."""
         self._running = True
         logger.info("crypto_arb_detector_started")
+        asyncio.create_task(self._run_predictive_scan())
 
         while self._running:
             try:
@@ -142,146 +257,43 @@ class CryptoArbDetector:
         self._running = False
 
     async def _scan_active_markets(self):
-        """Buscar mercados crypto up/down activos en Polymarket.
+        """Buscar mercados crypto up/down activos en Polymarket (parallelized).
 
-        Polymarket crea mercados con slugs predecibles basados en timestamps:
-          - btc-updown-5m-{unix_ts}   (cada 5 min)
-          - btc-updown-15m-{unix_ts}  (cada 15 min)
-          - eth-updown-15m-{unix_ts}  (cada 15 min)
-          - sol-updown-15m-{unix_ts}  (cada 15 min)
-
-        El API genérico de Gamma NO devuelve estos mercados en las primeras
-        páginas, así que los buscamos por slug exacto calculando timestamps.
+        Usa asyncio.gather para hacer todas las llamadas HTTP en paralelo,
+        reduciendo el tiempo de scan de ~30-60s a ~3-5s.
         """
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 enabled_coins = {c["symbol"] for c in config.CRYPTO_ARB_COINS}
                 now_ts = int(time.time())
+                templates = self._get_slug_templates(enabled_coins)
+                sem = asyncio.Semaphore(10)
 
-                # Generar slugs candidatos para ventanas recientes y futuras
-                # BTC tiene 5m y 15m, ETH/SOL solo 15m
-                slug_templates = []
-                if "BTC" in enabled_coins:
-                    slug_templates.append(("BTC", "btc-updown-5m", 300))   # cada 5 min
-                    slug_templates.append(("BTC", "btc-updown-15m", 900))  # cada 15 min
-                    slug_templates.append(("BTC", "btc-updown-1h", 3600))  # cada 1 hora
-                if "ETH" in enabled_coins:
-                    slug_templates.append(("ETH", "eth-updown-15m", 900))
-                    slug_templates.append(("ETH", "eth-updown-1h", 3600))
-                if "SOL" in enabled_coins:
-                    slug_templates.append(("SOL", "sol-updown-15m", 900))
-                    slug_templates.append(("SOL", "sol-updown-1h", 3600))
-                if "XRP" in enabled_coins:
-                    slug_templates.append(("XRP", "xrp-updown-15m", 900))
-                    slug_templates.append(("XRP", "xrp-updown-1h", 3600))
-
-                new_active = {}
-                slugs_checked = 0
-
-                for coin, prefix, interval in slug_templates:
-                    # Redondear timestamp al intervalo más cercano
+                # Phase 1: Fetch all slugs in parallel
+                tasks = []
+                for coin, prefix, interval in templates:
                     base_ts = (now_ts // interval) * interval
-                    # Buscar desde -2 intervalos hasta +6 intervalos adelante
                     for offset in range(-2, 7):
                         ts = base_ts + (offset * interval)
-                        slug = f"{prefix}-{ts}"
-                        slugs_checked += 1
+                        tasks.append(self._fetch_slug(client, sem, coin, prefix, interval, ts))
 
-                        try:
-                            resp = await client.get(
-                                f"{config.GAMMA_API_URL}/events",
-                                params={"slug": slug},
-                            )
-                            if resp.status_code != 200:
-                                continue
-                            events = resp.json()
-                            if not events:
-                                continue
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                            ev = events[0]
-                            if ev.get("closed") or not ev.get("active"):
-                                continue
-
-                            # Extraer mercados activos del evento
-                            for m in ev.get("markets", []):
-                                if m.get("closed"):
-                                    continue
-                                cid = m.get("conditionId", "")
-                                if not cid or cid in new_active:
-                                    continue
-
-                                end_str = m.get("endDate") or ev.get("endDate")
-                                end_date = None
-                                if end_str:
-                                    try:
-                                        ed = datetime.fromisoformat(
-                                            end_str.replace("Z", "+00:00"))
-                                        if ed.tzinfo is None:
-                                            ed = ed.replace(tzinfo=timezone.utc)
-                                        end_date = ed
-                                    except Exception:
-                                        pass
-
-                                new_active[cid] = {
-                                    "condition_id": cid,
-                                    "question": m.get("question", "") or ev.get("title", ""),
-                                    "coin": coin,
-                                    "end_date": end_date,
-                                    "event_slug": slug,
-                                    "open_ts": ts,       # Timestamp de apertura del mercado
-                                    "interval": interval, # Duración en segundos (300 o 900)
-                                    "tokens": [],
-                                    "price_to_beat": None, # Se llena después
-                                }
-                        except Exception:
-                            pass
-
-                # Obtener tokens (precios) de CLOB para cada mercado activo
-                for cid, mdata in new_active.items():
-                    try:
-                        resp2 = await client.get(
-                            f"{config.CLOB_API_URL}/markets/{cid}"
-                        )
-                        if resp2.status_code == 200:
-                            clob = resp2.json()
-                            mdata["tokens"] = clob.get("tokens", [])
-                    except Exception:
-                        pass
-
-                # Obtener price_to_beat para cada mercado (Binance klines o historia local)
-                for cid, mdata in new_active.items():
-                    if mdata.get("price_to_beat"):
+                new_active = {}
+                for result in results:
+                    if isinstance(result, (Exception, BaseException)) or not result:
                         continue
-                    pair = PAIR_MAP.get(mdata["coin"], "")
-                    open_ts = mdata.get("open_ts", 0)
-                    if not pair or not open_ts:
-                        continue
-                    # Intento 1: historia local de ticks
-                    local_price = self.feed.get_price_at_time(pair, float(open_ts), tolerance_sec=10.0)
-                    if local_price:
-                        mdata["price_to_beat"] = local_price
-                        continue
-                    # Intento 2: Binance klines API (1 vela de 1 minuto)
-                    try:
-                        resp3 = await client.get(
-                            "https://api.binance.com/api/v3/klines",
-                            params={
-                                "symbol": pair.upper(),
-                                "interval": "1m",
-                                "startTime": int(open_ts * 1000),
-                                "limit": 1,
-                            },
-                        )
-                        if resp3.status_code == 200:
-                            klines = resp3.json()
-                            if klines:
-                                mdata["price_to_beat"] = float(klines[0][1])  # Open price
-                    except Exception:
-                        pass
+                    for mdata in result:
+                        cid = mdata["condition_id"]
+                        if cid not in new_active:
+                            new_active[cid] = mdata
+
+                # Phase 2+3: Fetch tokens and prices in parallel
+                await self._enrich_markets(client, sem, new_active)
 
                 self._active_markets = new_active
 
-                print(f"[CryptoDetector] Scan: {slugs_checked} slugs verificados, "
+                print(f"[CryptoDetector] Scan: {len(tasks)} slugs verificados (parallel), "
                       f"{len(new_active)} crypto up/down activos", flush=True)
                 for cid, md in list(new_active.items())[:8]:
                     remaining = ""
@@ -294,6 +306,90 @@ class CryptoArbDetector:
             print(f"[CryptoDetector] Scan error: {e}", flush=True)
             import traceback
             traceback.print_exc()
+
+    async def _run_predictive_scan(self):
+        """Background loop: despierta justo cuando abren nuevos mercados para detección instantánea.
+
+        Calcula el timestamp exacto del próximo mercado y duerme hasta 3s después
+        de la apertura. Así detecta mercados nuevos en ~3-6s en vez de ~60s.
+        """
+        await asyncio.sleep(5)
+        print("[CryptoDetector] 🎯 Predictive scan loop iniciado", flush=True)
+
+        while self._running:
+            try:
+                now_ts = time.time()
+                enabled_coins = {c["symbol"] for c in config.CRYPTO_ARB_COINS}
+                templates = self._get_slug_templates(enabled_coins)
+
+                if not templates:
+                    await asyncio.sleep(30)
+                    continue
+
+                # Calculate next opening for each unique interval
+                intervals = set(t[2] for t in templates)
+                next_open = min(((int(now_ts) // iv) + 1) * iv for iv in intervals)
+
+                # Sleep until 3s after the market opens (buffer for Gamma to publish)
+                wait_sec = (next_open + 3) - time.time()
+                if wait_sec > 0:
+                    if wait_sec > 60:
+                        print(f"[CryptoDetector] 🎯 Próxima apertura en {wait_sec:.0f}s", flush=True)
+                    await asyncio.sleep(wait_sec)
+
+                if not self._running:
+                    break
+
+                # Targeted scan: only slugs matching this timestamp
+                async with httpx.AsyncClient(timeout=15) as client:
+                    sem = asyncio.Semaphore(10)
+                    tasks = []
+
+                    for coin, prefix, interval in templates:
+                        if next_open % interval == 0:
+                            tasks.append(self._fetch_slug(client, sem, coin, prefix, interval, next_open))
+
+                    if not tasks:
+                        continue
+
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                    new_markets = {}
+                    for result in results:
+                        if isinstance(result, (Exception, BaseException)) or not result:
+                            continue
+                        for mdata in result:
+                            cid = mdata["condition_id"]
+                            if cid not in self._active_markets and cid not in new_markets:
+                                new_markets[cid] = mdata
+
+                    # Retry after 3s if market not published yet
+                    if not new_markets:
+                        await asyncio.sleep(3)
+                        retry_tasks = []
+                        for coin, prefix, interval in templates:
+                            if next_open % interval == 0:
+                                retry_tasks.append(self._fetch_slug(client, sem, coin, prefix, interval, next_open))
+                        if retry_tasks:
+                            results2 = await asyncio.gather(*retry_tasks, return_exceptions=True)
+                            for result in results2:
+                                if isinstance(result, (Exception, BaseException)) or not result:
+                                    continue
+                                for mdata in result:
+                                    cid = mdata["condition_id"]
+                                    if cid not in self._active_markets and cid not in new_markets:
+                                        new_markets[cid] = mdata
+
+                    if new_markets:
+                        await self._enrich_markets(client, sem, new_markets)
+                        self._active_markets.update(new_markets)
+                        coins_found = [md["coin"] for md in new_markets.values()]
+                        print(f"[CryptoDetector] 🎯 Predictive: +{len(new_markets)} mercados "
+                              f"({', '.join(coins_found)}) detectados al abrir", flush=True)
+
+            except Exception as e:
+                print(f"[CryptoDetector] Predictive scan error: {e}", flush=True)
+                await asyncio.sleep(5)
 
     async def _refresh_token_prices(self):
         """Refrescar solo los token prices (odds) de mercados activos via CLOB.
