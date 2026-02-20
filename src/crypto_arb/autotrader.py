@@ -1016,7 +1016,9 @@ class AutoTrader:
         """
         cfg = self._config
         # Correr si hay al menos una feature de riesgo activa
-        has_risk = cfg.get("stop_loss_enabled") or cfg.get("ee_take_profit_enabled") or cfg.get("sniper_tp_enabled")
+        has_risk = (cfg.get("stop_loss_enabled") or cfg.get("ee_take_profit_enabled")
+                    or cfg.get("sniper_tp_enabled") or cfg.get("trailing_stop_enabled")
+                    or cfg.get("max_holding_sec", 0) > 0)
         if not has_risk or not self._open_positions or not self._client:
             return
 
@@ -1065,8 +1067,8 @@ class AutoTrader:
                         sell_reason = None
                         strategy = trade.get("strategy", "score")
 
-                        # 1. Stop-Loss: vender si pérdida > X%
-                        if cfg["stop_loss_pct"] > 0 and pnl_pct <= -cfg["stop_loss_pct"]:
+                        # 1. Stop-Loss: vender si pérdida > X% (solo si SL habilitado)
+                        if cfg.get("stop_loss_enabled") and cfg["stop_loss_pct"] > 0 and pnl_pct <= -cfg["stop_loss_pct"]:
                             sell_reason = f"STOP-LOSS ({pnl_pct:.1f}% <= -{cfg['stop_loss_pct']}%)"
 
                         # 2. Take-Profit: vender si ganancia > X%
@@ -1078,7 +1080,7 @@ class AutoTrader:
                             elif strategy == "early_entry" and cfg.get("ee_take_profit_enabled") and cfg.get("ee_take_profit_pct", 0) > 0:
                                 if pnl_pct >= cfg["ee_take_profit_pct"]:
                                     sell_reason = f"TP-EARLY-ENTRY ({pnl_pct:.1f}% >= +{cfg['ee_take_profit_pct']}%)"
-                            elif cfg["take_profit_pct"] > 0 and pnl_pct >= cfg["take_profit_pct"]:
+                            elif cfg.get("stop_loss_enabled") and cfg["take_profit_pct"] > 0 and pnl_pct >= cfg["take_profit_pct"]:
                                 sell_reason = f"TAKE-PROFIT ({pnl_pct:.1f}% >= +{cfg['take_profit_pct']}%)"
 
                         # 3. Max Holding Time: vender si pasó demasiado tiempo

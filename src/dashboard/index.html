@@ -5569,7 +5569,7 @@ async function loadAutotradeConfig(){
     document.getElementById('at-max-positions').value=c.max_positions||3;
     document.getElementById('at-order-type').value=c.order_type||'limit';
     document.getElementById('at-slippage').value=c.slippage_max_pct||3;
-    document.getElementById('at-cooldown').value=c.cooldown_sec||30;
+    document.getElementById('at-cooldown').value=c.cooldown_sec!=null?c.cooldown_sec:30;
     document.getElementById('at-funder-address').value=c.funder_address||'';
     // Estrategias activas + bet sizes
     document.getElementById('at-use-score').checked=c.use_score_strategy===true;
@@ -5666,7 +5666,7 @@ async function saveAutotradeConfig(){
         max_positions:parseInt(document.getElementById('at-max-positions').value)||3,
         order_type:document.getElementById('at-order-type').value,
         slippage_max_pct:parseFloat(document.getElementById('at-slippage').value)||3,
-        cooldown_sec:parseInt(document.getElementById('at-cooldown').value),
+        cooldown_sec:parseInt(document.getElementById('at-cooldown').value)||0,
         coins:coins,
         funder_address:(document.getElementById('at-funder-address').value||'').trim(),
         // Risk Management (todo junto)
