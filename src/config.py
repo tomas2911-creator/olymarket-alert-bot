@@ -176,6 +176,13 @@ CRYPTO_ARB_MIN_SCORE = _crypto.get("min_score", 0.40)
 CRYPTO_ARB_ENTRY_MAX_TIME = _crypto.get("entry_max_time_sec", 180)
 CRYPTO_ARB_MIN_DISTANCE_ATR = _crypto.get("min_distance_atr", 0.3)
 CRYPTO_ARB_MIN_TREND_CONSISTENCY = _crypto.get("min_trend_consistency", 0.55)
+# Params Sniper strategy (entrada rápida basada en movimiento del primer minuto)
+_sniper_crypto = _crypto.get("sniper", {})
+CRYPTO_SNIPER_MIN_MOVE_PCT = _sniper_crypto.get("min_move_pct", 0.03)
+CRYPTO_SNIPER_ENTRY_DELAY_SEC = _sniper_crypto.get("entry_delay_sec", 55)
+CRYPTO_SNIPER_ENTRY_MAX_SEC = _sniper_crypto.get("entry_max_sec", 150)
+CRYPTO_SNIPER_MAX_BUY_PRICE = _sniper_crypto.get("max_buy_price", 0.60)
+CRYPTO_SNIPER_INTERVALS = _sniper_crypto.get("intervals", [300, 900])  # 5m y 15m
 # Params Early Entry strategy
 _early = _crypto.get("early_entry", {})
 FEATURE_EARLY_ENTRY = _features.get("early_entry", False)
@@ -472,6 +479,11 @@ def restore_from_db(saved: dict):
     cfg.CRYPTO_ARB_ENTRY_MAX_TIME = _int("crypto_entry_max_time", cfg.CRYPTO_ARB_ENTRY_MAX_TIME)
     cfg.CRYPTO_ARB_MIN_DISTANCE_ATR = _float("crypto_min_distance_atr", cfg.CRYPTO_ARB_MIN_DISTANCE_ATR)
     cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY = _float("crypto_min_trend_consistency", cfg.CRYPTO_ARB_MIN_TREND_CONSISTENCY)
+    # Sniper params
+    cfg.CRYPTO_SNIPER_MIN_MOVE_PCT = _float("crypto_sniper_min_move", cfg.CRYPTO_SNIPER_MIN_MOVE_PCT)
+    cfg.CRYPTO_SNIPER_ENTRY_DELAY_SEC = _int("crypto_sniper_entry_delay", cfg.CRYPTO_SNIPER_ENTRY_DELAY_SEC)
+    cfg.CRYPTO_SNIPER_ENTRY_MAX_SEC = _int("crypto_sniper_entry_max", cfg.CRYPTO_SNIPER_ENTRY_MAX_SEC)
+    cfg.CRYPTO_SNIPER_MAX_BUY_PRICE = _float("crypto_sniper_max_buy_price", cfg.CRYPTO_SNIPER_MAX_BUY_PRICE)
 
     # Weather Arb
     cfg.FEATURE_WEATHER_ARB = _bool("feature_weather_arb", cfg.FEATURE_WEATHER_ARB)

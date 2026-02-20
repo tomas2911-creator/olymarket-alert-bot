@@ -1905,6 +1905,10 @@ async def get_crypto_config(request: Request):
         "entry_max_time_sec": _v("crypto_entry_max_time", config.CRYPTO_ARB_ENTRY_MAX_TIME),
         "min_distance_atr": _v("crypto_min_distance_atr", config.CRYPTO_ARB_MIN_DISTANCE_ATR),
         "min_trend_consistency": _v("crypto_min_trend_consistency", config.CRYPTO_ARB_MIN_TREND_CONSISTENCY),
+        "sniper_min_move_pct": _v("crypto_sniper_min_move", config.CRYPTO_SNIPER_MIN_MOVE_PCT),
+        "sniper_entry_delay_sec": _v("crypto_sniper_entry_delay", config.CRYPTO_SNIPER_ENTRY_DELAY_SEC),
+        "sniper_entry_max_sec": _v("crypto_sniper_entry_max", config.CRYPTO_SNIPER_ENTRY_MAX_SEC),
+        "sniper_max_buy_price": _v("crypto_sniper_max_buy_price", config.CRYPTO_SNIPER_MAX_BUY_PRICE),
     }
 
 
@@ -1920,6 +1924,10 @@ class CryptoConfigUpdate(BaseModel):
     entry_max_time_sec: int | None = None
     min_distance_atr: float | None = None
     min_trend_consistency: float | None = None
+    sniper_min_move_pct: float | None = None
+    sniper_entry_delay_sec: int | None = None
+    sniper_entry_max_sec: int | None = None
+    sniper_max_buy_price: float | None = None
 
 
 @router.post("/api/crypto-arb/config")
@@ -1952,7 +1960,7 @@ async def update_crypto_config(request: Request, body: CryptoConfigUpdate):
         if uid == 1: config.CRYPTO_ARB_TELEGRAM = body.telegram_alerts
         updated["telegram_alerts"] = body.telegram_alerts
         data["crypto_telegram"] = str(body.telegram_alerts)
-    if body.strategy is not None and body.strategy in ("divergence", "score"):
+    if body.strategy is not None and body.strategy in ("divergence", "score", "sniper"):
         if uid == 1: config.CRYPTO_ARB_STRATEGY = body.strategy
         updated["strategy"] = body.strategy
         data["crypto_strategy"] = body.strategy
@@ -1972,6 +1980,22 @@ async def update_crypto_config(request: Request, body: CryptoConfigUpdate):
         if uid == 1: config.CRYPTO_ARB_MIN_TREND_CONSISTENCY = body.min_trend_consistency
         updated["min_trend_consistency"] = body.min_trend_consistency
         data["crypto_min_trend_consistency"] = str(body.min_trend_consistency)
+    if body.sniper_min_move_pct is not None:
+        if uid == 1: config.CRYPTO_SNIPER_MIN_MOVE_PCT = body.sniper_min_move_pct
+        updated["sniper_min_move_pct"] = body.sniper_min_move_pct
+        data["crypto_sniper_min_move"] = str(body.sniper_min_move_pct)
+    if body.sniper_entry_delay_sec is not None:
+        if uid == 1: config.CRYPTO_SNIPER_ENTRY_DELAY_SEC = body.sniper_entry_delay_sec
+        updated["sniper_entry_delay_sec"] = body.sniper_entry_delay_sec
+        data["crypto_sniper_entry_delay"] = str(body.sniper_entry_delay_sec)
+    if body.sniper_entry_max_sec is not None:
+        if uid == 1: config.CRYPTO_SNIPER_ENTRY_MAX_SEC = body.sniper_entry_max_sec
+        updated["sniper_entry_max_sec"] = body.sniper_entry_max_sec
+        data["crypto_sniper_entry_max"] = str(body.sniper_entry_max_sec)
+    if body.sniper_max_buy_price is not None:
+        if uid == 1: config.CRYPTO_SNIPER_MAX_BUY_PRICE = body.sniper_max_buy_price
+        updated["sniper_max_buy_price"] = body.sniper_max_buy_price
+        data["crypto_sniper_max_buy_price"] = str(body.sniper_max_buy_price)
     if data:
         await db.set_config_bulk(data, user_id=uid)
     return {"status": "ok", "updated": updated}

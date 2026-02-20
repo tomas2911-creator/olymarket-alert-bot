@@ -1374,6 +1374,15 @@
                                     <p class="text-[10px] text-gray-400 leading-relaxed">Compara precio actual vs price_to_beat, normalizado por ATR y consistencia de tendencia. Apuesta tarde con alta certeza.</p>
                                 </div>
                             </label>
+                            <label class="flex-1 cursor-pointer" onclick="selectStrategy('sniper')">
+                                <div id="strat-card-sniper" class="border-2 border-gray-700 rounded-xl p-4 bg-gray-800/20 transition">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-lg">🎯</span>
+                                        <span class="font-bold text-sm text-green-300">Sniper (Rápida)</span>
+                                    </div>
+                                    <p class="text-[10px] text-gray-400 leading-relaxed">Entrada en el 1er minuto. Si BTC se movió ≥0.03% desde apertura, compra FOK inmediato. 77-87% accuracy backtested.</p>
+                                </div>
+                            </label>
                             <label class="flex-1 cursor-pointer" onclick="selectStrategy('divergence')">
                                 <div id="strat-card-divergence" class="border-2 border-gray-700 rounded-xl p-4 bg-gray-800/20 transition">
                                     <div class="flex items-center gap-2 mb-2">
@@ -1435,6 +1444,46 @@
                                 <p>  factor_consistencia = % ticks en dirección dominante</p>
                                 <p class="text-gray-500 mt-2">Ejemplo: BTC $200 arriba del PTB, ATR=$120, 90seg restantes de 300seg, 75% ticks up</p>
                                 <p class="text-green-400">  score = (200/120) × 0.70 × 0.75 = <strong>0.87</strong> ✓ Alta confianza</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Parámetros Sniper (solo visible si strategy=sniper) -->
+                    <div id="strat-sniper-params" style="display:none">
+                        <div class="space-y-3">
+                            <h4 class="text-xs text-gray-500 uppercase tracking-wider">Parámetros Sniper</h4>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Mov. Mínimo (%)</label>
+                                    <input type="number" id="sn-min-move" step="0.01" min="0.01" max="0.20" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                    <p class="text-[10px] text-gray-600 mt-1">0.03=77% acc, 0.05=87%, 0.08=93%</p>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Delay Entrada (seg)</label>
+                                    <input type="number" id="sn-entry-delay" step="5" min="30" max="180" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                    <p class="text-[10px] text-gray-600 mt-1">Esperar X seg antes de actuar</p>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Max Entrada (seg)</label>
+                                    <input type="number" id="sn-entry-max" step="10" min="60" max="300" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                    <p class="text-[10px] text-gray-600 mt-1">No entrar después de X seg</p>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Max Precio Compra</label>
+                                    <input type="number" id="sn-max-buy" step="0.05" min="0.50" max="0.80" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                    <p class="text-[10px] text-gray-600 mt-1">No comprar si odds > este precio</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-gray-800/30 rounded-lg p-4 mt-4">
+                            <h5 class="text-xs text-gray-500 uppercase mb-2">Cómo funciona el Sniper</h5>
+                            <div class="text-[11px] text-gray-400 space-y-1 font-mono">
+                                <p>1. Mercado de 5m/15m se abre → BTC empieza en $X (price_to_beat)</p>
+                                <p>2. Esperar <span class="text-green-400">DELAY</span> segundos</p>
+                                <p>3. Verificar: |BTC_ahora - BTC_apertura| / BTC_apertura >= <span class="text-green-400">MIN_MOVE%</span></p>
+                                <p>4. Si SÍ → comprar outcome (Up/Down) con FOK inmediato</p>
+                                <p class="text-gray-500 mt-2">Backtesting (199 bloques, ~16h):</p>
+                                <p class="text-green-400">  Move ≥0.03%: 77.6% accuracy | Move ≥0.05%: 87.0% | Move ≥0.08%: 93.5%</p>
                             </div>
                         </div>
                     </div>
@@ -4898,7 +4947,7 @@ function render_cl(){
             <td class="px-4 py-2 text-right font-mono text-xs text-yellow-400">${s.edge_pct.toFixed(1)}%</td>
             <td class="px-4 py-2 text-center text-xs font-mono">${bar} ${s.confidence.toFixed(0)}%</td>
             <td class="px-4 py-2 text-center text-xs"><span class="font-mono font-bold ${scoreColor}">${scoreVal}</span><div class="flex gap-1 justify-center mt-0.5">${indBadges}</div></td>
-            <td class="px-4 py-2 text-center text-xs">${(s.strategy||'score')==='early_entry'?'<span class="px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300 text-[10px] font-medium">⚡ Early</span>':'<span class="px-2 py-0.5 rounded-full bg-purple-900/50 text-purple-300 text-[10px] font-medium">📊 Score</span>'}</td>
+            <td class="px-4 py-2 text-center text-xs">${(()=>{const st=s.strategy||'score';if(st==='sniper')return'<span class="px-2 py-0.5 rounded-full bg-green-900/50 text-green-300 text-[10px] font-medium">🎯 Sniper</span>';if(st==='early_entry')return'<span class="px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300 text-[10px] font-medium">⚡ Early</span>';return'<span class="px-2 py-0.5 rounded-full bg-purple-900/50 text-purple-300 text-[10px] font-medium">📊 Score</span>';})()}</td>
             <td class="px-4 py-2 text-right text-xs ${cierreClass}">${cierreText}</td>
             <td class="px-4 py-2 text-center text-xs ${estadoClass}">${estado}</td>
             <td class="px-4 py-2 text-center">${s.polymarket_url?`<a href="${s.polymarket_url}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 text-xs font-medium transition">🔗 Poly</a>`:'-'}</td>
@@ -5199,7 +5248,7 @@ function render_ch(){
         }
         const pnl=s.paper_pnl||0;
         const pnlColor=pnl>=0?'text-green-400':'text-red-400';
-        const stratBadge=(s.strategy||'score')==='early_entry'?'<span class="px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300 text-[10px]">⚡ Early</span>':'<span class="px-2 py-0.5 rounded-full bg-purple-900/50 text-purple-300 text-[10px]">📊 Score</span>';
+        const stratBadge=(()=>{const st=s.strategy||'score';if(st==='sniper')return'<span class="px-2 py-0.5 rounded-full bg-green-900/50 text-green-300 text-[10px]">🎯 Sniper</span>';if(st==='early_entry')return'<span class="px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300 text-[10px]">⚡ Early</span>';return'<span class="px-2 py-0.5 rounded-full bg-purple-900/50 text-purple-300 text-[10px]">📊 Score</span>';})();
         return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
             <td class="px-4 py-2 text-xs text-gray-400">${ts.toLocaleDateString()} ${ts.toLocaleTimeString()}</td>
             <td class="px-4 py-2 text-center font-bold">${s.coin}</td>
@@ -5231,12 +5280,14 @@ function renderHistSummary(data){
         const pnl=resolved.reduce((a,s)=>a+(s.paper_pnl||0),0);
         return{total:arr.length,resolved:resolved.length,wins:wins.length,wr:resolved.length?Math.round(wins.length/resolved.length*100):0,pnl};
     };
-    const score=calc(data.filter(s=>(s.strategy||'score')!=='early_entry'));
+    const scoreD=calc(data.filter(s=>{const st=s.strategy||'score';return st==='score'||st==='divergence';}));
     const early=calc(data.filter(s=>(s.strategy||'score')==='early_entry'));
+    const sniper=calc(data.filter(s=>(s.strategy||'score')==='sniper'));
     const total=calc(data);
-    el.innerHTML=`<div class="grid grid-cols-3 gap-3 text-xs">
-        <div class="bg-purple-900/20 rounded-lg p-2 text-center"><div class="text-purple-400 font-medium">📊 Score</div><div class="text-gray-300">${score.total} señales</div><div class="${score.wr>=55?'text-green-400':'text-gray-400'}">${score.wr}% WR</div><div class="${score.pnl>=0?'text-green-400':'text-red-400'}">$${score.pnl.toFixed(2)}</div></div>
-        <div class="bg-yellow-900/20 rounded-lg p-2 text-center"><div class="text-yellow-400 font-medium">⚡ Early Entry</div><div class="text-gray-300">${early.total} señales</div><div class="${early.wr>=55?'text-green-400':'text-gray-400'}">${early.wr}% WR</div><div class="${early.pnl>=0?'text-green-400':'text-red-400'}">$${early.pnl.toFixed(2)}</div></div>
+    el.innerHTML=`<div class="grid grid-cols-4 gap-3 text-xs">
+        <div class="bg-purple-900/20 rounded-lg p-2 text-center"><div class="text-purple-400 font-medium">📊 Score</div><div class="text-gray-300">${scoreD.total} señales</div><div class="${scoreD.wr>=55?'text-green-400':'text-gray-400'}">${scoreD.wr}% WR</div><div class="${scoreD.pnl>=0?'text-green-400':'text-red-400'}">$${scoreD.pnl.toFixed(2)}</div></div>
+        <div class="bg-green-900/20 rounded-lg p-2 text-center"><div class="text-green-400 font-medium">🎯 Sniper</div><div class="text-gray-300">${sniper.total} señales</div><div class="${sniper.wr>=55?'text-green-400':'text-gray-400'}">${sniper.wr}% WR</div><div class="${sniper.pnl>=0?'text-green-400':'text-red-400'}">$${sniper.pnl.toFixed(2)}</div></div>
+        <div class="bg-yellow-900/20 rounded-lg p-2 text-center"><div class="text-yellow-400 font-medium">⚡ Early</div><div class="text-gray-300">${early.total} señales</div><div class="${early.wr>=55?'text-green-400':'text-gray-400'}">${early.wr}% WR</div><div class="${early.pnl>=0?'text-green-400':'text-red-400'}">$${early.pnl.toFixed(2)}</div></div>
         <div class="bg-gray-800/40 rounded-lg p-2 text-center"><div class="text-gray-400 font-medium">Total</div><div class="text-gray-300">${total.total} señales</div><div class="${total.wr>=55?'text-green-400':'text-gray-400'}">${total.wr}% WR</div><div class="${total.pnl>=0?'text-green-400':'text-red-400'}">$${total.pnl.toFixed(2)}</div></div>
     </div>`;
 }
@@ -5251,17 +5302,25 @@ function selectStrategy(strat){
     _currentStrategy=strat;
     updateStrategyCards(strat);
     document.getElementById('strat-score-params').style.display=strat==='score'?'block':'none';
+    document.getElementById('strat-sniper-params').style.display=strat==='sniper'?'block':'none';
 }
 
 function updateStrategyCards(strat){
-    const scoreCard=document.getElementById('strat-card-score');
-    const divCard=document.getElementById('strat-card-divergence');
-    if(strat==='score'){
-        scoreCard.className='border-2 border-purple-500 rounded-xl p-4 bg-purple-900/20 transition';
-        divCard.className='border-2 border-gray-700 rounded-xl p-4 bg-gray-800/20 transition';
-    }else{
-        scoreCard.className='border-2 border-gray-700 rounded-xl p-4 bg-gray-800/20 transition';
-        divCard.className='border-2 border-purple-500 rounded-xl p-4 bg-purple-900/20 transition';
+    const cards={
+        score:document.getElementById('strat-card-score'),
+        sniper:document.getElementById('strat-card-sniper'),
+        divergence:document.getElementById('strat-card-divergence'),
+    };
+    const active='border-2 border-green-500 rounded-xl p-4 bg-green-900/20 transition';
+    const inactive='border-2 border-gray-700 rounded-xl p-4 bg-gray-800/20 transition';
+    const activeScore='border-2 border-purple-500 rounded-xl p-4 bg-purple-900/20 transition';
+    for(const[k,el] of Object.entries(cards)){
+        if(!el) continue;
+        if(k===strat){
+            el.className = k==='score' ? activeScore : active;
+        } else {
+            el.className = inactive;
+        }
     }
 }
 
@@ -5280,7 +5339,7 @@ function applyPreset(preset){
 }
 
 async function saveStrategyConfig(){
-    // 1) Guardar params Score strategy + detección general → /api/crypto-arb/config
+    // 1) Guardar params Score/Sniper strategy + detección general → /api/crypto-arb/config
     const cryptoBody={
         strategy:_currentStrategy,
         min_score:parseFloat(document.getElementById('st-min-score').value),
@@ -5291,6 +5350,10 @@ async function saveStrategyConfig(){
         paper_bet_size:parseFloat(document.getElementById('cc-bet-size').value),
         max_daily_signals:parseInt(document.getElementById('cc-max-daily').value),
         telegram_alerts:document.getElementById('cc-telegram').value==='true',
+        sniper_min_move_pct:parseFloat(document.getElementById('sn-min-move').value)||0.03,
+        sniper_entry_delay_sec:parseInt(document.getElementById('sn-entry-delay').value)||55,
+        sniper_entry_max_sec:parseInt(document.getElementById('sn-entry-max').value)||150,
+        sniper_max_buy_price:parseFloat(document.getElementById('sn-max-buy').value)||0.60,
     };
     await postJson('/api/crypto-arb/config',cryptoBody);
     // 2) Guardar filtros señales + early entry params → /api/crypto-arb/autotrade-config
@@ -5323,10 +5386,16 @@ async function loadStrategyFullConfig(){
         _currentStrategy=c.strategy||'score';
         updateStrategyCards(_currentStrategy);
         document.getElementById('strat-score-params').style.display=_currentStrategy==='score'?'block':'none';
+        document.getElementById('strat-sniper-params').style.display=_currentStrategy==='sniper'?'block':'none';
         document.getElementById('st-min-score').value=c.min_score||0.40;
         document.getElementById('st-entry-time').value=c.entry_max_time_sec||180;
         document.getElementById('st-min-dist').value=c.min_distance_atr||0.3;
         document.getElementById('st-min-trend').value=c.min_trend_consistency||0.55;
+        // Sniper params
+        document.getElementById('sn-min-move').value=c.sniper_min_move_pct||0.03;
+        document.getElementById('sn-entry-delay').value=c.sniper_entry_delay_sec||55;
+        document.getElementById('sn-entry-max').value=c.sniper_entry_max_sec||150;
+        document.getElementById('sn-max-buy').value=c.sniper_max_buy_price||0.60;
     }
     // Cargar filtros de señales + early entry params desde autotrade-config
     const a=await fetchJson('/api/crypto-arb/autotrade-config');

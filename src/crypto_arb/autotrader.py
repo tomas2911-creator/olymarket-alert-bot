@@ -134,6 +134,7 @@ class AutoTrader:
             strats = []
             if self._config.get('use_score_strategy'): strats.append('score')
             if self._config.get('use_early_entry'): strats.append('early')
+            if config.CRYPTO_ARB_STRATEGY == 'sniper': strats.append('sniper')
             strat_info = f" strategies={'+'.join(strats)}" if strats else ""
             early_bet = self._config.get('early_entry_bet_size', 0)
             early_info = f" early_bet=${early_bet}" if self._config.get('use_early_entry') else ""
@@ -263,6 +264,8 @@ class AutoTrader:
             return None
         if strategy in ("score", "divergence") and not cfg.get("use_score_strategy", True):
             return None
+        # Sniper: siempre permitido cuando la estrategia activa es sniper
+        # (el detector solo genera señales sniper si strategy=sniper está seleccionada)
 
         # Filtro: moneda habilitada
         if signal.get("coin", "") not in cfg["coins"]:
@@ -348,6 +351,8 @@ class AutoTrader:
         bet_size = cfg["bet_size"]
         if strategy == "early_entry":
             bet_size = cfg.get("early_entry_bet_size", cfg["bet_size"])
+        elif strategy == "sniper":
+            bet_size = cfg.get("early_entry_bet_size", cfg["bet_size"])  # Sniper usa bet size de early entry
 
         print(f"{tag} PASS [{strategy}]: edge={edge}% conf={confidence}% odds={poly_odds} remaining={remaining}s -> EXECUTING ${bet_size}", flush=True)
 
@@ -358,6 +363,9 @@ class AutoTrader:
             if bankroll and not bankroll.can_trade(bet_size):
                 return None
 
+        # Sniper siempre usa FOK (market) para ejecución inmediata
+        order_type = "market" if strategy == "sniper" else cfg["order_type"]
+
         return {
             "condition_id": cid,
             "coin": signal["coin"],
@@ -367,7 +375,7 @@ class AutoTrader:
             "poly_odds": poly_odds,
             "fair_odds": signal.get("fair_odds", 0),
             "bet_size": bet_size,
-            "order_type": cfg["order_type"],
+            "order_type": order_type,
             "spot_price": signal.get("spot_price", 0),
             "event_slug": signal.get("event_slug", ""),
             "market_question": signal.get("market_question", ""),

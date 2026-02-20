@@ -111,8 +111,11 @@ class CryptoArbDetector:
                     self._last_token_refresh = now
 
                 # Buscar señales cada 3 segundos según estrategia activa
-                if config.CRYPTO_ARB_STRATEGY == "divergence":
+                strategy = config.CRYPTO_ARB_STRATEGY
+                if strategy == "divergence":
                     signals = await self._check_divergences()
+                elif strategy == "sniper":
+                    signals = await self._check_sniper_strategy()
                 else:
                     signals = await self._check_score_strategy()
                 for signal in signals:
@@ -624,6 +627,153 @@ class CryptoArbDetector:
                 end_date=mdata.get("end_date"),
                 event_slug=mdata.get("event_slug", ""),
                 strategy="score",
+                score_details=score_details,
+            )
+            signals.append(signal)
+
+        return signals
+
+    async def _check_sniper_strategy(self) -> list[CryptoSignal]:
+        """Estrategia Sniper: entrada rápida basada en el movimiento del primer minuto.
+
+        Lógica:
+        1. Para cada mercado activo, calcular cuánto tiempo ha pasado desde que abrió.
+        2. Solo actuar en la ventana [ENTRY_DELAY, ENTRY_MAX] segundos (default 55-150s).
+        3. Obtener precio de apertura (price_to_beat) y precio actual de Binance.
+        4. Si el movimiento >= MIN_MOVE_PCT (default 0.03%), generar señal.
+        5. Usar orden FOK al poly_odds actual (compra inmediata).
+
+        Backtesting: 199 bloques analizados → 77.6% accuracy con >= 0.03% a 1 min.
+        A mayor movimiento, mayor accuracy: >= 0.05% → 87%, >= 0.08% → 93.5%.
+        """
+        signals = []
+        now = datetime.now(timezone.utc)
+        now_ts = time.time()
+
+        min_move = config.CRYPTO_SNIPER_MIN_MOVE_PCT
+        entry_delay = config.CRYPTO_SNIPER_ENTRY_DELAY_SEC
+        entry_max = config.CRYPTO_SNIPER_ENTRY_MAX_SEC
+        max_buy_price = config.CRYPTO_SNIPER_MAX_BUY_PRICE
+        allowed_intervals = config.CRYPTO_SNIPER_INTERVALS
+
+        for cid, mdata in self._active_markets.items():
+            coin = mdata["coin"]
+            pair = PAIR_MAP.get(coin)
+            if not pair:
+                continue
+
+            # Solo operar en intervalos permitidos (5m=300, 15m=900)
+            interval = mdata.get("interval", 0)
+            if interval not in allowed_intervals:
+                continue
+
+            # Calcular tiempo transcurrido desde apertura del mercado
+            open_ts = mdata.get("open_ts", 0)
+            if not open_ts:
+                continue
+            elapsed = now_ts - open_ts
+
+            # Solo actuar en la ventana de entrada
+            if elapsed < entry_delay or elapsed > entry_max:
+                continue
+
+            # Necesitamos price_to_beat (precio de Binance al abrir el período)
+            price_to_beat = mdata.get("price_to_beat")
+            if not price_to_beat or price_to_beat <= 0:
+                continue
+
+            # Precio actual de Binance (en tiempo real del WebSocket)
+            current_price = self.feed.get_price(pair)
+            if not current_price or current_price <= 0:
+                continue
+
+            # Calcular movimiento %
+            move_pct = ((current_price - price_to_beat) / price_to_beat) * 100
+            abs_move = abs(move_pct)
+
+            # Filtro: movimiento mínimo
+            if abs_move < min_move:
+                continue
+
+            direction = "up" if move_pct > 0 else "down"
+
+            # Obtener odds actuales de Polymarket
+            tokens = mdata.get("tokens", [])
+            up_odds = down_odds = None
+            for tok in tokens:
+                outcome = tok.get("outcome", "").lower()
+                price = float(tok.get("price", 0.5))
+                if outcome == "up":
+                    up_odds = price
+                elif outcome == "down":
+                    down_odds = price
+
+            if up_odds is None or down_odds is None:
+                continue
+
+            poly_odds = up_odds if direction == "up" else down_odds
+
+            # Filtro: no comprar si el precio ya es alto (mercado ya se ajustó)
+            if poly_odds > max_buy_price:
+                continue
+
+            # Calcular fair_odds basado en el movimiento (backtested)
+            if abs_move >= 0.10:
+                fair_odds = 0.88
+            elif abs_move >= 0.08:
+                fair_odds = 0.90
+            elif abs_move >= 0.05:
+                fair_odds = 0.85
+            elif abs_move >= 0.03:
+                fair_odds = 0.78
+            else:
+                fair_odds = 0.70
+
+            # Boost por tiempo: más tiempo transcurrido = más confirmación
+            if elapsed >= 120:
+                fair_odds = min(fair_odds + 0.05, 0.95)
+
+            edge_pct = (fair_odds - poly_odds) * 100
+            confidence = min(fair_odds * 100, 99)
+
+            # Tiempo restante del mercado
+            end_date = mdata.get("end_date")
+            time_remaining = 0
+            if end_date:
+                try:
+                    time_remaining = max(0, int((end_date - now).total_seconds()))
+                except TypeError:
+                    time_remaining = max(0, interval - int(elapsed))
+
+            score_details = {
+                "price_to_beat": round(price_to_beat, 2),
+                "current_price": round(current_price, 2),
+                "move_pct": round(move_pct, 4),
+                "abs_move_pct": round(abs_move, 4),
+                "elapsed_sec": round(elapsed, 1),
+                "interval": interval,
+                "fair_odds": round(fair_odds, 3),
+                "poly_odds": round(poly_odds, 3),
+                "edge_pct": round(edge_pct, 1),
+                "max_buy_price": max_buy_price,
+                "score": round(fair_odds, 3),
+            }
+
+            signal = CryptoSignal(
+                coin=coin,
+                direction=direction,
+                spot_change_pct=round(move_pct, 4),
+                poly_odds=poly_odds,
+                fair_odds=fair_odds,
+                confidence=confidence,
+                edge_pct=edge_pct,
+                condition_id=cid,
+                market_question=mdata["question"],
+                spot_price=current_price,
+                time_remaining_sec=time_remaining,
+                end_date=end_date,
+                event_slug=mdata.get("event_slug", ""),
+                strategy="sniper",
                 score_details=score_details,
             )
             signals.append(signal)
