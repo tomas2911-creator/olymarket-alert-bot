@@ -509,13 +509,32 @@ class AutoTrader:
 
             # Intentar enviar orden; si FOK falla por liquidez, reintentar como GTC
             used_order_type = order_type
+            resp = None
+            fok_failed = False
+
             try:
                 resp = await loop.run_in_executor(None, self._client.post_order, signed_order, order_type)
             except Exception as fok_err:
-                fok_msg = str(fok_err).lower()
-                if order_type == OrderType.FOK and "fully filled" in fok_msg:
-                    print(f"[AutoTrader] FOK sin liquidez, reintentando como GTC limit...", flush=True)
-                    # Crear nueva orden con el mismo precio (limit order se queda en el book)
+                if order_type == OrderType.FOK:
+                    print(f"[AutoTrader] FOK excepción ({fok_err}), reintentando como GTC...", flush=True)
+                    fok_failed = True
+                else:
+                    raise
+
+            # Parsear respuesta FOK para detectar rechazo sin excepción
+            if not fok_failed and order_type == OrderType.FOK and resp is not None:
+                _fok_oid = ""
+                if isinstance(resp, dict):
+                    _fok_oid = resp.get("orderID", resp.get("order_id", "")) or ""
+                elif hasattr(resp, "orderID"):
+                    _fok_oid = getattr(resp, "orderID", "") or ""
+                if not _fok_oid:
+                    fok_failed = True
+                    print(f"[AutoTrader] FOK rechazada (sin orderID), reintentando como GTC...", flush=True)
+
+            # Fallback: reintentar como GTC si FOK falló (excepción o rechazo)
+            if fok_failed:
+                try:
                     gtc_args = OrderArgs(
                         price=order_price,
                         size=shares,
@@ -525,8 +544,9 @@ class AutoTrader:
                     signed_order = await loop.run_in_executor(None, self._client.create_order, gtc_args)
                     resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
                     used_order_type = OrderType.GTC
-                else:
-                    raise  # Re-lanzar si es otro error
+                except Exception as gtc_err:
+                    print(f"[AutoTrader] GTC fallback también falló: {gtc_err}", flush=True)
+                    raise
 
             # Log respuesta completa para debugging
             print(f"[AutoTrader] post_order response ({used_order_type}): {resp}", flush=True)
