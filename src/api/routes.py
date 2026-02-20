@@ -998,6 +998,28 @@ async def get_batch_scan_status(request: Request):
     db = request.app.state.db
     active = await db.get_active_scan_job()
     if active:
+        # Detectar job zombie: si no se actualizó en 3+ minutos, está muerto
+        from datetime import datetime, timezone, timedelta
+        updated = active.get("updated_at")
+        if updated:
+            if isinstance(updated, str):
+                try:
+                    updated = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+                except Exception:
+                    updated = None
+            if updated:
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
+                age = datetime.now(timezone.utc) - updated
+                if age > timedelta(minutes=3):
+                    # Job zombie — cancelar automáticamente
+                    await db.cancel_scan_job(active["id"], active.get("scanned", 0), active.get("errors", 0))
+                    print(f"[BatchScan] Job zombie #{active['id']} cancelado (sin actualizar hace {age})", flush=True)
+                    return {"running": False, "source": active.get("source", ""),
+                            "total": active.get("total", 0), "scanned": active.get("scanned", 0),
+                            "errors": active.get("errors", 0), "current": "",
+                            "job_id": active.get("id"), "status": "cancelled",
+                            "message": f"Job #{active['id']} cancelado automáticamente (servidor reiniciado)"}
         return {"running": True, "source": active.get("source", ""),
                 "total": active.get("total", 0), "scanned": active.get("scanned", 0),
                 "errors": active.get("errors", 0), "current": active.get("current_wallet", ""),
