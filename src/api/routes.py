@@ -2022,6 +2022,11 @@ async def get_autotrade_config(request: Request):
         "at_stop_loss_enabled", "at_stop_loss_pct", "at_take_profit_pct",
         "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
         "at_slippage_max_pct",
+        # Sniper
+        "at_use_sniper", "at_sniper_bet_size", "at_sniper_slippage_pct",
+        "at_sniper_min_move_pct", "at_sniper_max_buy_price",
+        "at_sniper_cooldown_sec", "at_sniper_entry_delay_sec",
+        "at_sniper_entry_max_sec", "at_sniper_tp_enabled", "at_sniper_tp_pct",
     ], user_id=uid)
     # Estadísticas reales del autotrader
     stats = await db.get_autotrade_stats(user_id=uid)
@@ -2070,6 +2075,17 @@ async def get_autotrade_config(request: Request):
         "slippage_max_pct": float(raw.get("at_slippage_max_pct", 3.0)),
         "funder_address": raw.get("at_funder_address", ""),
         "funder_address_set": bool(raw.get("at_funder_address")),
+        # Sniper
+        "use_sniper": raw.get("at_use_sniper", "false") == "true",
+        "sniper_bet_size": float(raw.get("at_sniper_bet_size", 3)),
+        "sniper_slippage_pct": float(raw.get("at_sniper_slippage_pct", 5)),
+        "sniper_min_move_pct": float(raw.get("at_sniper_min_move_pct", 0.03)),
+        "sniper_max_buy_price": float(raw.get("at_sniper_max_buy_price", 0.60)),
+        "sniper_cooldown_sec": int(raw.get("at_sniper_cooldown_sec", 0)),
+        "sniper_entry_delay_sec": int(raw.get("at_sniper_entry_delay_sec", 55)),
+        "sniper_entry_max_sec": int(raw.get("at_sniper_entry_max_sec", 150)),
+        "sniper_tp_enabled": raw.get("at_sniper_tp_enabled") == "true",
+        "sniper_tp_pct": float(raw.get("at_sniper_tp_pct", 30)),
         "min_score": float(raw.get("at_min_score", 0)),
         "use_score_strategy": raw.get("at_use_score_strategy", "true") == "true",
         "use_early_entry": raw.get("at_use_early_entry", "false") == "true",
@@ -2174,6 +2190,27 @@ async def save_autotrade_config(request: Request):
         data["at_ee_take_profit_enabled"] = "true" if body["ee_take_profit_enabled"] else "false"
     if "ee_take_profit_pct" in body:
         data["at_ee_take_profit_pct"] = str(body["ee_take_profit_pct"])
+    # Sniper config
+    if "use_sniper" in body:
+        data["at_use_sniper"] = "true" if body["use_sniper"] else "false"
+    if "sniper_bet_size" in body:
+        data["at_sniper_bet_size"] = str(body["sniper_bet_size"])
+    if "sniper_slippage_pct" in body:
+        data["at_sniper_slippage_pct"] = str(body["sniper_slippage_pct"])
+    if "sniper_min_move_pct" in body:
+        data["at_sniper_min_move_pct"] = str(body["sniper_min_move_pct"])
+    if "sniper_max_buy_price" in body:
+        data["at_sniper_max_buy_price"] = str(body["sniper_max_buy_price"])
+    if "sniper_cooldown_sec" in body:
+        data["at_sniper_cooldown_sec"] = str(body["sniper_cooldown_sec"])
+    if "sniper_entry_delay_sec" in body:
+        data["at_sniper_entry_delay_sec"] = str(body["sniper_entry_delay_sec"])
+    if "sniper_entry_max_sec" in body:
+        data["at_sniper_entry_max_sec"] = str(body["sniper_entry_max_sec"])
+    if "sniper_tp_enabled" in body:
+        data["at_sniper_tp_enabled"] = "true" if body["sniper_tp_enabled"] else "false"
+    if "sniper_tp_pct" in body:
+        data["at_sniper_tp_pct"] = str(body["sniper_tp_pct"])
     # Maker Orders config
     if "maker_spread_offset" in body:
         data["at_maker_spread_offset"] = str(body["maker_spread_offset"])
@@ -2199,6 +2236,12 @@ async def save_autotrade_config(request: Request):
     if bot and getattr(bot, 'early_detector', None):
         try:
             await bot._configure_early_detector()
+        except Exception:
+            pass
+    # Recargar config sniper en el detector
+    if bot and getattr(bot, '_configure_sniper_detector', None):
+        try:
+            await bot._configure_sniper_detector()
         except Exception:
             pass
     return {"status": "ok"}

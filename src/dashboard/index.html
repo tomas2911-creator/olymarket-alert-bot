@@ -1016,7 +1016,7 @@
                     <!-- Estrategias Activas + Bet Sizes -->
                     <div class="space-y-3">
                         <h4 class="text-xs text-gray-500 uppercase tracking-wider">Estrategias Activas</h4>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div class="bg-gray-800/40 rounded-lg p-3 border border-purple-700/30">
                                 <label class="flex items-center gap-2 cursor-pointer mb-2">
                                     <input type="checkbox" id="at-use-score" checked class="accent-purple-500 w-4 h-4">
@@ -1037,6 +1037,57 @@
                                     <input type="number" id="at-early-bet-size" value="3" min="1" max="500" class="w-full bg-gray-800/70 border border-yellow-700/50 rounded px-3 py-2 text-sm font-mono text-yellow-300">
                                 </div>
                             </div>
+                            <div class="bg-gray-800/40 rounded-lg p-3 border border-green-700/30">
+                                <label class="flex items-center gap-2 cursor-pointer mb-2">
+                                    <input type="checkbox" id="at-use-sniper" class="accent-green-500 w-4 h-4">
+                                    <span class="text-sm font-medium text-green-300">🎯 Sniper</span>
+                                </label>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Bet Size Sniper ($)</label>
+                                    <input type="number" id="at-sniper-bet-size" value="3" min="1" max="500" class="w-full bg-gray-800/70 border border-green-700/50 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Sniper Config Module -->
+                        <div id="at-sniper-config" class="hidden space-y-3 border border-green-500/20 rounded-lg p-4 bg-green-900/5">
+                            <h4 class="text-xs text-green-400 uppercase tracking-wider font-semibold">🎯 Configuración Sniper — FOK inmediato, entrada rápida</h4>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Slippage Sniper (%)</label>
+                                    <input type="number" id="at-sniper-slippage" value="5" min="1" max="20" step="0.5" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Min Move (%)</label>
+                                    <input type="number" id="at-sniper-min-move" value="0.03" min="0.01" max="0.50" step="0.01" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Max Buy Price</label>
+                                    <input type="number" id="at-sniper-max-buy" value="0.60" min="0.40" max="0.85" step="0.05" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Cooldown Sniper (seg)</label>
+                                    <input type="number" id="at-sniper-cooldown" value="0" min="0" max="120" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Entry Delay (seg)</label>
+                                    <input type="number" id="at-sniper-entry-delay" value="55" min="10" max="180" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">Entry Max (seg)</label>
+                                    <input type="number" id="at-sniper-entry-max" value="150" min="30" max="300" class="w-full bg-gray-800/70 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                </div>
+                                <div class="flex items-center gap-2 self-end pb-2">
+                                    <input type="checkbox" id="at-sniper-tp-enabled" class="accent-green-500 w-3.5 h-3.5">
+                                    <span class="text-xs text-green-300">TP Sniper</span>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-1">TP Sniper (%)</label>
+                                    <input type="number" id="at-sniper-tp-pct" value="30" step="5" min="5" max="200" class="w-full bg-gray-800/70 border border-green-700/50 rounded px-3 py-2 text-sm font-mono text-green-300">
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-gray-500">Sniper usa FOK siempre. Slippage propio (no el general). Cooldown 0 = ejecuta todas las señales sin espera.</p>
                         </div>
                         <p class="text-[10px] text-gray-600">Los parámetros de cada estrategia se configuran en la pestaña Estrategia.</p>
                     </div>
@@ -5445,6 +5496,17 @@ async function loadPriceSumArb(){
 // saveCryptoConfig ya no se usa — los campos se movieron a Estrategia
 async function saveCryptoConfig(){ await saveStrategyConfig(); }
 
+// ── Sniper Config Toggle ──
+function toggleSniperConfig(){
+    const on=document.getElementById('at-use-sniper')?.checked;
+    const panel=document.getElementById('at-sniper-config');
+    if(panel) panel.classList.toggle('hidden',!on);
+}
+document.addEventListener('DOMContentLoaded',()=>{
+    const cb=document.getElementById('at-use-sniper');
+    if(cb) cb.addEventListener('change',toggleSniperConfig);
+});
+
 // ── Autotrading ──
 async function disconnectWallet(){
     if(!confirm('¿Desconectar wallet? Se borrarán las 4 credenciales (Private Key, API Key, Secret, Passphrase). Podrás conectar otra wallet después.'))return;
@@ -5513,6 +5575,18 @@ async function loadAutotradeConfig(){
     document.getElementById('at-use-score').checked=c.use_score_strategy===true;
     document.getElementById('at-use-early').checked=c.use_early_entry===true;
     document.getElementById('at-early-bet-size').value=c.early_entry_bet_size||3;
+    // Sniper
+    document.getElementById('at-use-sniper').checked=c.use_sniper===true;
+    document.getElementById('at-sniper-bet-size').value=c.sniper_bet_size||3;
+    document.getElementById('at-sniper-slippage').value=c.sniper_slippage_pct||5;
+    document.getElementById('at-sniper-min-move').value=c.sniper_min_move_pct||0.03;
+    document.getElementById('at-sniper-max-buy').value=c.sniper_max_buy_price||0.60;
+    document.getElementById('at-sniper-cooldown').value=c.sniper_cooldown_sec!=null?c.sniper_cooldown_sec:0;
+    document.getElementById('at-sniper-entry-delay').value=c.sniper_entry_delay_sec||55;
+    document.getElementById('at-sniper-entry-max').value=c.sniper_entry_max_sec||150;
+    document.getElementById('at-sniper-tp-enabled').checked=!!c.sniper_tp_enabled;
+    document.getElementById('at-sniper-tp-pct').value=c.sniper_tp_pct||30;
+    toggleSniperConfig();
     // Risk Management (todo junto)
     document.getElementById('at-max-daily-loss').value=c.max_daily_loss||50;
     document.getElementById('at-max-daily-trades').value=c.max_daily_trades||20;
@@ -5532,6 +5606,7 @@ async function loadAutotradeConfig(){
     document.getElementById('at-maker-timeout').value=c.maker_fill_timeout_sec||120;
     document.getElementById('at-hybrid-threshold').value=c.hybrid_score_threshold||0.50;
     toggleMakerConfig();
+    toggleSniperConfig();
     document.getElementById('at-coin-btc').checked=c.coins?.includes('BTC')!==false;
     document.getElementById('at-coin-eth').checked=c.coins?.includes('ETH')!==false;
     document.getElementById('at-coin-sol').checked=c.coins?.includes('SOL')!==false;
@@ -5576,11 +5651,22 @@ async function saveAutotradeConfig(){
         use_score_strategy:document.getElementById('at-use-score').checked,
         use_early_entry:document.getElementById('at-use-early').checked,
         early_entry_enabled:document.getElementById('at-use-early').checked,
+        // Sniper
+        use_sniper:document.getElementById('at-use-sniper').checked,
+        sniper_bet_size:parseFloat(document.getElementById('at-sniper-bet-size').value)||3,
+        sniper_slippage_pct:parseFloat(document.getElementById('at-sniper-slippage').value)||5,
+        sniper_min_move_pct:parseFloat(document.getElementById('at-sniper-min-move').value)||0.03,
+        sniper_max_buy_price:parseFloat(document.getElementById('at-sniper-max-buy').value)||0.60,
+        sniper_cooldown_sec:parseInt(document.getElementById('at-sniper-cooldown').value)||0,
+        sniper_entry_delay_sec:parseInt(document.getElementById('at-sniper-entry-delay').value)||55,
+        sniper_entry_max_sec:parseInt(document.getElementById('at-sniper-entry-max').value)||150,
+        sniper_tp_enabled:document.getElementById('at-sniper-tp-enabled').checked,
+        sniper_tp_pct:parseFloat(document.getElementById('at-sniper-tp-pct').value)||30,
         // Ejecución
         max_positions:parseInt(document.getElementById('at-max-positions').value)||3,
         order_type:document.getElementById('at-order-type').value,
         slippage_max_pct:parseFloat(document.getElementById('at-slippage').value)||3,
-        cooldown_sec:parseInt(document.getElementById('at-cooldown').value)||30,
+        cooldown_sec:parseInt(document.getElementById('at-cooldown').value),
         coins:coins,
         funder_address:(document.getElementById('at-funder-address').value||'').trim(),
         // Risk Management (todo junto)

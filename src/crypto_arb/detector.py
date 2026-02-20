@@ -90,6 +90,18 @@ class CryptoArbDetector:
         self._signals_today: list[CryptoSignal] = []
         self._signals_today_date: str = ""
         self._running = False
+        # Sniper config overrides (from dashboard)
+        self._sniper_min_move_pct: Optional[float] = None
+        self._sniper_max_buy_price: Optional[float] = None
+        self._sniper_entry_delay_sec: Optional[int] = None
+        self._sniper_entry_max_sec: Optional[int] = None
+
+    def configure_sniper(self, cfg: dict):
+        """Update sniper config from autotrader/dashboard settings."""
+        self._sniper_min_move_pct = cfg.get("sniper_min_move_pct")
+        self._sniper_max_buy_price = cfg.get("sniper_max_buy_price")
+        self._sniper_entry_delay_sec = cfg.get("sniper_entry_delay_sec")
+        self._sniper_entry_max_sec = cfg.get("sniper_entry_max_sec")
 
     async def start(self):
         """Loop principal: escanear mercados y detectar divergencias."""
@@ -650,10 +662,10 @@ class CryptoArbDetector:
         now = datetime.now(timezone.utc)
         now_ts = time.time()
 
-        min_move = config.CRYPTO_SNIPER_MIN_MOVE_PCT
-        entry_delay = config.CRYPTO_SNIPER_ENTRY_DELAY_SEC
-        entry_max = config.CRYPTO_SNIPER_ENTRY_MAX_SEC
-        max_buy_price = config.CRYPTO_SNIPER_MAX_BUY_PRICE
+        min_move = self._sniper_min_move_pct if self._sniper_min_move_pct is not None else config.CRYPTO_SNIPER_MIN_MOVE_PCT
+        entry_delay = self._sniper_entry_delay_sec if self._sniper_entry_delay_sec is not None else config.CRYPTO_SNIPER_ENTRY_DELAY_SEC
+        entry_max = self._sniper_entry_max_sec if self._sniper_entry_max_sec is not None else config.CRYPTO_SNIPER_ENTRY_MAX_SEC
+        max_buy_price = self._sniper_max_buy_price if self._sniper_max_buy_price is not None else config.CRYPTO_SNIPER_MAX_BUY_PRICE
         allowed_intervals = config.CRYPTO_SNIPER_INTERVALS
 
         for cid, mdata in self._active_markets.items():

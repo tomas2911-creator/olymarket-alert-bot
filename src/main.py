@@ -357,11 +357,18 @@ class PolymarketAlertBot:
                 print(f"[MarketMaker] Error en loop: {e}", flush=True)
             await asyncio.sleep(5)
 
+    async def _configure_sniper_detector(self):
+        """Pass sniper config from autotrader to detector."""
+        if self.crypto_detector and self.autotrader and self.autotrader._config:
+            self.crypto_detector.configure_sniper(self.autotrader._config)
+
     async def _run_crypto_autotrader(self):
         """Loop rápido: evaluar señales crypto cada 5s, independiente del polling.
         Combina señales de score strategy + early entry strategy.
         """
         await asyncio.sleep(8)
+        # Pass sniper config from autotrader to detector on startup
+        await self._configure_sniper_detector()
         while self._running and self.autotrader and self.crypto_detector:
             try:
                 # Señales del detector score (strategy="score")

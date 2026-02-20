@@ -69,6 +69,11 @@ class AutoTrader:
                 "at_max_holding_sec", "at_trailing_stop_enabled", "at_trailing_stop_pct",
                 "at_slippage_max_pct",
                 "at_ee_take_profit_enabled", "at_ee_take_profit_pct",
+                # Sniper
+                "at_use_sniper", "at_sniper_bet_size", "at_sniper_slippage_pct",
+                "at_sniper_min_move_pct", "at_sniper_max_buy_price",
+                "at_sniper_cooldown_sec", "at_sniper_entry_delay_sec",
+                "at_sniper_entry_max_sec", "at_sniper_tp_enabled", "at_sniper_tp_pct",
                 # Maker Orders
                 "at_maker_spread_offset", "at_maker_max_open_orders",
                 "at_maker_requote_threshold", "at_maker_fill_timeout_sec",
@@ -105,6 +110,17 @@ class AutoTrader:
                 "early_entry_bet_size": float(raw.get("at_early_entry_bet_size", config.EARLY_ENTRY_BET_SIZE)),
                 "ee_take_profit_enabled": raw.get("at_ee_take_profit_enabled") == "true",
                 "ee_take_profit_pct": float(raw.get("at_ee_take_profit_pct", 40)),
+                # Sniper
+                "use_sniper": raw.get("at_use_sniper", "false") == "true",
+                "sniper_bet_size": float(raw.get("at_sniper_bet_size", 3)),
+                "sniper_slippage_pct": float(raw.get("at_sniper_slippage_pct", 5)),
+                "sniper_min_move_pct": float(raw.get("at_sniper_min_move_pct", 0.03)),
+                "sniper_max_buy_price": float(raw.get("at_sniper_max_buy_price", 0.60)),
+                "sniper_cooldown_sec": int(raw.get("at_sniper_cooldown_sec", 0)),
+                "sniper_entry_delay_sec": int(raw.get("at_sniper_entry_delay_sec", 55)),
+                "sniper_entry_max_sec": int(raw.get("at_sniper_entry_max_sec", 150)),
+                "sniper_tp_enabled": raw.get("at_sniper_tp_enabled") == "true",
+                "sniper_tp_pct": float(raw.get("at_sniper_tp_pct", 30)),
                 # Maker Orders
                 "maker_spread_offset": float(raw.get("at_maker_spread_offset", config.AT_MAKER_SPREAD_OFFSET)),
                 "maker_max_open_orders": int(raw.get("at_maker_max_open_orders", config.AT_MAKER_MAX_OPEN_ORDERS)),
@@ -134,12 +150,17 @@ class AutoTrader:
             strats = []
             if self._config.get('use_score_strategy'): strats.append('score')
             if self._config.get('use_early_entry'): strats.append('early')
-            if config.CRYPTO_ARB_STRATEGY == 'sniper': strats.append('sniper')
+            if self._config.get('use_sniper'): strats.append('sniper')
             strat_info = f" strategies={'+'.join(strats)}" if strats else ""
             early_bet = self._config.get('early_entry_bet_size', 0)
             early_info = f" early_bet=${early_bet}" if self._config.get('use_early_entry') else ""
+            sniper_info = ""
+            if self._config.get('use_sniper'):
+                sniper_info = (f" sniper_bet=${self._config.get('sniper_bet_size', 3)}"
+                               f" sniper_slip={self._config.get('sniper_slippage_pct', 5)}%"
+                               f" sniper_cd={self._config.get('sniper_cooldown_sec', 0)}s")
             print(f"[AutoTrader] {status}{reason} | bet=${self._config['bet_size']} "
-                  f"edge>={self._config['min_edge']}% conf>={self._config['min_confidence']}%{score_info}{strat_info}{early_info}",
+                  f"edge>={self._config['min_edge']}% conf>={self._config['min_confidence']}%{score_info}{strat_info}{early_info}{sniper_info}",
                   flush=True)
         except Exception as e:
             print(f"[AutoTrader] Error inicializando: {e}", flush=True)
@@ -264,8 +285,8 @@ class AutoTrader:
             return None
         if strategy in ("score", "divergence") and not cfg.get("use_score_strategy", True):
             return None
-        # Sniper: siempre permitido cuando la estrategia activa es sniper
-        # (el detector solo genera señales sniper si strategy=sniper está seleccionada)
+        if strategy == "sniper" and not cfg.get("use_sniper", False):
+            return None
 
         # Filtro: moneda habilitada
         if signal.get("coin", "") not in cfg["coins"]:
@@ -297,10 +318,11 @@ class AutoTrader:
             print(f"{tag} SKIP: odds {poly_odds} > max {cfg['max_odds']}", flush=True)
             return None
 
-        # Filtro: cooldown entre trades
+        # Filtro: cooldown entre trades (sniper tiene su propio cooldown)
         now = time.time()
-        if now - self._last_trade_time < cfg["cooldown_sec"]:
-            print(f"{tag} SKIP: cooldown ({int(now - self._last_trade_time)}s < {cfg['cooldown_sec']}s)", flush=True)
+        cooldown = cfg.get("sniper_cooldown_sec", 0) if strategy == "sniper" else cfg["cooldown_sec"]
+        if cooldown > 0 and now - self._last_trade_time < cooldown:
+            print(f"{tag} SKIP: cooldown ({int(now - self._last_trade_time)}s < {cooldown}s)", flush=True)
             return None
 
         # Filtro: max posiciones abiertas
@@ -352,7 +374,7 @@ class AutoTrader:
         if strategy == "early_entry":
             bet_size = cfg.get("early_entry_bet_size", cfg["bet_size"])
         elif strategy == "sniper":
-            bet_size = cfg.get("early_entry_bet_size", cfg["bet_size"])  # Sniper usa bet size de early entry
+            bet_size = cfg.get("sniper_bet_size", cfg["bet_size"])
 
         print(f"{tag} PASS [{strategy}]: edge={edge}% conf={confidence}% odds={poly_odds} remaining={remaining}s -> EXECUTING ${bet_size}", flush=True)
 
@@ -423,9 +445,14 @@ class AutoTrader:
             # FOK: agregar slippage para encontrar liquidez en el order book
             # El price en FOK BUY es el MÁXIMO que estamos dispuestos a pagar
             is_fok = order_mode == "market"
+            strategy = trade_info.get("strategy", "score")
             if is_fok:
-                slippage_pct = self._config.get("slippage_max_pct", 3.0)
-                slippage = round(slippage_pct / 100, 2)  # ej: 3% → 0.03
+                # Sniper usa su propio slippage configurable
+                if strategy == "sniper":
+                    slippage_pct = self._config.get("sniper_slippage_pct", 5.0)
+                else:
+                    slippage_pct = self._config.get("slippage_max_pct", 3.0)
+                slippage = round(slippage_pct / 100, 2)  # ej: 5% → 0.05
                 order_price = min(round(price + slippage, 2), 0.99)
             else:
                 order_price = price
@@ -989,7 +1016,7 @@ class AutoTrader:
         """
         cfg = self._config
         # Correr si hay al menos una feature de riesgo activa
-        has_risk = cfg.get("stop_loss_enabled") or cfg.get("ee_take_profit_enabled")
+        has_risk = cfg.get("stop_loss_enabled") or cfg.get("ee_take_profit_enabled") or cfg.get("sniper_tp_enabled")
         if not has_risk or not self._open_positions or not self._client:
             return
 
@@ -1043,9 +1070,12 @@ class AutoTrader:
                             sell_reason = f"STOP-LOSS ({pnl_pct:.1f}% <= -{cfg['stop_loss_pct']}%)"
 
                         # 2. Take-Profit: vender si ganancia > X%
-                        # Early Entry tiene su propio TP (entrada a ~0.50 = más margen)
+                        # Cada estrategia tiene su propio TP configurable
                         if not sell_reason:
-                            if strategy == "early_entry" and cfg.get("ee_take_profit_enabled") and cfg.get("ee_take_profit_pct", 0) > 0:
+                            if strategy == "sniper" and cfg.get("sniper_tp_enabled") and cfg.get("sniper_tp_pct", 0) > 0:
+                                if pnl_pct >= cfg["sniper_tp_pct"]:
+                                    sell_reason = f"TP-SNIPER ({pnl_pct:.1f}% >= +{cfg['sniper_tp_pct']}%)"
+                            elif strategy == "early_entry" and cfg.get("ee_take_profit_enabled") and cfg.get("ee_take_profit_pct", 0) > 0:
                                 if pnl_pct >= cfg["ee_take_profit_pct"]:
                                     sell_reason = f"TP-EARLY-ENTRY ({pnl_pct:.1f}% >= +{cfg['ee_take_profit_pct']}%)"
                             elif cfg["take_profit_pct"] > 0 and pnl_pct >= cfg["take_profit_pct"]:
@@ -1087,7 +1117,12 @@ class AutoTrader:
             from py_clob_client.clob_types import OrderArgs, OrderType
 
             # Slippage negativo para asegurar que el SELL se ejecute
-            sell_price = max(round(current_price - 0.02, 2), 0.01)
+            strategy = trade.get("strategy", "score")
+            if strategy == "sniper":
+                sell_slip = self._config.get("sniper_slippage_pct", 5.0) / 100
+            else:
+                sell_slip = self._config.get("slippage_max_pct", 3.0) / 100
+            sell_price = max(round(current_price - sell_slip, 2), 0.01)
 
             order_args = OrderArgs(
                 price=sell_price,
