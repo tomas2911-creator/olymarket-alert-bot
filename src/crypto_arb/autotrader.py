@@ -1092,8 +1092,8 @@ class AutoTrader:
                         sell_reason = None
                         strategy = trade.get("strategy", "score")
 
-                        # 1. Stop-Loss: vender si pérdida > X% (solo si SL habilitado)
-                        if cfg.get("stop_loss_enabled") and cfg["stop_loss_pct"] > 0 and pnl_pct <= -cfg["stop_loss_pct"]:
+                        # 1. Stop-Loss: vender si pérdida > X%
+                        if cfg["stop_loss_pct"] > 0 and pnl_pct <= -cfg["stop_loss_pct"]:
                             sell_reason = f"STOP-LOSS ({pnl_pct:.1f}% <= -{cfg['stop_loss_pct']}%)"
 
                         # 2. Take-Profit: vender si ganancia > X%
@@ -1105,7 +1105,7 @@ class AutoTrader:
                             elif strategy == "early_entry" and cfg.get("ee_take_profit_enabled") and cfg.get("ee_take_profit_pct", 0) > 0:
                                 if pnl_pct >= cfg["ee_take_profit_pct"]:
                                     sell_reason = f"TP-EARLY-ENTRY ({pnl_pct:.1f}% >= +{cfg['ee_take_profit_pct']}%)"
-                            elif cfg.get("stop_loss_enabled") and cfg["take_profit_pct"] > 0 and pnl_pct >= cfg["take_profit_pct"]:
+                            elif cfg["take_profit_pct"] > 0 and pnl_pct >= cfg["take_profit_pct"]:
                                 sell_reason = f"TAKE-PROFIT ({pnl_pct:.1f}% >= +{cfg['take_profit_pct']}%)"
 
                         # 3. Max Holding Time: vender si pasó demasiado tiempo
@@ -1144,12 +1144,7 @@ class AutoTrader:
             from py_clob_client.clob_types import OrderArgs, OrderType
 
             # Slippage negativo para asegurar que el SELL se ejecute
-            strategy = trade.get("strategy", "score")
-            if strategy == "sniper":
-                sell_slip = self._config.get("sniper_slippage_pct", 5.0) / 100
-            else:
-                sell_slip = self._config.get("slippage_max_pct", 3.0) / 100
-            sell_price = max(round(current_price - sell_slip, 2), 0.01)
+            sell_price = max(round(current_price - 0.02, 2), 0.01)
 
             order_args = OrderArgs(
                 price=sell_price,
