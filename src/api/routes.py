@@ -703,7 +703,7 @@ async def start_batch_scan(request: Request):
 
     body = await request.json()
     source = body.get("source", "wallets")
-    if source not in ("wallets", "top_wallets", "whales"):
+    if source not in ("wallets", "top_wallets", "whales", "flagged"):
         return JSONResponse({"error": "Fuente inválida"}, status_code=400)
 
     uid = await get_user_id(request)

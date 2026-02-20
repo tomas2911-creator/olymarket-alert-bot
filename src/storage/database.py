@@ -4225,6 +4225,17 @@ class Database:
                       AND w.is_watchlisted = TRUE
                     ORDER BY address
                 """, user_id)
+            elif source == "flagged":
+                min_size, min_score = await self._get_user_alert_filters(user_id)
+                rows = await conn.fetch("""
+                    SELECT DISTINCT a.wallet_address as address,
+                           COALESCE(w.name, w.pseudonym, '') as name,
+                           COALESCE(w.profile_image, '') as profile_image
+                    FROM alerts a
+                    LEFT JOIN wallets w ON a.wallet_address = w.address
+                    WHERE a.user_id = $1 AND a.size >= $2 AND a.score >= $3
+                    ORDER BY address
+                """, user_id, min_size, min_score)
             elif source == "whales":
                 rows = await conn.fetch("""
                     SELECT DISTINCT wt.wallet_address as address,

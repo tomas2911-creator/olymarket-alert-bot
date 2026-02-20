@@ -2674,6 +2674,7 @@
                     <div class="flex flex-wrap gap-2 mb-3">
                         <button onclick="startBatchScan('wallets')" id="bscan-btn-wallets" class="px-4 py-2 bg-violet-600/40 hover:bg-violet-600/60 text-violet-200 rounded-lg text-xs font-semibold transition">📋 Wallets Detectadas</button>
                         <button onclick="startBatchScan('top_wallets')" id="bscan-btn-tops" class="px-4 py-2 bg-emerald-600/40 hover:bg-emerald-600/60 text-emerald-200 rounded-lg text-xs font-semibold transition">⭐ Top Wallets</button>
+                        <button onclick="startBatchScan('flagged')" id="bscan-btn-flagged" class="px-4 py-2 bg-orange-600/40 hover:bg-orange-600/60 text-orange-200 rounded-lg text-xs font-semibold transition">🚩 Flaggeadas</button>
                         <button onclick="startBatchScan('whales')" id="bscan-btn-whales" class="px-4 py-2 bg-cyan-600/40 hover:bg-cyan-600/60 text-cyan-200 rounded-lg text-xs font-semibold transition">🐋 Whale Trades</button>
                         <button onclick="loadBatchResults()" class="px-3 py-2 bg-gray-700/40 hover:bg-gray-700/60 text-gray-300 rounded-lg text-xs transition">🔄 Ver Resultados</button>
                         <button onclick="clearBatchCache()" class="px-3 py-2 bg-red-900/40 hover:bg-red-900/60 text-red-300 rounded-lg text-xs transition">🗑️ Limpiar</button>
@@ -6585,8 +6586,8 @@ function sortBatchBy(col){
     loadBatchResults();
 }
 async function startBatchScan(source){
-    const labels={wallets:'Wallets Detectadas',top_wallets:'Top Wallets',whales:'Whale Trades'};
-    ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales'].forEach(id=>{
+    const labels={wallets:'Wallets Detectadas',top_wallets:'Top Wallets',whales:'Whale Trades',flagged:'Flaggeadas'};
+    ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales','bscan-btn-flagged'].forEach(id=>{
         const b=document.getElementById(id);if(b){b.disabled=true;b.style.opacity='0.5';}
     });
     document.getElementById('bscan-progress').classList.remove('hidden');
@@ -6614,7 +6615,7 @@ function _startBscanPolling(){
     _bscanPollTimer=setInterval(pollBatchStatus,3000);
 }
 function _enableBscanBtns(){
-    ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales'].forEach(id=>{
+    ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales','bscan-btn-flagged'].forEach(id=>{
         const b=document.getElementById(id);if(b){b.disabled=false;b.style.opacity='1';}
     });
 }
@@ -6627,12 +6628,12 @@ async function pollBatchStatus(){
         document.getElementById('bscan-progress').classList.remove('hidden');
         document.getElementById('bscan-progress-count').textContent=`${s.scanned||0}/${s.total||0}`;
         document.getElementById('bscan-progress-bar').style.width=pct+'%';
-        const labels={wallets:'Wallets',top_wallets:'Top Wallets',whales:'Whales'};
+        const labels={wallets:'Wallets',top_wallets:'Top Wallets',whales:'Whales',flagged:'Flaggeadas'};
         const cancelBtn=document.getElementById('bscan-cancel-btn');
         if(s.running){
             document.getElementById('bscan-progress-text').textContent=`Analizando ${labels[s.source]||s.source}${jobTag}... ${s.current||''}`;
             if(cancelBtn)cancelBtn.classList.remove('hidden');
-            ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales'].forEach(id=>{
+            ['bscan-btn-wallets','bscan-btn-tops','bscan-btn-whales','bscan-btn-flagged'].forEach(id=>{
                 const b=document.getElementById(id);if(b){b.disabled=true;b.style.opacity='0.5';}
             });
         }else{
