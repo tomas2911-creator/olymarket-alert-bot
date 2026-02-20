@@ -6497,12 +6497,14 @@ function renderWalletScan(d){
     roiEl.textContent=(d.roi_pct>=0?'+':'-')+Math.abs(d.roi_pct)+'%';
     roiEl.className='text-lg font-bold '+(d.roi_pct>=0?'text-green-400':'text-red-400');
     const wrEl=document.getElementById('wscan-wr');
-    wrEl.textContent=d.win_rate+'%';
+    const sampled=d.closed_sampled||0;
+    const isPartial=sampled>0&&d.total_trades>0&&sampled<d.total_trades*0.8;
+    wrEl.textContent=(isPartial?'~':'')+d.win_rate+'%';
     wrEl.className='text-lg font-bold '+(d.win_rate>=60?'text-green-400':d.win_rate>=40?'text-yellow-400':'text-red-400');
     document.getElementById('wscan-trades').textContent=fmt(d.total_trades);
     // Detalle
-    document.getElementById('wscan-wins').textContent=d.wins;
-    document.getElementById('wscan-losses').textContent=d.losses;
+    document.getElementById('wscan-wins').textContent=(isPartial?'~':'')+d.wins;
+    document.getElementById('wscan-losses').textContent=(isPartial?'~':'')+d.losses;
     const realEl=document.getElementById('wscan-realized');
     realEl.textContent=(d.realized_pnl>=0?'+':'-')+`$${fmt(Math.abs(Math.round(d.realized_pnl)))}`;
     realEl.className='text-sm font-bold '+(d.realized_pnl>=0?'text-green-400':'text-red-400');

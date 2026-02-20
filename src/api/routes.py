@@ -428,7 +428,8 @@ async def wallet_scan(request: Request, address: str):
                 max_closed = 2500
                 while offset < max_closed:
                     r = await client.get(f"{_POLY_DATA_API}/closed-positions",
-                                         params={"user": addr, "limit": 50, "offset": offset})
+                                         params={"user": addr, "limit": 50, "offset": offset,
+                                                 "sortBy": "TIMESTAMP", "sortDirection": "DESC"})
                     if r.status_code != 200:
                         break
                     d = r.json()
@@ -538,8 +539,12 @@ async def wallet_scan(request: Request, address: str):
         calculated_pnl = open_cash_pnl + closed_pnl
         # Usar PnL oficial si disponible, sino el calculado
         total_pnl = round(official_pnl, 2) if official_pnl is not None else round(calculated_pnl, 2)
-        realized_pnl = closed_pnl
         unrealized_pnl = open_cash_pnl
+        # Derivar realized del oficial: realized = total_pnl - unrealized
+        if official_pnl is not None:
+            realized_pnl = official_pnl - open_cash_pnl
+        else:
+            realized_pnl = closed_pnl
 
         # Volumen oficial como base de inversión (más preciso que sumar posiciones parciales)
         if official_volume and official_volume > 0:
@@ -618,6 +623,7 @@ async def wallet_scan(request: Request, address: str):
             "win_rate": win_rate,
             "wins": closed_wins,
             "losses": closed_losses,
+            "closed_sampled": len(closed_positions),
             "total_trades": total_markets,
             "first_trade_date": first_trade_date,
             "days_active": days_active,
@@ -845,9 +851,10 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 closed = []
                 try:
                     offset = 0
-                    while offset < 1000:
+                    while offset < 2500:
                         r = await client.get(f"{_POLY_DATA_API}/closed-positions",
-                                             params={"user": addr, "limit": 50, "offset": offset})
+                                             params={"user": addr, "limit": 50, "offset": offset,
+                                                     "sortBy": "TIMESTAMP", "sortDirection": "DESC"})
                         if r.status_code != 200:
                             break
                         d = r.json()
@@ -911,6 +918,11 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
             # Totales — PREFERIR PnL oficial del leaderboard
             calculated_pnl = open_cash_pnl + closed_pnl
             total_pnl = round(official_pnl, 2) if official_pnl is not None else round(calculated_pnl, 2)
+            # Derivar realized del oficial: realized = total_pnl - unrealized
+            if official_pnl is not None:
+                realized_pnl = round(official_pnl - open_cash_pnl, 2)
+            else:
+                realized_pnl = round(closed_pnl, 2)
             if official_volume and official_volume > 0:
                 estimated_initial = round(official_volume, 2)
             else:
@@ -940,12 +952,13 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 "portfolio_value": round(portfolio_value, 2),
                 "estimated_initial_capital": round(estimated_initial, 2),
                 "total_pnl": total_pnl,
-                "realized_pnl": round(closed_pnl, 2),
+                "realized_pnl": realized_pnl,
                 "official_pnl": round(official_pnl, 2) if official_pnl is not None else None,
                 "roi_pct": roi_pct,
                 "win_rate": win_rate,
                 "wins": wins,
                 "losses": losses,
+                "closed_sampled": len(closed_positions),
                 "total_trades": total_markets,
                 "days_active": days_active,
                 "open_positions_count": open_count,
