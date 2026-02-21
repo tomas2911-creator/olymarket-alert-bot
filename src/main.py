@@ -446,7 +446,8 @@ class PolymarketAlertBot:
                 "elimination_max_bet": config.WEATHER_ELIMINATION_MAX_BET,
                 "elimination_require_zero": config.WEATHER_ELIMINATION_REQUIRE_ZERO,
             })
-            self.weather_paper = WeatherPaperTrader(bet_size=config.WEATHER_ARB_PAPER_BET)
+            self.weather_paper = WeatherPaperTrader(bet_size=config.WEATHER_ARB_PAPER_BET, db=self.db)
+            await self.weather_paper.load_from_db()
             self.weather_autotrader = WeatherAutoTrader(self.db)
             await self.weather_autotrader.initialize()
             # Early weather detector

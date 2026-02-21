@@ -115,10 +115,62 @@ class PaperTradeStats:
 class WeatherPaperTrader:
     """Paper trader: registra señales como trades simulados y resuelve con datos reales."""
 
-    def __init__(self, bet_size: float = 10.0):
+    def __init__(self, bet_size: float = 10.0, db=None):
         self.bet_size = bet_size
+        self._db = db
         self._trades: list[PaperTrade] = []
         self._resolved_cids: set[str] = set()  # Para evitar resolver dos veces
+
+    async def load_from_db(self, user_id: int = 1):
+        """Cargar paper trades persistentes desde la DB al iniciar."""
+        if not self._db:
+            return
+        try:
+            rows = await self._db.load_weather_paper_trades(user_id=user_id)
+            loaded = 0
+            for r in rows:
+                cid = r.get("condition_id", "")
+                if not cid or any(t.condition_id == cid for t in self._trades):
+                    continue
+                created = r.get("created_at")
+                if isinstance(created, str):
+                    try:
+                        created = datetime.fromisoformat(created)
+                    except Exception:
+                        created = datetime.now(timezone.utc)
+                trade = PaperTrade(
+                    city=r.get("city", ""),
+                    city_name=r.get("city_name", ""),
+                    date=r.get("date", ""),
+                    range_label=r.get("range_label", ""),
+                    condition_id=cid,
+                    event_slug=r.get("event_slug", ""),
+                    entry_odds=float(r.get("entry_odds", 0) or 0),
+                    ensemble_prob=float(r.get("ensemble_prob", 0) or 0),
+                    edge_pct=float(r.get("edge_pct", 0) or 0),
+                    confidence=float(r.get("confidence", 0) or 0),
+                    bet_size=float(r.get("bet_size", 0) or 0),
+                    unit=r.get("unit", ""),
+                    strategy=r.get("strategy", "conviction"),
+                    resolution_source=r.get("resolution_source", ""),
+                    created_at=created,
+                    resolved=bool(r.get("resolved", False)),
+                    result=r.get("result"),
+                    pnl=float(r.get("pnl", 0) or 0),
+                    actual_temp=float(r["actual_temp"]) if r.get("actual_temp") is not None else None,
+                    current_odds=float(r["current_odds"]) if r.get("current_odds") is not None else None,
+                    unrealized_pnl=float(r["unrealized_pnl"]) if r.get("unrealized_pnl") is not None else None,
+                )
+                if trade.resolved:
+                    self._resolved_cids.add(cid)
+                self._trades.append(trade)
+                loaded += 1
+            if loaded:
+                print(f"[WeatherPaper] Cargados {loaded} paper trades desde DB "
+                      f"({sum(1 for t in self._trades if t.resolved)} resueltos, "
+                      f"{sum(1 for t in self._trades if not t.resolved)} pendientes)", flush=True)
+        except Exception as e:
+            print(f"[WeatherPaper] Error cargando desde DB: {e}", flush=True)
 
     def record_signal(self, signal: dict):
         """Registrar una señal del detector como paper trade."""
@@ -147,9 +199,35 @@ class WeatherPaperTrader:
             resolution_source=signal.get("resolution_source", ""),
         )
         self._trades.append(trade)
-        print(f"[WeatherPaper] 📝 Paper trade: {trade.city_name} {trade.date} "
-              f"→ {trade.range_label} @ {trade.entry_odds:.2f} "
+        print(f"[WeatherPaper] \U0001f4dd Paper trade: {trade.city_name} {trade.date} "
+              f"\u2192 {trade.range_label} @ {trade.entry_odds:.2f} "
               f"(edge={trade.edge_pct:.1f}%)", flush=True)
+        # Persistir en DB
+        if self._db:
+            asyncio.ensure_future(self._persist_new_trade(trade))
+
+    async def _persist_new_trade(self, trade: PaperTrade):
+        """Guardar trade nuevo en DB (fire-and-forget)."""
+        try:
+            await self._db.insert_weather_paper_trade({
+                "condition_id": trade.condition_id,
+                "city": trade.city,
+                "city_name": trade.city_name,
+                "date": trade.date,
+                "range_label": trade.range_label,
+                "event_slug": trade.event_slug,
+                "entry_odds": trade.entry_odds,
+                "ensemble_prob": trade.ensemble_prob,
+                "edge_pct": trade.edge_pct,
+                "confidence": trade.confidence,
+                "bet_size": trade.bet_size,
+                "unit": trade.unit,
+                "strategy": trade.strategy,
+                "resolution_source": trade.resolution_source,
+                "created_at": trade.created_at,
+            })
+        except Exception as e:
+            print(f"[WeatherPaper] Error persistiendo trade: {e}", flush=True)
 
     async def resolve_pending(self):
         """Intentar resolver trades pendientes consultando Polymarket."""
@@ -227,10 +305,21 @@ class WeatherPaperTrader:
                         trade.resolved = True
                         self._resolved_cids.add(trade.condition_id)
 
-                        emoji = "✅" if won else "❌"
+                        emoji = "\u2705" if won else "\u274c"
                         print(f"[WeatherPaper] {emoji} {trade.city_name} {trade.date} "
-                              f"{trade.range_label} → {trade.result.upper()} "
+                              f"{trade.range_label} \u2192 {trade.result.upper()} "
                               f"PnL=${trade.pnl:.2f}", flush=True)
+
+                        # Persistir resolución en DB
+                        if self._db:
+                            try:
+                                await self._db.update_weather_paper_trade(trade.condition_id, {
+                                    "resolved": True,
+                                    "result": trade.result,
+                                    "pnl": trade.pnl,
+                                })
+                            except Exception:
+                                pass
 
                     except Exception as e:
                         logger.warning("paper_resolve_error", cid=trade.condition_id[:16], error=str(e))
@@ -270,6 +359,15 @@ class WeatherPaperTrader:
                                         shares = trade.bet_size / trade.entry_odds
                                         trade.unrealized_pnl = round((shares * cur_price) - trade.bet_size, 2)
                                     trade.last_price_update = now
+                                    # Persistir precios en DB
+                                    if self._db:
+                                        try:
+                                            await self._db.update_weather_paper_trade(trade.condition_id, {
+                                                "current_odds": cur_price,
+                                                "unrealized_pnl": trade.unrealized_pnl,
+                                            })
+                                        except Exception:
+                                            pass
                                 except (ValueError, TypeError):
                                     pass
                                 break
@@ -330,6 +428,18 @@ class WeatherPaperTrader:
         return stats.to_dict()
 
     def clear(self):
-        """Limpiar todos los trades."""
+        """Limpiar todos los trades en memoria (DB se limpia aparte)."""
         self._trades = []
         self._resolved_cids = set()
+
+    async def reset(self, user_id: int = 1) -> int:
+        """Reiniciar paper trading: borrar memoria + DB."""
+        count = len(self._trades)
+        self.clear()
+        if self._db:
+            try:
+                await self._db.clear_weather_paper_trades(user_id=user_id)
+            except Exception as e:
+                print(f"[WeatherPaper] Error limpiando DB: {e}", flush=True)
+        print(f"[WeatherPaper] Paper trading reiniciado. {count} trades borrados.", flush=True)
+        return count

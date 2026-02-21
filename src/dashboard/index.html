@@ -3439,6 +3439,10 @@
 
                 <!-- ──── Sub-tab: Paper Trading ──── -->
                 <div id="wa-tab-paper" class="hidden">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-[10px] text-gray-500">Datos persistentes entre deploys</span>
+                        <button onclick="waResetPaper()" class="px-3 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded text-xs border border-red-800/30">Reiniciar Paper Trading</button>
+                    </div>
                     <div id="wa-paper-stats" class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
                         <div class="bg-gray-800/40 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Trades</div><div id="wa-paper-total" class="text-sm font-bold text-white">0</div></div>
                         <div class="bg-gray-800/40 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Pendientes</div><div id="wa-paper-pending" class="text-sm font-bold text-sky-400">0</div></div>
@@ -7908,6 +7912,18 @@ async function loadWeatherArb(){
     }catch(e){
         console.error('Weather Arb load error:',e);
     }
+}
+async function waResetPaper(){
+    if(!confirm('¿Estás seguro de reiniciar el Paper Trading?\n\nSe borrarán TODOS los paper trades (historial completo).\nEsta acción no se puede deshacer.'))return;
+    try{
+        const r=await apiFetch('/api/weather-arb/reset-paper',{method:'POST'});
+        if(r&&r.status==='ok'){
+            alert(`Paper Trading reiniciado.\n${r.deleted} trades borrados.`);
+            loadWeatherArb();
+        }else{
+            alert('Error: '+(r?.error||'desconocido'));
+        }
+    }catch(e){alert('Error reiniciando: '+e);}
 }
 function waToggleBetMode(){
     const mode=document.getElementById('wa-cfg-betmode').value;

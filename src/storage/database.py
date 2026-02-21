@@ -390,6 +390,40 @@ class Database:
                     ON weather_trades(user_id);
             """)
 
+            # Tabla de weather paper trades (persistentes entre deploys)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS weather_paper_trades (
+                    id              SERIAL PRIMARY KEY,
+                    condition_id    TEXT NOT NULL,
+                    city            TEXT DEFAULT '',
+                    city_name       TEXT DEFAULT '',
+                    date            TEXT DEFAULT '',
+                    range_label     TEXT DEFAULT '',
+                    event_slug      TEXT DEFAULT '',
+                    entry_odds      DOUBLE PRECISION DEFAULT 0,
+                    ensemble_prob   DOUBLE PRECISION DEFAULT 0,
+                    edge_pct        DOUBLE PRECISION DEFAULT 0,
+                    confidence      DOUBLE PRECISION DEFAULT 0,
+                    bet_size        DOUBLE PRECISION DEFAULT 0,
+                    unit            TEXT DEFAULT '',
+                    strategy        TEXT DEFAULT 'conviction',
+                    resolution_source TEXT DEFAULT '',
+                    resolved        BOOLEAN DEFAULT FALSE,
+                    result          TEXT,
+                    pnl             DOUBLE PRECISION DEFAULT 0,
+                    actual_temp     DOUBLE PRECISION,
+                    current_odds    DOUBLE PRECISION,
+                    unrealized_pnl  DOUBLE PRECISION,
+                    user_id         INTEGER DEFAULT 1,
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_wpt_created ON weather_paper_trades(created_at);
+                CREATE INDEX IF NOT EXISTS idx_wpt_resolved ON weather_paper_trades(resolved);
+                CREATE INDEX IF NOT EXISTS idx_wpt_cid ON weather_paper_trades(condition_id);
+                CREATE INDEX IF NOT EXISTS idx_wpt_user ON weather_paper_trades(user_id);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_wpt_cid_user ON weather_paper_trades(condition_id, user_id);
+            """)
+
             # Tabla de usuarios
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -4569,6 +4603,76 @@ class Database:
         except Exception as e:
             print(f"[DB] get_weather_pnl_history error: {e}", flush=True)
             return []
+
+
+    # ── Weather Paper Trades (persistentes) ──────────────────────────
+
+    async def insert_weather_paper_trade(self, trade: dict, user_id: int = 1):
+        """Insertar un paper trade nuevo. Ignora duplicados por condition_id."""
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO weather_paper_trades
+                        (condition_id, city, city_name, date, range_label, event_slug,
+                         entry_odds, ensemble_prob, edge_pct, confidence, bet_size,
+                         unit, strategy, resolution_source, user_id, created_at)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                    ON CONFLICT (condition_id, user_id) DO NOTHING
+                """,
+                    trade["condition_id"], trade.get("city", ""), trade.get("city_name", ""),
+                    trade.get("date", ""), trade.get("range_label", ""), trade.get("event_slug", ""),
+                    trade.get("entry_odds", 0), trade.get("ensemble_prob", 0),
+                    trade.get("edge_pct", 0), trade.get("confidence", 0),
+                    trade.get("bet_size", 0), trade.get("unit", ""),
+                    trade.get("strategy", "conviction"), trade.get("resolution_source", ""),
+                    user_id, trade.get("created_at", datetime.now(timezone.utc)),
+                )
+        except Exception as e:
+            print(f"[DB] insert_weather_paper_trade error: {e}", flush=True)
+
+    async def update_weather_paper_trade(self, condition_id: str, updates: dict, user_id: int = 1):
+        """Actualizar un paper trade (resolve, live prices, etc)."""
+        try:
+            sets = []
+            vals = []
+            idx = 1
+            for k, v in updates.items():
+                sets.append(f"{k} = ${idx}")
+                vals.append(v)
+                idx += 1
+            vals.append(condition_id)
+            vals.append(user_id)
+            sql = f"UPDATE weather_paper_trades SET {', '.join(sets)} WHERE condition_id = ${idx} AND user_id = ${idx+1}"
+            async with self._pool.acquire() as conn:
+                await conn.execute(sql, *vals)
+        except Exception as e:
+            print(f"[DB] update_weather_paper_trade error: {e}", flush=True)
+
+    async def load_weather_paper_trades(self, user_id: int = 1) -> list[dict]:
+        """Cargar todos los paper trades desde DB."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT * FROM weather_paper_trades
+                    WHERE user_id = $1
+                    ORDER BY created_at DESC
+                """, user_id)
+                return [_serialize_row(r) for r in rows]
+        except Exception as e:
+            print(f"[DB] load_weather_paper_trades error: {e}", flush=True)
+            return []
+
+    async def clear_weather_paper_trades(self, user_id: int = 1) -> int:
+        """Borrar todos los paper trades de un usuario. Retorna cantidad borrada."""
+        try:
+            async with self._pool.acquire() as conn:
+                result = await conn.execute(
+                    "DELETE FROM weather_paper_trades WHERE user_id = $1", user_id
+                )
+                return int(result.split(" ")[-1]) if result else 0
+        except Exception as e:
+            print(f"[DB] clear_weather_paper_trades error: {e}", flush=True)
+            return 0
 
 
 def _serialize_row(row) -> dict:

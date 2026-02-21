@@ -4228,6 +4228,20 @@ async def generate_weather_api_keys(request: Request):
         return {"status": "error", "error": f"Error generando keys: {e}"}
 
 
+@router.post("/api/weather-arb/reset-paper")
+async def weather_reset_paper_trades(request: Request):
+    """Reiniciar paper trading: borrar todos los paper trades (memoria + DB)."""
+    bot = request.app.state.bot
+    uid = await get_user_id(request)
+    deleted = 0
+    if bot and getattr(bot, "weather_paper", None):
+        try:
+            deleted = await bot.weather_paper.reset(user_id=uid)
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+    return {"status": "ok", "deleted": deleted, "message": f"Paper trading reiniciado. {deleted} trades borrados."}
+
+
 @router.post("/api/weather-arb/refresh-forecasts")
 async def weather_refresh_forecasts(request: Request):
     """Forzar refresh de forecasts."""
