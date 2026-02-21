@@ -4353,6 +4353,13 @@ async def save_weather_detector_config(request: Request):
             })
         if getattr(bot, "weather_autotrader", None):
             await bot.weather_autotrader.reload_config(user_id=uid)
+        if getattr(bot, "weather_multi_feed", None):
+            bot.weather_multi_feed.configure({
+                "multi_source_enabled": data.get("weather_multi_source_enabled", str(config.WEATHER_MULTI_SOURCE_ENABLED)).lower() in ("true", "1"),
+                "multi_source_refresh_sec": int(data.get("weather_multi_source_refresh", config.WEATHER_MULTI_SOURCE_REFRESH)),
+                "weatherapi_key": config.WEATHERAPI_KEY,
+                "visual_crossing_key": config.VISUAL_CROSSING_KEY,
+            })
         if getattr(bot, "weather_early_detector", None):
             bot.weather_early_detector.configure({
                 "early_enabled": data.get("weather_early_enabled", str(config.WEATHER_EARLY_ENABLED)).lower() in ("true", "1"),

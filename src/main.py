@@ -459,14 +459,12 @@ class PolymarketAlertBot:
                 "early_entry_window_sec": config.WEATHER_EARLY_ENTRY_WINDOW,
                 "enabled_cities": cities,
             })
-            # Lanzar loops de background
+            # Lanzar loops de background (siempre — cada loop tiene if _enabled interno)
             asyncio.create_task(self._run_weather_feed())
             asyncio.create_task(self._run_weather_detector())
             asyncio.create_task(self._run_weather_signal_loop())
-            if config.WEATHER_MULTI_SOURCE_ENABLED:
-                asyncio.create_task(self._run_weather_multi_feed())
-            if config.WEATHER_EARLY_ENABLED:
-                asyncio.create_task(self._run_weather_early_detector())
+            asyncio.create_task(self._run_weather_multi_feed())
+            asyncio.create_task(self._run_weather_early_detector())
             at_status = "ON" if self.weather_autotrader._enabled and self.weather_autotrader._client else "OFF (solo señales + paper)"
             multi_status = "ON" if config.WEATHER_MULTI_SOURCE_ENABLED else "OFF"
             early_status = "ON" if config.WEATHER_EARLY_ENABLED else "OFF"
