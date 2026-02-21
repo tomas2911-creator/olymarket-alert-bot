@@ -3327,50 +3327,105 @@
             </div>
         </div>
 
-        <!-- ═══ Weather Arb Panel ═══ -->
+        <!-- ═══ Weather Arb Panel (v2 — 6 subtabs) ═══ -->
         <div id="panel-weatherarb" class="hidden space-y-4">
             <div class="glass glow rounded-xl p-4">
                 <div class="flex items-center justify-between mb-3">
                     <div>
                         <h3 class="text-sm font-semibold text-sky-400 uppercase tracking-wider">🌡️ Weather Arb — Temperatura vs Polymarket</h3>
-                        <p class="text-[10px] text-gray-500">Cruza pronósticos ensemble (Open-Meteo GFS 31 miembros) con odds de mercados de temperatura</p>
+                        <p class="text-[10px] text-gray-500">Multi-source ensemble + eliminación + early entry | 14 ciudades globales</p>
                     </div>
                     <button onclick="loadWeatherArb()" class="px-3 py-1 bg-sky-600/30 hover:bg-sky-600/50 text-sky-400 rounded text-xs">Actualizar</button>
                 </div>
                 <!-- KPI Cards -->
-                <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
-                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Mercados</div><div class="text-lg font-bold text-sky-400" id="wa-markets">0</div></div>
-                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Señales</div><div class="text-lg font-bold text-yellow-400" id="wa-signals">0</div></div>
-                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Trades</div><div class="text-lg font-bold text-white" id="wa-trades">0</div></div>
-                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Abiertos</div><div class="text-lg font-bold text-cyan-400" id="wa-open">0</div></div>
-                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">PnL Total</div><div class="text-lg font-bold" id="wa-pnl">$0</div></div>
-                    <div class="bg-gray-800/50 rounded-lg p-3 text-center"><div class="text-[10px] text-gray-500">Win Rate</div><div class="text-lg font-bold" id="wa-wr">0%</div></div>
+                <div class="grid grid-cols-2 md:grid-cols-8 gap-2 mb-4">
+                    <div class="bg-gray-800/50 rounded-lg p-2.5 text-center"><div class="text-[10px] text-gray-500">Mercados</div><div class="text-lg font-bold text-sky-400" id="wa-markets">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-2.5 text-center"><div class="text-[10px] text-gray-500">Señales</div><div class="text-lg font-bold text-yellow-400" id="wa-signals">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-2.5 text-center"><div class="text-[10px] text-gray-500">Trades</div><div class="text-lg font-bold text-white" id="wa-trades">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-2.5 text-center"><div class="text-[10px] text-gray-500">Abiertos</div><div class="text-lg font-bold text-cyan-400" id="wa-open">0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-2.5 text-center"><div class="text-[10px] text-gray-500">PnL Total</div><div class="text-lg font-bold" id="wa-pnl">$0</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-2.5 text-center"><div class="text-[10px] text-gray-500">Win Rate</div><div class="text-lg font-bold" id="wa-wr">0%</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-2.5 text-center"><div class="text-[10px] text-gray-500">Multi-Src</div><div class="text-lg font-bold" id="wa-multi-status">OFF</div></div>
+                    <div class="bg-gray-800/50 rounded-lg p-2.5 text-center"><div class="text-[10px] text-gray-500">Early</div><div class="text-lg font-bold" id="wa-early-status">OFF</div></div>
                 </div>
-                <!-- Sub-tabs -->
-                <div class="flex gap-2 mb-4 border-b border-gray-800/50 pb-2 overflow-x-auto" id="wa-subtabs">
-                    <button onclick="waSubTab('signals')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-sky-500 text-sky-400" data-tab="signals">Señales</button>
+                <!-- Sub-tabs (6 tabs) -->
+                <div class="flex gap-1 mb-4 border-b border-gray-800/50 pb-2 overflow-x-auto" id="wa-subtabs">
+                    <button onclick="waSubTab('overview')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-sky-500 text-sky-400" data-tab="overview">Overview</button>
+                    <button onclick="waSubTab('signals')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="signals">Señales</button>
                     <button onclick="waSubTab('markets')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="markets">Mercados</button>
-                    <button onclick="waSubTab('trades')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="trades">Trades</button>
-                    <button onclick="waSubTab('paper')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="paper">Paper Trades</button>
+                    <button onclick="waSubTab('paper')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="paper">Paper</button>
+                    <button onclick="waSubTab('autotrading')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="autotrading">AutoTrading</button>
                     <button onclick="waSubTab('config')" class="wa-subtab px-3 py-1.5 text-xs rounded-t border-b-2 border-transparent text-gray-500" data-tab="config">Config</button>
                 </div>
-                <!-- Sub-tab: Señales -->
-                <div id="wa-tab-signals">
+
+                <!-- ──── Sub-tab: Overview ──── -->
+                <div id="wa-tab-overview">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <!-- Feed Status -->
+                        <div class="bg-gray-800/40 rounded-lg p-3 border border-sky-900/20">
+                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">📡 Feed Status</h5>
+                            <div class="space-y-1 text-[10px]">
+                                <div class="flex justify-between"><span class="text-gray-500">Open-Meteo Ensemble</span><span class="text-green-400" id="wa-ov-feed-status">Running</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">Ciudades</span><span class="text-gray-300" id="wa-ov-cities">14</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">Forecasts activos</span><span class="text-gray-300" id="wa-ov-forecasts">0</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">Último refresh</span><span class="text-gray-300" id="wa-ov-lastrefresh">—</span></div>
+                            </div>
+                        </div>
+                        <!-- Multi-Source Status -->
+                        <div class="bg-gray-800/40 rounded-lg p-3 border border-sky-900/20">
+                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">🌐 Multi-Source</h5>
+                            <div class="space-y-1 text-[10px]">
+                                <div class="flex justify-between"><span class="text-gray-500">Estado</span><span id="wa-ov-multi-enabled" class="text-gray-400">OFF</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">Fuentes activas</span><span id="wa-ov-multi-sources" class="text-gray-300">—</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">Consensus forecasts</span><span id="wa-ov-multi-total" class="text-gray-300">0</span></div>
+                            </div>
+                        </div>
+                        <!-- AutoTrader Status -->
+                        <div class="bg-gray-800/40 rounded-lg p-3 border border-sky-900/20">
+                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">🤖 AutoTrader</h5>
+                            <div class="space-y-1 text-[10px]">
+                                <div class="flex justify-between"><span class="text-gray-500">Estado</span><span id="wa-ov-at-status" class="text-gray-400">OFF</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">Wallet</span><span id="wa-ov-wallet-type" class="text-gray-300">—</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">Balance USDC</span><span id="wa-ov-balance" class="text-green-400">—</span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">Posiciones abiertas</span><span id="wa-ov-open-pos" class="text-cyan-400">0</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Módulos activos -->
+                    <div class="bg-gray-800/40 rounded-lg p-3 border border-sky-900/20 mt-4">
+                        <h5 class="text-[11px] font-semibold text-sky-300 mb-2">Módulos</h5>
+                        <div class="flex flex-wrap gap-2 text-[10px]">
+                            <span id="wa-mod-ensemble" class="px-2 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30">Ensemble (31 GFS)</span>
+                            <span id="wa-mod-multi" class="px-2 py-1 rounded-full bg-gray-800/30 text-gray-500 border border-gray-700/30">Multi-Source</span>
+                            <span id="wa-mod-elim" class="px-2 py-1 rounded-full bg-gray-800/30 text-gray-500 border border-gray-700/30">Eliminación</span>
+                            <span id="wa-mod-early" class="px-2 py-1 rounded-full bg-gray-800/30 text-gray-500 border border-gray-700/30">Early Entry</span>
+                            <span id="wa-mod-sl" class="px-2 py-1 rounded-full bg-gray-800/30 text-gray-500 border border-gray-700/30">Stop-Loss</span>
+                            <span id="wa-mod-trail" class="px-2 py-1 rounded-full bg-gray-800/30 text-gray-500 border border-gray-700/30">Trailing Stop</span>
+                            <span id="wa-mod-paper" class="px-2 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30">Paper Trading</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ──── Sub-tab: Señales (conviction + elimination + early) ──── -->
+                <div id="wa-tab-signals" class="hidden">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="text-[10px] text-gray-500">Auto-refresh 15s</span>
+                        <span class="live-dot inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                        <button onclick="waRefreshForecasts()" id="wa-refresh-btn" class="ml-auto px-3 py-1 bg-sky-600/30 hover:bg-sky-600/50 text-sky-400 rounded text-xs">Refresh Forecasts</button>
+                    </div>
                     <div class="overflow-x-auto"><table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                            <th class="text-left p-2">Ciudad</th><th class="text-left p-2">Fecha</th>
+                            <th class="text-left p-2">Tipo</th><th class="text-left p-2">Ciudad</th><th class="text-left p-2">Fecha</th>
                             <th class="text-left p-2">Rango</th><th class="text-center p-2">Ensemble</th>
                             <th class="text-center p-2">Poly Odds</th><th class="text-center p-2">Edge %</th>
                             <th class="text-center p-2">Confianza</th><th class="text-right p-2">Hora</th>
                         </tr></thead>
-                        <tbody id="wa-signals-body"><tr><td colspan="8" class="text-center text-gray-600 p-6">Cargando señales...</td></tr></tbody>
+                        <tbody id="wa-signals-body"><tr><td colspan="9" class="text-center text-gray-600 p-6">Cargando señales...</td></tr></tbody>
                     </table></div>
                 </div>
-                <!-- Sub-tab: Mercados Activos -->
+
+                <!-- ──── Sub-tab: Mercados Activos ──── -->
                 <div id="wa-tab-markets" class="hidden">
-                    <div class="flex justify-end mb-2">
-                        <button onclick="waRefreshForecasts()" id="wa-refresh-btn" class="px-3 py-1 bg-sky-600/30 hover:bg-sky-600/50 text-sky-400 rounded text-xs">Refresh Forecasts</button>
-                    </div>
                     <div class="overflow-x-auto"><table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
                             <th class="text-left p-2">Ciudad</th><th class="text-left p-2">Fecha</th>
@@ -3381,47 +3436,16 @@
                         <tbody id="wa-markets-body"><tr><td colspan="7" class="text-center text-gray-600 p-6">Cargando mercados...</td></tr></tbody>
                     </table></div>
                 </div>
-                <!-- Sub-tab: Trades Reales -->
-                <div id="wa-tab-trades" class="hidden">
-                    <div class="overflow-x-auto"><table class="w-full text-xs">
-                        <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                            <th class="text-left p-2">Fecha</th><th class="text-left p-2">Ciudad</th>
-                            <th class="text-left p-2">Rango</th><th class="text-center p-2">Lado</th>
-                            <th class="text-right p-2">Precio</th><th class="text-right p-2">Monto</th>
-                            <th class="text-center p-2">Edge %</th><th class="text-right p-2">PnL</th>
-                            <th class="text-center p-2">Estado</th>
-                        </tr></thead>
-                        <tbody id="wa-trades-body"><tr><td colspan="9" class="text-center text-gray-600 p-6">Sin trades reales aún</td></tr></tbody>
-                    </table></div>
-                </div>
-                <!-- Sub-tab: Paper Trades -->
+
+                <!-- ──── Sub-tab: Paper Trading ──── -->
                 <div id="wa-tab-paper" class="hidden">
-                    <!-- Stats Paper Trading -->
                     <div id="wa-paper-stats" class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
-                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
-                            <div class="text-[10px] text-gray-500">Trades</div>
-                            <div id="wa-paper-total" class="text-sm font-bold text-white">0</div>
-                        </div>
-                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
-                            <div class="text-[10px] text-gray-500">Pendientes</div>
-                            <div id="wa-paper-pending" class="text-sm font-bold text-sky-400">0</div>
-                        </div>
-                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
-                            <div class="text-[10px] text-gray-500">Win Rate</div>
-                            <div id="wa-paper-wr" class="text-sm font-bold text-white">—</div>
-                        </div>
-                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
-                            <div class="text-[10px] text-gray-500">PnL Realizado</div>
-                            <div id="wa-paper-pnl" class="text-sm font-bold text-gray-400">$0.00</div>
-                        </div>
-                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
-                            <div class="text-[10px] text-gray-500">PnL No Realizado</div>
-                            <div id="wa-paper-upnl" class="text-sm font-bold text-gray-400">$0.00</div>
-                        </div>
-                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
-                            <div class="text-[10px] text-gray-500">Edge Promedio</div>
-                            <div id="wa-paper-edge" class="text-sm font-bold text-yellow-400">—</div>
-                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Trades</div><div id="wa-paper-total" class="text-sm font-bold text-white">0</div></div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Pendientes</div><div id="wa-paper-pending" class="text-sm font-bold text-sky-400">0</div></div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Win Rate</div><div id="wa-paper-wr" class="text-sm font-bold text-white">—</div></div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">PnL Realizado</div><div id="wa-paper-pnl" class="text-sm font-bold text-gray-400">$0.00</div></div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">PnL No Realizado</div><div id="wa-paper-upnl" class="text-sm font-bold text-gray-400">$0.00</div></div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Edge Promedio</div><div id="wa-paper-edge" class="text-sm font-bold text-yellow-400">—</div></div>
                     </div>
                     <div class="overflow-x-auto"><table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
@@ -3434,131 +3458,96 @@
                         <tbody id="wa-paper-body"><tr><td colspan="9" class="text-center text-gray-600 p-6">Sin paper trades aún</td></tr></tbody>
                     </table></div>
                 </div>
-                <!-- Sub-tab: Config -->
-                <div id="wa-tab-config" class="hidden">
+
+                <!-- ──── Sub-tab: AutoTrading ──── -->
+                <div id="wa-tab-autotrading" class="hidden">
                     <div class="bg-gray-800/40 rounded-lg p-4 border border-sky-900/30">
-                        <h4 class="text-xs font-semibold text-sky-400 mb-3">⚙️ Configuración Weather AutoTrader</h4>
+                        <h4 class="text-xs font-semibold text-sky-400 mb-3">🤖 AutoTrader Weather</h4>
                         <div class="flex items-center gap-3 mb-4">
                             <label class="text-[10px] text-gray-500">Habilitado</label>
                             <label class="toggle-switch"><input type="checkbox" id="wa-cfg-enabled"><span class="toggle-slider"></span></label>
+                        </div>
+                        <!-- Wallet Sharing -->
+                        <div class="bg-gray-900/40 rounded-lg p-3 border border-sky-900/20 mb-4">
+                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">🔗 Wallet</h5>
+                            <div class="flex items-center gap-3 mb-3">
+                                <label class="text-[10px] text-gray-500">Usar misma wallet que Crypto Arb</label>
+                                <label class="toggle-switch"><input type="checkbox" id="wa-cfg-usecryptowallet" onchange="waToggleWalletMode()"><span class="toggle-slider"></span></label>
+                            </div>
+                            <div id="wa-wallet-section">
+                                <div class="mb-3">
+                                    <label class="text-[10px] text-gray-500 block mb-1">Private Key</label>
+                                    <div class="flex gap-2">
+                                        <input type="password" id="wa-cfg-pk" class="flex-1 bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="0x...">
+                                        <button onclick="waGenerateKeys()" id="wa-btn-genkeys" class="px-3 py-1 bg-purple-600 hover:bg-purple-500 rounded text-xs font-medium whitespace-nowrap">Generar Keys</button>
+                                    </div>
+                                    <span id="wa-genkeys-status" class="text-xs mt-1 hidden block"></span>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                    <div>
+                                        <label class="text-[10px] text-gray-500 block mb-1">API Key <span id="wa-apikey-badge" class="text-red-400">no configurada</span></label>
+                                        <input type="password" id="wa-cfg-apikey" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" readonly>
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-gray-500 block mb-1">API Secret <span id="wa-secret-badge" class="text-red-400">no configurada</span></label>
+                                        <input type="password" id="wa-cfg-apisecret" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" readonly>
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-gray-500 block mb-1">Passphrase <span id="wa-pass-badge" class="text-red-400">no configurada</span></label>
+                                        <input type="password" id="wa-cfg-passphrase" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" readonly>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="text-[10px] text-gray-500 block mb-1">Funder / Proxy Wallet</label>
+                                    <input type="text" id="wa-cfg-funder" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="0x...">
+                                </div>
+                            </div>
+                            <div id="wa-wallet-info" class="text-[10px] text-gray-500 hidden">
+                                Wallet: <span id="wa-wallet-addr" class="text-gray-400 font-mono"></span> |
+                                Funder: <span id="wa-funder-addr" class="text-gray-400 font-mono"></span> |
+                                Balance: <span id="wa-balance" class="text-green-400 font-mono"></span>
+                            </div>
                         </div>
                         <!-- Bankroll -->
                         <div class="bg-gray-900/40 rounded-lg p-3 border border-sky-900/20 mb-4">
                             <h5 class="text-[11px] font-semibold text-sky-300 mb-2">💰 Bankroll</h5>
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                                <div>
-                                    <label class="text-[10px] text-gray-500 block mb-1">Presupuesto Total ($)</label>
-                                    <input type="number" id="wa-cfg-bankroll" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="0" max="10000" step="1">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-gray-500 block mb-1">Modo de Apuesta</label>
-                                    <select id="wa-cfg-betmode" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="waToggleBetMode()">
-                                        <option value="fixed">Fijo ($)</option>
-                                        <option value="proportional">Proporcional (%)</option>
-                                    </select>
-                                </div>
-                                <div id="wa-betsize-group">
-                                    <label class="text-[10px] text-gray-500 block mb-1">Apuesta Fija ($)</label>
-                                    <input type="number" id="wa-cfg-bet" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="1" min="0.5" max="500" step="0.5">
-                                </div>
-                                <div id="wa-betpct-group" class="hidden">
-                                    <label class="text-[10px] text-gray-500 block mb-1">Apuesta (% disponible)</label>
-                                    <input type="number" id="wa-cfg-betpct" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="2" min="0.5" max="25" step="0.5">
-                                </div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Presupuesto ($)</label><input type="number" id="wa-cfg-bankroll" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="0" max="10000"></div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Modo Apuesta</label><select id="wa-cfg-betmode" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" onchange="waToggleBetMode()"><option value="fixed">Fijo ($)</option><option value="proportional">Proporcional (%)</option></select></div>
+                                <div id="wa-betsize-group"><label class="text-[10px] text-gray-500 block mb-1">Apuesta ($)</label><input type="number" id="wa-cfg-bet" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="1" min="0.5" max="500" step="0.5"></div>
+                                <div id="wa-betpct-group" class="hidden"><label class="text-[10px] text-gray-500 block mb-1">Apuesta (%)</label><input type="number" id="wa-cfg-betpct" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="2" min="0.5" max="25" step="0.5"></div>
                             </div>
                             <div id="wa-bankroll-status" class="grid grid-cols-3 gap-2 text-center hidden">
-                                <div class="bg-gray-800/60 rounded p-2">
-                                    <div class="text-[10px] text-gray-500">Disponible</div>
-                                    <div id="wa-bankroll-avail" class="text-sm font-bold text-green-400">$0</div>
-                                </div>
-                                <div class="bg-gray-800/60 rounded p-2">
-                                    <div class="text-[10px] text-gray-500">En Juego</div>
-                                    <div id="wa-bankroll-inplay" class="text-sm font-bold text-yellow-400">$0</div>
-                                </div>
-                                <div class="bg-gray-800/60 rounded p-2">
-                                    <div class="text-[10px] text-gray-500">Presupuesto</div>
-                                    <div id="wa-bankroll-total" class="text-sm font-bold text-sky-400">$0</div>
-                                </div>
+                                <div class="bg-gray-800/60 rounded p-2"><div class="text-[10px] text-gray-500">Disponible</div><div id="wa-bankroll-avail" class="text-sm font-bold text-green-400">$0</div></div>
+                                <div class="bg-gray-800/60 rounded p-2"><div class="text-[10px] text-gray-500">En Juego</div><div id="wa-bankroll-inplay" class="text-sm font-bold text-yellow-400">$0</div></div>
+                                <div class="bg-gray-800/60 rounded p-2"><div class="text-[10px] text-gray-500">Presupuesto</div><div id="wa-bankroll-total" class="text-sm font-bold text-sky-400">$0</div></div>
                             </div>
                         </div>
-                        <!-- Límites de Seguridad -->
+                        <!-- Risk Management -->
                         <div class="bg-gray-900/40 rounded-lg p-3 border border-sky-900/20 mb-4">
-                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">🛡️ Límites de Seguridad</h5>
+                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">🛡️ Risk Management</h5>
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                <div>
-                                    <label class="text-[10px] text-gray-500 block mb-1">Max Posiciones Abiertas</label>
-                                    <input type="number" id="wa-cfg-maxpos" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="10" min="1" max="50">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-gray-500 block mb-1">Max Trades/Día</label>
-                                    <input type="number" id="wa-cfg-daily" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="20" min="1" max="100">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-gray-500 block mb-1">Stop-Loss ($)</label>
-                                    <input type="number" id="wa-cfg-stoploss" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="15" min="1" max="1000">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-gray-500 block mb-1">Min Confianza %</label>
-                                    <input type="number" id="wa-cfg-conf" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="0" max="100">
-                                </div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Max Posiciones</label><input type="number" id="wa-cfg-maxpos" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="10" min="1" max="50"></div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Max Trades/Día</label><input type="number" id="wa-cfg-daily" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="20" min="1" max="100"></div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Stop-Loss (%)</label><input type="number" id="wa-cfg-stoploss" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="30" min="1" max="100"></div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Take-Profit (%)</label><input type="number" id="wa-cfg-takeprofit" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="5" max="200"></div>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                                <div class="flex items-center gap-2"><label class="text-[10px] text-gray-500">Trailing Stop</label><label class="toggle-switch"><input type="checkbox" id="wa-cfg-trailing"><span class="toggle-slider"></span></label></div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Trailing %</label><input type="number" id="wa-cfg-trailingpct" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="15" min="1" max="50"></div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Max Holding (h)</label><input type="number" id="wa-cfg-maxhold" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="24" min="1" max="168"></div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Max Pérdida/Día ($)</label><input type="number" id="wa-cfg-maxloss" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="100" min="1" max="10000"></div>
                             </div>
                         </div>
                         <!-- Filtros de Señal -->
                         <div class="bg-gray-900/40 rounded-lg p-3 border border-sky-900/20 mb-4">
-                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">📊 Filtros de Señal</h5>
+                            <h5 class="text-[11px] font-semibold text-sky-300 mb-2">📊 Filtros</h5>
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                <div>
-                                    <label class="text-[10px] text-gray-500 block mb-1">Min Edge %</label>
-                                    <input type="number" id="wa-cfg-edge" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="8" min="1" max="50" step="0.5">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-gray-500 block mb-1">Min Odds (liquidez)</label>
-                                    <input type="number" id="wa-cfg-minodds" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="0.05" min="0" max="0.50" step="0.01">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-gray-500 block mb-1">Max Odds</label>
-                                    <input type="number" id="wa-cfg-odds" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="0.55" min="0.1" max="0.95" step="0.01">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-gray-500 block mb-1">Order Type</label>
-                                    <select id="wa-cfg-ordertype" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300">
-                                        <option value="market">Market (FOK)</option>
-                                        <option value="limit">Limit (GTC)</option>
-                                    </select>
-                                </div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Min Edge %</label><input type="number" id="wa-cfg-edge" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="8" min="1" max="50" step="0.5"></div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Min Confianza %</label><input type="number" id="wa-cfg-conf" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="0" max="100"></div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Min Odds</label><input type="number" id="wa-cfg-minodds" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="0.05" min="0" max="0.50" step="0.01"></div>
+                                <div><label class="text-[10px] text-gray-500 block mb-1">Max Odds</label><input type="number" id="wa-cfg-odds" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="0.55" min="0.1" max="0.95" step="0.01"></div>
                             </div>
-                        </div>
-                        <h4 class="text-xs font-semibold text-sky-400 mb-2 mt-4">Wallet Separada</h4>
-                        <div class="mb-3">
-                            <label class="text-[10px] text-gray-500 block mb-1">Private Key (pega tu PK y presiona Generar)</label>
-                            <div class="flex gap-2">
-                                <input type="password" id="wa-cfg-pk" class="flex-1 bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="0x...">
-                                <button onclick="waGenerateKeys()" id="wa-btn-genkeys" class="px-3 py-1 bg-purple-600 hover:bg-purple-500 rounded text-xs font-medium whitespace-nowrap transition-colors">Generar API Keys</button>
-                            </div>
-                            <span id="wa-genkeys-status" class="text-xs mt-1 hidden block"></span>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">API Key <span id="wa-apikey-badge" class="text-red-400">no configurada</span></label>
-                                <input type="password" id="wa-cfg-apikey" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="(se auto-genera)" readonly>
-                            </div>
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">API Secret <span id="wa-secret-badge" class="text-red-400">no configurada</span></label>
-                                <input type="password" id="wa-cfg-apisecret" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="(se auto-genera)" readonly>
-                            </div>
-                            <div>
-                                <label class="text-[10px] text-gray-500 block mb-1">Passphrase <span id="wa-pass-badge" class="text-red-400">no configurada</span></label>
-                                <input type="password" id="wa-cfg-passphrase" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="(se auto-genera)" readonly>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="text-[10px] text-gray-500 block mb-1">Funder / Proxy Wallet Address (polymarket.com/settings → Proxy Wallet)</label>
-                            <input type="text" id="wa-cfg-funder" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300 font-mono" placeholder="0x... (copia tu Proxy Wallet Address de Polymarket)">
-                        </div>
-                        <div id="wa-wallet-info" class="text-[10px] text-gray-500 mb-3 hidden">
-                            Wallet: <span id="wa-wallet-addr" class="text-gray-400 font-mono"></span> |
-                            Funder: <span id="wa-funder-addr" class="text-gray-400 font-mono"></span> |
-                            Balance: <span id="wa-balance" class="text-green-400 font-mono"></span>
                         </div>
                         <div class="flex gap-3 items-center">
                             <button onclick="waSaveConfig()" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium transition">Guardar Config</button>
@@ -3566,15 +3555,100 @@
                             <span id="wa-cfg-status" class="text-xs hidden"></span>
                         </div>
                     </div>
-                    <div class="bg-gray-900/60 rounded-lg p-3 text-[10px] text-gray-500 mt-3">
-                        <p class="font-semibold text-gray-400 mb-1">Como funciona Weather Arb:</p>
-                        <p>1. Open-Meteo Ensemble (31 miembros GFS) calcula la probabilidad de cada rango de temperatura</p>
-                        <p>2. Se compara con los odds de Polymarket para detectar discrepancias (edges)</p>
-                        <p>3. Si ensemble dice 45% pero Polymarket vende a 30c, hay 15% de edge</p>
-                        <p>4. El bot compra automáticamente cuando el edge supera el umbral mínimo</p>
-                        <p>5. Wallet SEPARADA del crypto arb — configura las credenciales arriba</p>
+                    <!-- Trades reales abiertos + historial -->
+                    <div class="bg-gray-800/40 rounded-lg p-3 border border-sky-900/20 mt-4">
+                        <h5 class="text-[11px] font-semibold text-sky-300 mb-2">Trades Reales</h5>
+                        <div class="overflow-x-auto"><table class="w-full text-xs">
+                            <thead><tr class="text-gray-500 border-b border-gray-800/50">
+                                <th class="text-left p-2">Fecha</th><th class="text-left p-2">Ciudad</th>
+                                <th class="text-left p-2">Rango</th><th class="text-center p-2">Lado</th>
+                                <th class="text-right p-2">Precio</th><th class="text-right p-2">Monto</th>
+                                <th class="text-center p-2">Edge %</th><th class="text-right p-2">PnL</th>
+                                <th class="text-center p-2">Estado</th>
+                            </tr></thead>
+                            <tbody id="wa-trades-body"><tr><td colspan="9" class="text-center text-gray-600 p-6">Sin trades reales aún</td></tr></tbody>
+                        </table></div>
                     </div>
                 </div>
+
+                <!-- ──── Sub-tab: Configuración del Detector ──── -->
+                <div id="wa-tab-config" class="hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Detector -->
+                        <div class="bg-gray-800/40 rounded-lg p-4 border border-sky-900/30">
+                            <h4 class="text-xs font-semibold text-sky-400 mb-3">🔍 Detector</h4>
+                            <div class="space-y-3">
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Min Edge %</label><input type="number" id="wa-det-edge" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="8" min="1" max="50" step="0.5"></div>
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Min Confianza %</label><input type="number" id="wa-det-conf" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="0" max="100"></div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Scan Interval (s)</label><input type="number" id="wa-det-scan" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="300" min="60" max="3600"></div>
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Forecast Refresh (s)</label><input type="number" id="wa-det-refresh" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="1800" min="300" max="7200"></div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Paper Bet ($)</label><input type="number" id="wa-det-papbet" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="1" max="1000"></div>
+                                    <div class="flex items-center gap-2 pt-4"><label class="text-[10px] text-gray-500">Telegram Alerts</label><label class="toggle-switch"><input type="checkbox" id="wa-det-telegram" checked><span class="toggle-slider"></span></label></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Multi-Source -->
+                        <div class="bg-gray-800/40 rounded-lg p-4 border border-sky-900/30">
+                            <h4 class="text-xs font-semibold text-sky-400 mb-3">🌐 Multi-Source Feed</h4>
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <label class="text-[10px] text-gray-500">Activado</label>
+                                    <label class="toggle-switch"><input type="checkbox" id="wa-det-multi"><span class="toggle-slider"></span></label>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Refresh (s)</label><input type="number" id="wa-det-multirefresh" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="3600" min="600" max="14400"></div>
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Min Fuentes</label><input type="number" id="wa-det-minsrc" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="2" min="1" max="4"></div>
+                                </div>
+                                <div class="text-[10px] text-gray-500">Fuentes: Weather.gov (US), WeatherAPI.com, Visual Crossing</div>
+                            </div>
+                        </div>
+                        <!-- Elimination -->
+                        <div class="bg-gray-800/40 rounded-lg p-4 border border-sky-900/30">
+                            <h4 class="text-xs font-semibold text-sky-400 mb-3">🚫 Estrategia Eliminación</h4>
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <label class="text-[10px] text-gray-500">Activada</label>
+                                    <label class="toggle-switch"><input type="checkbox" id="wa-det-elim"><span class="toggle-slider"></span></label>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Min Profit %</label><input type="number" id="wa-det-elimprofit" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="2" min="0.5" max="20" step="0.5"></div>
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Max Bet ($)</label><input type="number" id="wa-det-elimbet" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="1" max="500"></div>
+                                </div>
+                                <div class="flex items-center gap-2"><label class="text-[10px] text-gray-500">Solo si 0/31 miembros</label><label class="toggle-switch"><input type="checkbox" id="wa-det-elimzero" checked><span class="toggle-slider"></span></label></div>
+                                <div class="text-[10px] text-gray-500">Comprar NO en rangos con 0% probabilidad ensemble pero >3¢ en Polymarket</div>
+                            </div>
+                        </div>
+                        <!-- Early Detector -->
+                        <div class="bg-gray-800/40 rounded-lg p-4 border border-sky-900/30">
+                            <h4 class="text-xs font-semibold text-sky-400 mb-3">⚡ Early Entry Detector</h4>
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <label class="text-[10px] text-gray-500">Activado</label>
+                                    <label class="toggle-switch"><input type="checkbox" id="wa-det-early"><span class="toggle-slider"></span></label>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Scan Interval (s)</label><input type="number" id="wa-det-earlyscan" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="60" min="15" max="300"></div>
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Entry Window (s)</label><input type="number" id="wa-det-earlywindow" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="300" min="30" max="900"></div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Min Edge %</label><input type="number" id="wa-det-earlyedge" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="5" min="1" max="30" step="0.5"></div>
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Min Confianza %</label><input type="number" id="wa-det-earlyconf" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="40" min="0" max="100"></div>
+                                </div>
+                                <div class="text-[10px] text-gray-500">Pre-analiza mercados antes de apertura. Ejecuta trades en menos de 15s al abrirse.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-3 items-center mt-4">
+                        <button onclick="waSaveDetectorConfig()" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium transition">Guardar Detector Config</button>
+                        <span id="wa-det-status" class="text-xs hidden"></span>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -7629,7 +7703,7 @@ function renderComplementArb(data){
 
 // ── Weather Arb ──
 function waSubTab(tab){
-    ['signals','markets','trades','paper','config'].forEach(t=>{
+    ['overview','signals','markets','paper','autotrading','config'].forEach(t=>{
         const el=document.getElementById('wa-tab-'+t);
         if(el)el.classList.toggle('hidden',t!==tab);
     });
@@ -7640,15 +7714,23 @@ function waSubTab(tab){
         btn.classList.toggle('border-transparent',!isActive);
         btn.classList.toggle('text-gray-500',!isActive);
     });
+    if(tab==='config')waLoadDetectorConfig();
+}
+function waToggleWalletMode(){
+    const useCrypto=document.getElementById('wa-cfg-usecryptowallet').checked;
+    const section=document.getElementById('wa-wallet-section');
+    if(section)section.style.display=useCrypto?'none':'block';
 }
 async function loadWeatherArb(){
     try{
-        const [statsR,signalsR,marketsR,tradesR,paperR]=await Promise.all([
+        const [statsR,signalsR,marketsR,tradesR,paperR,multiR,earlyR]=await Promise.all([
             apiFetch('/api/weather-arb/stats'),
             apiFetch('/api/weather-arb/signals'),
             apiFetch('/api/weather-arb/markets'),
             apiFetch('/api/weather-arb/trades'),
             apiFetch('/api/weather-arb/paper-trades'),
+            apiFetch('/api/weather-arb/multi-source').catch(()=>null),
+            apiFetch('/api/weather-arb/early-signals').catch(()=>null),
         ]);
         // KPIs
         if(statsR){
@@ -7661,17 +7743,60 @@ async function loadWeatherArb(){
             pnlEl.textContent='$'+pnl.toFixed(2);
             pnlEl.className='text-lg font-bold '+(pnl>=0?'text-green-400':'text-red-400');
             document.getElementById('wa-wr').textContent=(statsR.win_rate||0).toFixed(1)+'%';
+            // Overview tab
+            const feed=statsR.feed_status||{};
+            document.getElementById('wa-ov-feed-status').textContent=feed.running?'Running':'Stopped';
+            document.getElementById('wa-ov-feed-status').className='text-'+(feed.running?'green':'red')+'-400';
+            document.getElementById('wa-ov-cities').textContent=feed.cities||14;
+            document.getElementById('wa-ov-forecasts').textContent=feed.total_forecasts||0;
+            if(feed.last_refresh>0){const d=new Date(feed.last_refresh*1000);document.getElementById('wa-ov-lastrefresh').textContent=d.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});}
+            document.getElementById('wa-ov-open-pos').textContent=statsR.open_positions||0;
+            // Autotrader status in overview
+            const atOn=statsR.autotrader_enabled||false;
+            document.getElementById('wa-ov-at-status').textContent=atOn?'ON':'OFF';
+            document.getElementById('wa-ov-at-status').className='text-'+(atOn?'green':'gray')+'-400';
         }
-        // Señales
+        // Multi-source status
+        if(multiR){
+            const mOn=multiR.enabled||false;
+            document.getElementById('wa-multi-status').textContent=mOn?'ON':'OFF';
+            document.getElementById('wa-multi-status').className='text-lg font-bold '+(mOn?'text-green-400':'text-gray-500');
+            document.getElementById('wa-ov-multi-enabled').textContent=mOn?'ON':'OFF';
+            document.getElementById('wa-ov-multi-enabled').className='text-'+(mOn?'green':'gray')+'-400';
+            const st=multiR.status||{};
+            document.getElementById('wa-ov-multi-sources').textContent=(st.sources_active||[]).join(', ')||'—';
+            document.getElementById('wa-ov-multi-total').textContent=st.total_consensus||0;
+            // Module badges
+            if(mOn){document.getElementById('wa-mod-multi').className='px-2 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30';}
+        }
+        // Early detector status
+        if(earlyR){
+            const eStats=earlyR.stats||{};
+            const eOn=eStats.enabled||false;
+            document.getElementById('wa-early-status').textContent=eOn?'ON':'OFF';
+            document.getElementById('wa-early-status').className='text-lg font-bold '+(eOn?'text-green-400':'text-gray-500');
+            if(eOn){document.getElementById('wa-mod-early').className='px-2 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30';}
+        }
+        // Señales (combine detector + early)
         const sTbody=document.getElementById('wa-signals-body');
-        const signals=signalsR?.signals||[];
+        let signals=signalsR?.signals||[];
+        // Merge early signals
+        const earlySigs=earlyR?.signals||[];
+        const existCids=new Set(signals.map(s=>s.condition_id));
+        earlySigs.forEach(es=>{if(!existCids.has(es.condition_id)){es._early=true;signals.push(es);}});
         if(signals.length===0){
-            sTbody.innerHTML='<tr><td colspan="8" class="text-center text-gray-600 p-6">Sin señales activas. El detector necesita mercados weather abiertos en Polymarket.</td></tr>';
+            sTbody.innerHTML='<tr><td colspan="9" class="text-center text-gray-600 p-6">Sin señales activas. El detector necesita mercados weather abiertos en Polymarket.</td></tr>';
         }else{
             sTbody.innerHTML=signals.map(s=>{
                 const edgeColor=s.edge_pct>=15?'text-green-400':s.edge_pct>=8?'text-yellow-400':'text-gray-400';
                 const ts=s.timestamp?new Date(s.timestamp).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'';
+                const isElim=(s.range_label||'').startsWith('ELIM:');
+                const isEarly=s._early||s.strategy==='early_entry';
+                let badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-sky-900/40 text-sky-400">CONV</span>';
+                if(isElim)badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-red-900/40 text-red-400">ELIM</span>';
+                if(isEarly)badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-yellow-900/40 text-yellow-400">EARLY</span>';
                 return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+                    <td class="p-2">${badge}</td>
                     <td class="p-2 text-white">${s.city_name||s.city||''}</td>
                     <td class="p-2">${s.date||''}</td>
                     <td class="p-2 font-mono">${s.range_label||''}</td>
@@ -7801,15 +7926,29 @@ async function waLoadConfig(){
             document.getElementById('wa-cfg-betpct').value=r.bet_pct||2;
             waToggleBetMode();
             // Límites
-            document.getElementById('wa-cfg-stoploss').value=r.max_daily_loss||15;
+            document.getElementById('wa-cfg-stoploss').value=r.stop_loss_pct||30;
+            document.getElementById('wa-cfg-takeprofit').value=r.take_profit_pct||50;
             document.getElementById('wa-cfg-daily').value=r.max_daily_trades||20;
             document.getElementById('wa-cfg-maxpos').value=r.max_positions||10;
             document.getElementById('wa-cfg-conf').value=r.min_confidence||50;
+            document.getElementById('wa-cfg-maxloss').value=r.max_daily_loss||100;
+            document.getElementById('wa-cfg-maxhold').value=Math.round((r.max_holding_sec||86400)/3600);
+            // Trailing stop
+            document.getElementById('wa-cfg-trailing').checked=r.trailing_stop_enabled||false;
+            document.getElementById('wa-cfg-trailingpct').value=r.trailing_stop_pct||15;
+            // Wallet sharing
+            document.getElementById('wa-cfg-usecryptowallet').checked=r.use_crypto_wallet||false;
+            waToggleWalletMode();
+            // Overview wallet type
+            document.getElementById('wa-ov-wallet-type').textContent=r.use_crypto_wallet?'Crypto (shared)':'Weather (propia)';
+            document.getElementById('wa-ov-balance').textContent=r.balance!=null?'$'+r.balance.toFixed(2):'—';
+            // Module badges for risk
+            if(r.stop_loss_enabled){document.getElementById('wa-mod-sl').className='px-2 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30';}
+            if(r.trailing_stop_enabled){document.getElementById('wa-mod-trail').className='px-2 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30';}
             // Filtros
             document.getElementById('wa-cfg-edge').value=r.min_edge||8;
             document.getElementById('wa-cfg-minodds').value=r.min_odds||0.05;
             document.getElementById('wa-cfg-odds').value=r.max_odds||0.55;
-            document.getElementById('wa-cfg-ordertype').value=r.order_type||'market';
             // Badges de credenciales
             const setBadge=(id,ok)=>{const el=document.getElementById(id);if(el){el.textContent=ok?'✓ configurada':'no configurada';el.className=ok?'text-green-400':'text-red-400';}};
             setBadge('wa-apikey-badge',r.api_key_set);
@@ -7871,16 +8010,23 @@ async function waSaveConfig(){
             bet_mode:document.getElementById('wa-cfg-betmode').value||'fixed',
             bet_size:parseFloat(document.getElementById('wa-cfg-bet').value)||1,
             bet_pct:parseFloat(document.getElementById('wa-cfg-betpct').value)||2,
-            // Límites
-            max_daily_loss:parseFloat(document.getElementById('wa-cfg-stoploss').value)||15,
+            // Risk management
+            stop_loss_pct:parseFloat(document.getElementById('wa-cfg-stoploss').value)||30,
+            take_profit_pct:parseFloat(document.getElementById('wa-cfg-takeprofit').value)||50,
+            max_daily_loss:parseFloat(document.getElementById('wa-cfg-maxloss').value)||100,
             max_daily_trades:parseInt(document.getElementById('wa-cfg-daily').value)||20,
             max_positions:parseInt(document.getElementById('wa-cfg-maxpos').value)||10,
             min_confidence:parseFloat(document.getElementById('wa-cfg-conf').value)||50,
+            max_holding_sec:parseInt(document.getElementById('wa-cfg-maxhold').value||24)*3600,
+            // Trailing stop
+            trailing_stop_enabled:document.getElementById('wa-cfg-trailing').checked,
+            trailing_stop_pct:parseFloat(document.getElementById('wa-cfg-trailingpct').value)||15,
+            // Wallet sharing
+            use_crypto_wallet:document.getElementById('wa-cfg-usecryptowallet').checked,
             // Filtros
             min_edge:parseFloat(document.getElementById('wa-cfg-edge').value)||8,
             min_odds:parseFloat(document.getElementById('wa-cfg-minodds').value)||0.05,
             max_odds:parseFloat(document.getElementById('wa-cfg-odds').value)||0.55,
-            order_type:document.getElementById('wa-cfg-ordertype').value,
         };
         const pk=document.getElementById('wa-cfg-pk').value;
         const ak=document.getElementById('wa-cfg-apikey').value;
@@ -7895,6 +8041,7 @@ async function waSaveConfig(){
         await apiFetch('/api/weather-arb/autotrade-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         statusEl.textContent='Guardado!';statusEl.className='text-xs text-green-400';statusEl.classList.remove('hidden');
         setTimeout(()=>statusEl.classList.add('hidden'),3000);
+        await waLoadConfig();
     }catch(e){
         statusEl.textContent='Error: '+e.message;statusEl.className='text-xs text-red-400';statusEl.classList.remove('hidden');
     }
@@ -7921,6 +8068,71 @@ async function waRefreshForecasts(){
         await loadWeatherArb();
     }catch(e){console.error(e);}
     finally{btn.textContent='Refresh Forecasts';btn.disabled=false;}
+}
+
+// ── Weather Detector Config ──
+async function waLoadDetectorConfig(){
+    try{
+        const r=await apiFetch('/api/weather-arb/detector-config');
+        if(!r)return;
+        // Detector
+        document.getElementById('wa-det-edge').value=r.min_edge||8;
+        document.getElementById('wa-det-conf').value=r.min_confidence||50;
+        document.getElementById('wa-det-scan').value=r.scan_interval||300;
+        document.getElementById('wa-det-refresh').value=r.forecast_refresh||1800;
+        document.getElementById('wa-det-papbet').value=r.paper_bet||50;
+        document.getElementById('wa-det-telegram').checked=r.telegram_alerts!==false;
+        // Multi-source
+        document.getElementById('wa-det-multi').checked=r.multi_source_enabled||false;
+        document.getElementById('wa-det-multirefresh').value=r.multi_source_refresh||3600;
+        document.getElementById('wa-det-minsrc').value=r.multi_min_sources||2;
+        // Elimination
+        document.getElementById('wa-det-elim').checked=r.elimination_enabled||false;
+        document.getElementById('wa-det-elimprofit').value=r.elimination_min_profit||2;
+        document.getElementById('wa-det-elimbet').value=r.elimination_max_bet||50;
+        document.getElementById('wa-det-elimzero').checked=r.elimination_require_zero!==false;
+        // Module badge for elimination
+        if(r.elimination_enabled){document.getElementById('wa-mod-elim').className='px-2 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30';}
+        // Early detector
+        document.getElementById('wa-det-early').checked=r.early_enabled||false;
+        document.getElementById('wa-det-earlyscan').value=r.early_scan_interval||60;
+        document.getElementById('wa-det-earlywindow').value=r.early_entry_window||300;
+        document.getElementById('wa-det-earlyedge').value=r.early_min_edge||5;
+        document.getElementById('wa-det-earlyconf').value=r.early_min_confidence||40;
+    }catch(e){console.error('WA det config load:',e);}
+}
+async function waSaveDetectorConfig(){
+    const statusEl=document.getElementById('wa-det-status');
+    try{
+        const body={
+            min_edge:parseFloat(document.getElementById('wa-det-edge').value)||8,
+            min_confidence:parseFloat(document.getElementById('wa-det-conf').value)||50,
+            scan_interval:parseInt(document.getElementById('wa-det-scan').value)||300,
+            forecast_refresh:parseInt(document.getElementById('wa-det-refresh').value)||1800,
+            paper_bet:parseFloat(document.getElementById('wa-det-papbet').value)||50,
+            telegram_alerts:document.getElementById('wa-det-telegram').checked,
+            // Multi-source
+            multi_source_enabled:document.getElementById('wa-det-multi').checked,
+            multi_source_refresh:parseInt(document.getElementById('wa-det-multirefresh').value)||3600,
+            multi_min_sources:parseInt(document.getElementById('wa-det-minsrc').value)||2,
+            // Elimination
+            elimination_enabled:document.getElementById('wa-det-elim').checked,
+            elimination_min_profit:parseFloat(document.getElementById('wa-det-elimprofit').value)||2,
+            elimination_max_bet:parseFloat(document.getElementById('wa-det-elimbet').value)||50,
+            elimination_require_zero:document.getElementById('wa-det-elimzero').checked,
+            // Early
+            early_enabled:document.getElementById('wa-det-early').checked,
+            early_scan_interval:parseInt(document.getElementById('wa-det-earlyscan').value)||60,
+            early_entry_window:parseInt(document.getElementById('wa-det-earlywindow').value)||300,
+            early_min_edge:parseFloat(document.getElementById('wa-det-earlyedge').value)||5,
+            early_min_confidence:parseFloat(document.getElementById('wa-det-earlyconf').value)||40,
+        };
+        await apiFetch('/api/weather-arb/detector-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        statusEl.textContent='Guardado!';statusEl.className='text-xs text-green-400';statusEl.classList.remove('hidden');
+        setTimeout(()=>statusEl.classList.add('hidden'),3000);
+    }catch(e){
+        statusEl.textContent='Error: '+e.message;statusEl.className='text-xs text-red-400';statusEl.classList.remove('hidden');
+    }
 }
 
 // ── Init ──

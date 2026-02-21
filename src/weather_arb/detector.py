@@ -68,8 +68,9 @@ class WeatherSignal:
 class WeatherArbDetector:
     """Detecta oportunidades de arbitraje en mercados weather de Polymarket."""
 
-    def __init__(self, weather_feed: WeatherFeed):
+    def __init__(self, weather_feed: WeatherFeed, multi_feed=None):
         self.feed = weather_feed
+        self.multi_feed = multi_feed  # MultiWeatherFeed opcional
         self._active_markets: dict[str, dict] = {}  # event_slug → market_data
         self._last_scan = 0.0
         self._signals_today: list[WeatherSignal] = []
@@ -81,6 +82,11 @@ class WeatherArbDetector:
         self._max_poly_odds = 0.85    # No comprar si odds ya muy alto
         self._scan_interval = 300     # Escanear mercados cada 5 min
         self._enabled_cities: Optional[list[str]] = None  # None = todas
+        # Elimination strategy
+        self._elimination_enabled = False
+        self._elimination_min_profit = 2.0  # % mínimo de profit
+        self._elimination_max_bet = 50      # Máximo por trade de eliminación
+        self._elimination_require_zero = True  # Requerir 0/31 miembros en rango
 
     def configure(self, cfg: dict):
         """Actualizar configuración desde config.py o DB."""
@@ -89,6 +95,11 @@ class WeatherArbDetector:
         self._max_poly_odds = cfg.get("max_poly_odds", self._max_poly_odds)
         self._scan_interval = cfg.get("scan_interval", self._scan_interval)
         self._enabled_cities = cfg.get("enabled_cities", self._enabled_cities)
+        # Elimination strategy
+        self._elimination_enabled = cfg.get("elimination_enabled", self._elimination_enabled)
+        self._elimination_min_profit = cfg.get("elimination_min_profit", self._elimination_min_profit)
+        self._elimination_max_bet = cfg.get("elimination_max_bet", self._elimination_max_bet)
+        self._elimination_require_zero = cfg.get("elimination_require_zero", self._elimination_require_zero)
 
     async def start(self):
         """Loop principal: escanear mercados y detectar divergencias."""
@@ -102,10 +113,16 @@ class WeatherArbDetector:
                     await self._scan_active_markets()
                     self._last_scan = now
 
-                # Buscar señales
+                # Buscar señales de convicción (comprar YES)
                 signals = await self._check_edges()
                 for signal in signals:
                     self._record_signal(signal)
+
+                # Buscar señales de eliminación (comprar NO)
+                if self._elimination_enabled:
+                    elim_signals = await self._check_elimination_edges()
+                    for signal in elim_signals:
+                        self._record_signal(signal)
 
             except Exception as e:
                 logger.warning("weather_arb_error", error=str(e))
@@ -321,7 +338,9 @@ class WeatherArbDetector:
                     continue  # Odds ya muy alto
 
                 edge_pct = (ensemble_prob - poly_odds) * 100
-                confidence = forecast.confidence * 100  # 0-100
+                # Confianza base del ensemble + boost de multi-source
+                boost = self._get_confidence_boost(city_slug, date_str)
+                confidence = min(100, (forecast.confidence + boost) * 100)
 
                 # ¿Hay edge suficiente?
                 if edge_pct < self._min_edge:
@@ -367,10 +386,120 @@ class WeatherArbDetector:
 
         return signals
 
+    async def _check_elimination_edges(self) -> list[WeatherSignal]:
+        """Buscar rangos con 0% ensemble pero >3¢ en Polymarket → comprar NO.
+
+        Ejemplo: Buenos Aires Feb 22, ensemble dice 30-34°C.
+        Si "20°C or below" tiene YES=5¢, comprar NO a 95¢ → +5.3% profit
+        porque NINGÚN miembro del ensemble predice ≤20°C.
+        """
+        signals = []
+        now = datetime.now(timezone.utc)
+        today_str = now.strftime("%Y-%m-%d")
+        if self._signals_today_date != today_str:
+            self._signals_today = []
+            self._signals_today_date = today_str
+
+        for slug, mdata in self._active_markets.items():
+            city = mdata["city"]
+            city_slug = city["slug"]
+            date_str = mdata["date"]
+            ranges = mdata["ranges"]
+
+            forecast = self.feed.get_forecast(city_slug, date_str)
+            if not forecast or not forecast.ensemble_max_temps:
+                continue
+
+            range_defs = [{"label": r["label"], "low": r["low"], "high": r["high"]} for r in ranges]
+            probs = self.feed.compute_range_probabilities(forecast, range_defs)
+            if not probs:
+                continue
+
+            n_members = len(forecast.ensemble_max_temps)
+
+            for r in ranges:
+                label = r["label"]
+                ensemble_prob = probs.get(label, 0)
+                poly_yes = r["yes_price"]
+
+                # Eliminación: ensemble dice 0% (o casi) pero Poly paga >3¢ por YES
+                if self._elimination_require_zero and ensemble_prob > 0:
+                    continue
+                if not self._elimination_require_zero and ensemble_prob > 0.03:
+                    continue
+
+                if poly_yes <= 0.02:
+                    continue  # YES ya está a 2¢ o menos, no hay profit
+                if poly_yes >= 0.15:
+                    continue  # YES muy alto, riesgoso para elimination
+
+                # Profit de comprar NO: pagamos (1 - poly_yes), recibimos $1
+                no_price = 1.0 - poly_yes
+                profit_pct = ((1.0 / no_price) - 1.0) * 100
+
+                if profit_pct < self._elimination_min_profit:
+                    continue
+
+                # Verificar confianza
+                confidence = forecast.confidence * 100
+                if confidence < 40:
+                    continue
+
+                # Evitar duplicados
+                cid = r["condition_id"]
+                already = any(s.condition_id == cid for s in self._signals_today)
+                if already:
+                    continue
+
+                # Contar cuántos miembros caen en este rango
+                low = r.get("low", float("-inf"))
+                high = r.get("high", float("inf"))
+                if high == 999 or high == float("inf"):
+                    members_in_range = sum(1 for t in forecast.ensemble_max_temps if t >= low)
+                elif low == -999 or low == float("-inf"):
+                    members_in_range = sum(1 for t in forecast.ensemble_max_temps if t <= high)
+                else:
+                    members_in_range = sum(1 for t in forecast.ensemble_max_temps if low <= t < high + 1)
+
+                signal = WeatherSignal(
+                    city=city_slug,
+                    city_name=city["name"],
+                    date=date_str,
+                    range_label=f"ELIM: NO on {label}",
+                    ensemble_prob=round(1.0 - ensemble_prob, 4),  # Prob del NO
+                    poly_odds=round(no_price, 4),  # Precio del NO
+                    edge_pct=round(profit_pct, 2),
+                    confidence=round(confidence, 1),
+                    condition_id=cid,
+                    market_question=r["question"],
+                    event_slug=slug,
+                    mean_temp=forecast.mean_max,
+                    std_temp=forecast.std_max,
+                    ensemble_members=n_members,
+                    unit=city["unit"],
+                    token_id=r.get("yes_token", ""),
+                    resolution_source=mdata.get("resolution_source", ""),
+                )
+                signals.append(signal)
+
+        return signals
+
+    def _get_confidence_boost(self, city_slug: str, date_str: str) -> float:
+        """Obtener boost de confianza desde multi-source feed."""
+        if not self.multi_feed:
+            return 0.0
+        consensus = self.multi_feed.get_consensus(city_slug, date_str)
+        if not consensus:
+            return 0.0
+        return consensus.confidence_boost
+
     def _record_signal(self, signal: WeatherSignal):
         """Registrar señal en la lista del día."""
         self._signals_today.append(signal)
-        print(f"[WeatherDetector] 🌡️ SEÑAL: {signal.city_name} {signal.date} "
+        is_elim = signal.range_label.startswith("ELIM:")
+        emoji = "🚫" if is_elim else "🌡️"
+        stype = "ELIMINACIÓN" if is_elim else "SEÑAL"
+        print(f"[WeatherDetector] {emoji} {stype}: {signal.city_name} {signal.date} "
               f"→ {signal.range_label} | ensemble={signal.ensemble_prob:.0%} "
               f"poly={signal.poly_odds:.0%} edge={signal.edge_pct:.1f}% "
               f"conf={signal.confidence:.0f}%", flush=True)

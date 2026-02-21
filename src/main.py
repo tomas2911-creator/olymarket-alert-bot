@@ -51,6 +51,8 @@ from src.weather_arb.weather_feed import WeatherFeed
 from src.weather_arb.detector import WeatherArbDetector
 from src.weather_arb.autotrader import WeatherAutoTrader
 from src.weather_arb.backtester import WeatherPaperTrader
+from src.weather_arb.multi_feed import MultiWeatherFeed
+from src.weather_arb.early_weather import EarlyWeatherDetector
 from src.crypto_arb.paper_trader import MakerPaperTrader
 
 structlog.configure(
@@ -119,6 +121,8 @@ class PolymarketAlertBot:
         self.weather_detector = None
         self.weather_autotrader = None
         self.weather_paper = None
+        self.weather_multi_feed = None
+        self.weather_early_detector = None
         # Paper Trading Maker
         self.paper_trader = None
 
@@ -410,6 +414,7 @@ class PolymarketAlertBot:
 
         Feed + Detector + Paper Trading siempre corren (no necesitan wallet).
         AutoTrader solo ejecuta trades reales si tiene wallet configurada.
+        Multi-Source Feed y Early Detector son opcionales.
         """
         try:
             cities = config.WEATHER_ARB_CITIES  # None = todas
@@ -417,26 +422,60 @@ class PolymarketAlertBot:
                 cities=cities,
                 refresh_interval=config.WEATHER_ARB_FORECAST_REFRESH,
             )
-            self.weather_detector = WeatherArbDetector(self.weather_feed)
+            # Multi-source feed (Weather.gov, WeatherAPI, Visual Crossing)
+            self.weather_multi_feed = MultiWeatherFeed()
+            self.weather_multi_feed.configure({
+                "multi_source_enabled": config.WEATHER_MULTI_SOURCE_ENABLED,
+                "multi_source_refresh_sec": config.WEATHER_MULTI_SOURCE_REFRESH,
+                "weatherapi_key": config.WEATHERAPI_KEY,
+                "visual_crossing_key": config.VISUAL_CROSSING_KEY,
+            })
+            # Detector con multi-source
+            self.weather_detector = WeatherArbDetector(
+                self.weather_feed,
+                multi_feed=self.weather_multi_feed,
+            )
             self.weather_detector.configure({
                 "min_edge": config.WEATHER_ARB_MIN_EDGE,
                 "min_confidence": config.WEATHER_ARB_MIN_CONFIDENCE,
                 "max_poly_odds": config.WEATHER_ARB_MAX_POLY_ODDS,
                 "scan_interval": config.WEATHER_ARB_SCAN_INTERVAL,
                 "enabled_cities": cities,
+                "elimination_enabled": config.WEATHER_ELIMINATION_ENABLED,
+                "elimination_min_profit": config.WEATHER_ELIMINATION_MIN_PROFIT,
+                "elimination_max_bet": config.WEATHER_ELIMINATION_MAX_BET,
+                "elimination_require_zero": config.WEATHER_ELIMINATION_REQUIRE_ZERO,
             })
             self.weather_paper = WeatherPaperTrader(bet_size=config.WEATHER_ARB_PAPER_BET)
             self.weather_autotrader = WeatherAutoTrader(self.db)
             await self.weather_autotrader.initialize()
+            # Early weather detector
+            self.weather_early_detector = EarlyWeatherDetector(self.weather_feed)
+            self.weather_early_detector.configure({
+                "early_enabled": config.WEATHER_EARLY_ENABLED,
+                "early_scan_interval": config.WEATHER_EARLY_SCAN_INTERVAL,
+                "early_min_edge": config.WEATHER_EARLY_MIN_EDGE,
+                "early_min_confidence": config.WEATHER_EARLY_MIN_CONFIDENCE,
+                "early_entry_window_sec": config.WEATHER_EARLY_ENTRY_WINDOW,
+                "enabled_cities": cities,
+            })
             # Lanzar loops de background
             asyncio.create_task(self._run_weather_feed())
             asyncio.create_task(self._run_weather_detector())
             asyncio.create_task(self._run_weather_signal_loop())
+            if config.WEATHER_MULTI_SOURCE_ENABLED:
+                asyncio.create_task(self._run_weather_multi_feed())
+            if config.WEATHER_EARLY_ENABLED:
+                asyncio.create_task(self._run_weather_early_detector())
             at_status = "ON" if self.weather_autotrader._enabled and self.weather_autotrader._client else "OFF (solo señales + paper)"
+            multi_status = "ON" if config.WEATHER_MULTI_SOURCE_ENABLED else "OFF"
+            early_status = "ON" if config.WEATHER_EARLY_ENABLED else "OFF"
+            elim_status = "ON" if config.WEATHER_ELIMINATION_ENABLED else "OFF"
             print(f"Weather Arb iniciado: cities={cities or 'ALL'} "
                   f"edge>={config.WEATHER_ARB_MIN_EDGE}% "
                   f"conf>={config.WEATHER_ARB_MIN_CONFIDENCE}% "
-                  f"autotrader={at_status}", flush=True)
+                  f"autotrader={at_status} multi_source={multi_status} "
+                  f"early={early_status} elimination={elim_status}", flush=True)
         except Exception as e:
             print(f"Error iniciando Weather Arb: {e}", flush=True)
             import traceback
@@ -463,16 +502,51 @@ class PolymarketAlertBot:
             if self._running:
                 await asyncio.sleep(30)
 
+    async def _run_weather_multi_feed(self):
+        """Loop para multi-source weather feed."""
+        await asyncio.sleep(20)
+        while self._running and self.weather_multi_feed:
+            try:
+                await self.weather_multi_feed.start()
+            except Exception as e:
+                print(f"[MultiFeed] Error: {e}", flush=True)
+            if self._running:
+                await asyncio.sleep(60)
+
+    async def _run_weather_early_detector(self):
+        """Loop para early weather detector."""
+        await asyncio.sleep(15)
+        while self._running and self.weather_early_detector:
+            try:
+                await self.weather_early_detector.start()
+            except Exception as e:
+                print(f"[EarlyWeather] Error: {e}", flush=True)
+            if self._running:
+                await asyncio.sleep(30)
+
     async def _run_weather_signal_loop(self):
         """Loop principal weather: señales + paper trading (siempre) + autotrading (si wallet).
 
         Este loop NO requiere wallet ni autotrader habilitado.
         Las señales y el paper trading funcionan independientemente.
+        Risk management activo cada 30s para TP/SL/trailing.
         """
         await asyncio.sleep(15)  # Esperar que feed y detector tengan datos
         while self._running and self.weather_detector:
             try:
+                # Señales del detector principal (conviction + elimination)
                 signals = self.weather_detector.get_recent_signals(50)
+
+                # Señales del early detector (si activo)
+                if self.weather_early_detector and self.weather_early_detector.enabled:
+                    early_signals = self.weather_early_detector.get_recent_signals(20)
+                    if early_signals:
+                        # Combinar: early signals primero (prioridad)
+                        existing_cids = {s.get("condition_id") for s in signals}
+                        for es in early_signals:
+                            if es.get("condition_id") not in existing_cids:
+                                signals.append(es)
+
                 if signals:
                     # Paper trading: registrar TODAS las señales (no necesita wallet)
                     if self.weather_paper:
@@ -481,10 +555,19 @@ class PolymarketAlertBot:
                     # Autotrading real: solo si está habilitado y tiene wallet
                     if self.weather_autotrader:
                         await self.weather_autotrader.process_signals(signals)
+
                 # Resolver paper trades (no necesita wallet)
                 if self.weather_paper:
                     await self.weather_paper.resolve_pending()
-                # Resolver trades reales (solo si hay autotrader con posiciones)
+
+                # Risk management activo: TP/SL/Trailing (cada ciclo, ~30s)
+                if self.weather_autotrader:
+                    try:
+                        await self.weather_autotrader.check_risk_management()
+                    except Exception as e:
+                        print(f"[WeatherRisk] Error: {e}", flush=True)
+
+                # Resolver trades reales cerrados
                 if self.weather_autotrader:
                     try:
                         await self.weather_autotrader.resolve_trades()

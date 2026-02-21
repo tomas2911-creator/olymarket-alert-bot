@@ -3826,7 +3826,11 @@ async def weather_arb_stats(request: Request):
     merged["cities_monitored"] = live_stats.get("cities_monitored", 0)
     merged["live"] = live_stats
     merged["feed"] = feed_status
+    merged["feed_status"] = feed_status
     merged["paper"] = paper_stats
+    # AutoTrader status for overview
+    wt = getattr(bot, "weather_autotrader", None) if bot else None
+    merged["autotrader_enabled"] = bool(wt and getattr(wt, "enabled", False))
     return merged
 
 
@@ -3897,6 +3901,8 @@ async def get_weather_autotrade_config(request: Request):
         "wt_bankroll", "wt_bet_mode", "wt_bet_pct",
         "wt_stop_loss_enabled", "wt_stop_loss_pct",
         "wt_take_profit_pct", "wt_max_holding_sec",
+        "wt_trailing_stop_enabled", "wt_trailing_stop_pct",
+        "wt_use_crypto_wallet",
     ], user_id=uid)
     # Estado del motor
     bot = request.app.state.bot
@@ -3947,6 +3953,9 @@ async def get_weather_autotrade_config(request: Request):
         "stop_loss_pct": float(raw.get("wt_stop_loss_pct", 30)),
         "take_profit_pct": float(raw.get("wt_take_profit_pct", 50)),
         "max_holding_sec": int(raw.get("wt_max_holding_sec", 86400)),
+        "trailing_stop_enabled": raw.get("wt_trailing_stop_enabled") == "true",
+        "trailing_stop_pct": float(raw.get("wt_trailing_stop_pct", 15)),
+        "use_crypto_wallet": raw.get("wt_use_crypto_wallet") == "true",
     }
 
 
@@ -3981,6 +3990,9 @@ async def save_weather_autotrade_config(request: Request):
         "stop_loss_pct": ("wt_stop_loss_pct", str),
         "take_profit_pct": ("wt_take_profit_pct", str),
         "max_holding_sec": ("wt_max_holding_sec", str),
+        "trailing_stop_enabled": ("wt_trailing_stop_enabled", lambda v: "true" if v else "false"),
+        "trailing_stop_pct": ("wt_trailing_stop_pct", str),
+        "use_crypto_wallet": ("wt_use_crypto_wallet", lambda v: "true" if v else "false"),
     }
     for key, (db_key, transform) in field_map.items():
         if key in body:
@@ -4227,3 +4239,150 @@ async def weather_refresh_forecasts(request: Request):
         except Exception as e:
             return {"status": "error", "error": str(e)}
     return {"status": "error", "error": "Weather feed no activo"}
+
+
+@router.get("/api/weather-arb/detector-config")
+async def get_weather_detector_config(request: Request):
+    """Obtener configuración del detector weather (editable desde dashboard)."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    raw = await db.get_config_bulk([
+        "feature_weather_arb", "weather_min_edge", "weather_min_confidence",
+        "weather_max_poly_odds", "weather_scan_interval", "weather_forecast_refresh",
+        "weather_paper_bet", "weather_telegram",
+        # Multi-source
+        "weather_multi_source_enabled", "weather_multi_source_refresh",
+        "weather_multi_min_sources",
+        # Elimination
+        "weather_elimination_enabled", "weather_elimination_min_profit",
+        "weather_elimination_max_bet", "weather_elimination_require_zero",
+        # Early detector
+        "weather_early_enabled", "weather_early_scan_interval",
+        "weather_early_min_edge", "weather_early_min_confidence",
+        "weather_early_entry_window",
+        # Trailing stop
+        "weather_trailing_stop_enabled", "weather_trailing_stop_pct",
+        # Wallet sharing
+        "weather_use_crypto_wallet",
+    ], user_id=uid)
+    return {
+        "enabled": raw.get("feature_weather_arb", str(config.FEATURE_WEATHER_ARB)).lower() in ("true", "1"),
+        "min_edge": float(raw.get("weather_min_edge", config.WEATHER_ARB_MIN_EDGE)),
+        "min_confidence": float(raw.get("weather_min_confidence", config.WEATHER_ARB_MIN_CONFIDENCE)),
+        "max_poly_odds": float(raw.get("weather_max_poly_odds", config.WEATHER_ARB_MAX_POLY_ODDS)),
+        "scan_interval": int(raw.get("weather_scan_interval", config.WEATHER_ARB_SCAN_INTERVAL)),
+        "forecast_refresh": int(raw.get("weather_forecast_refresh", config.WEATHER_ARB_FORECAST_REFRESH)),
+        "paper_bet": float(raw.get("weather_paper_bet", config.WEATHER_ARB_PAPER_BET)),
+        "telegram_alerts": raw.get("weather_telegram", str(config.WEATHER_ARB_TELEGRAM)).lower() in ("true", "1"),
+        # Multi-source
+        "multi_source_enabled": raw.get("weather_multi_source_enabled", str(config.WEATHER_MULTI_SOURCE_ENABLED)).lower() in ("true", "1"),
+        "multi_source_refresh": int(raw.get("weather_multi_source_refresh", config.WEATHER_MULTI_SOURCE_REFRESH)),
+        "multi_min_sources": int(raw.get("weather_multi_min_sources", config.WEATHER_MULTI_MIN_SOURCES)),
+        # Elimination
+        "elimination_enabled": raw.get("weather_elimination_enabled", str(config.WEATHER_ELIMINATION_ENABLED)).lower() in ("true", "1"),
+        "elimination_min_profit": float(raw.get("weather_elimination_min_profit", config.WEATHER_ELIMINATION_MIN_PROFIT)),
+        "elimination_max_bet": float(raw.get("weather_elimination_max_bet", config.WEATHER_ELIMINATION_MAX_BET)),
+        "elimination_require_zero": raw.get("weather_elimination_require_zero", str(config.WEATHER_ELIMINATION_REQUIRE_ZERO)).lower() in ("true", "1"),
+        # Early detector
+        "early_enabled": raw.get("weather_early_enabled", str(config.WEATHER_EARLY_ENABLED)).lower() in ("true", "1"),
+        "early_scan_interval": int(raw.get("weather_early_scan_interval", config.WEATHER_EARLY_SCAN_INTERVAL)),
+        "early_min_edge": float(raw.get("weather_early_min_edge", config.WEATHER_EARLY_MIN_EDGE)),
+        "early_min_confidence": float(raw.get("weather_early_min_confidence", config.WEATHER_EARLY_MIN_CONFIDENCE)),
+        "early_entry_window": int(raw.get("weather_early_entry_window", config.WEATHER_EARLY_ENTRY_WINDOW)),
+        # Trailing stop
+        "trailing_stop_enabled": raw.get("weather_trailing_stop_enabled", str(config.WEATHER_TRAILING_STOP_ENABLED)).lower() in ("true", "1"),
+        "trailing_stop_pct": float(raw.get("weather_trailing_stop_pct", config.WEATHER_TRAILING_STOP_PCT)),
+        # Wallet sharing
+        "use_crypto_wallet": raw.get("weather_use_crypto_wallet", str(config.WEATHER_USE_CRYPTO_WALLET)).lower() in ("true", "1"),
+    }
+
+
+@router.post("/api/weather-arb/detector-config")
+async def save_weather_detector_config(request: Request):
+    """Guardar configuración del detector weather."""
+    db = request.app.state.db
+    uid = await get_user_id(request)
+    body = await request.json()
+    data = {}
+    field_map = {
+        "enabled": ("feature_weather_arb", lambda v: "true" if v else "false"),
+        "min_edge": ("weather_min_edge", str),
+        "min_confidence": ("weather_min_confidence", str),
+        "max_poly_odds": ("weather_max_poly_odds", str),
+        "scan_interval": ("weather_scan_interval", str),
+        "forecast_refresh": ("weather_forecast_refresh", str),
+        "paper_bet": ("weather_paper_bet", str),
+        "telegram_alerts": ("weather_telegram", lambda v: "true" if v else "false"),
+        "multi_source_enabled": ("weather_multi_source_enabled", lambda v: "true" if v else "false"),
+        "multi_source_refresh": ("weather_multi_source_refresh", str),
+        "multi_min_sources": ("weather_multi_min_sources", str),
+        "elimination_enabled": ("weather_elimination_enabled", lambda v: "true" if v else "false"),
+        "elimination_min_profit": ("weather_elimination_min_profit", str),
+        "elimination_max_bet": ("weather_elimination_max_bet", str),
+        "elimination_require_zero": ("weather_elimination_require_zero", lambda v: "true" if v else "false"),
+        "early_enabled": ("weather_early_enabled", lambda v: "true" if v else "false"),
+        "early_scan_interval": ("weather_early_scan_interval", str),
+        "early_min_edge": ("weather_early_min_edge", str),
+        "early_min_confidence": ("weather_early_min_confidence", str),
+        "early_entry_window": ("weather_early_entry_window", str),
+        "trailing_stop_enabled": ("weather_trailing_stop_enabled", lambda v: "true" if v else "false"),
+        "trailing_stop_pct": ("weather_trailing_stop_pct", str),
+        "use_crypto_wallet": ("weather_use_crypto_wallet", lambda v: "true" if v else "false"),
+    }
+    for key, (db_key, transform) in field_map.items():
+        if key in body:
+            data[db_key] = transform(body[key])
+    if data:
+        await db.set_config_bulk(data, user_id=uid)
+        # Recargar config en memoria
+        saved = await db.get_config()
+        config.restore_from_db(saved)
+    # Recargar detector y autotrader
+    bot = request.app.state.bot
+    if bot:
+        if getattr(bot, "weather_detector", None):
+            bot.weather_detector.configure({
+                "min_edge": float(data.get("weather_min_edge", config.WEATHER_ARB_MIN_EDGE)),
+                "min_confidence": float(data.get("weather_min_confidence", config.WEATHER_ARB_MIN_CONFIDENCE)),
+                "max_poly_odds": float(data.get("weather_max_poly_odds", config.WEATHER_ARB_MAX_POLY_ODDS)),
+                "scan_interval": int(data.get("weather_scan_interval", config.WEATHER_ARB_SCAN_INTERVAL)),
+                "elimination_enabled": data.get("weather_elimination_enabled", str(config.WEATHER_ELIMINATION_ENABLED)).lower() in ("true", "1"),
+                "elimination_min_profit": float(data.get("weather_elimination_min_profit", config.WEATHER_ELIMINATION_MIN_PROFIT)),
+                "elimination_max_bet": float(data.get("weather_elimination_max_bet", config.WEATHER_ELIMINATION_MAX_BET)),
+                "elimination_require_zero": data.get("weather_elimination_require_zero", str(config.WEATHER_ELIMINATION_REQUIRE_ZERO)).lower() in ("true", "1"),
+            })
+        if getattr(bot, "weather_autotrader", None):
+            await bot.weather_autotrader.reload_config(user_id=uid)
+        if getattr(bot, "weather_early_detector", None):
+            bot.weather_early_detector.configure({
+                "early_enabled": data.get("weather_early_enabled", str(config.WEATHER_EARLY_ENABLED)).lower() in ("true", "1"),
+                "early_scan_interval": int(data.get("weather_early_scan_interval", config.WEATHER_EARLY_SCAN_INTERVAL)),
+                "early_min_edge": float(data.get("weather_early_min_edge", config.WEATHER_EARLY_MIN_EDGE)),
+                "early_min_confidence": float(data.get("weather_early_min_confidence", config.WEATHER_EARLY_MIN_CONFIDENCE)),
+                "early_entry_window_sec": int(data.get("weather_early_entry_window", config.WEATHER_EARLY_ENTRY_WINDOW)),
+            })
+    return {"status": "ok", "saved": len(data)}
+
+
+@router.get("/api/weather-arb/multi-source")
+async def weather_multi_source_status(request: Request):
+    """Estado del multi-source feed y consensus forecasts."""
+    bot = request.app.state.bot
+    result = {"enabled": False, "status": {}, "consensus": {}}
+    if bot and getattr(bot, "weather_multi_feed", None):
+        result["enabled"] = bot.weather_multi_feed._enabled
+        result["status"] = bot.weather_multi_feed.get_status()
+        result["consensus"] = bot.weather_multi_feed.get_all_consensus()
+    return result
+
+
+@router.get("/api/weather-arb/early-signals")
+async def weather_early_signals(request: Request, limit: int = 30):
+    """Señales del early weather detector."""
+    bot = request.app.state.bot
+    if bot and getattr(bot, "weather_early_detector", None):
+        return {
+            "signals": bot.weather_early_detector.get_recent_signals(limit),
+            "stats": bot.weather_early_detector.get_stats(),
+        }
+    return {"signals": [], "stats": {"enabled": False}}

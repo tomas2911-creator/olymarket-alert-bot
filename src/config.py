@@ -203,6 +203,36 @@ WEATHER_ARB_PAPER_BET = _weather.get("paper_bet_size", 50)
 WEATHER_ARB_TELEGRAM = _weather.get("telegram_alerts", True)
 WEATHER_ARB_CITIES = _weather.get("cities", None)  # None = todas
 
+# -- Weather Multi-Source --
+_weather_multi = _weather.get("multi_source", {})
+WEATHER_MULTI_SOURCE_ENABLED = _weather_multi.get("enabled", False)
+WEATHER_MULTI_SOURCE_REFRESH = _weather_multi.get("refresh_sec", 3600)
+WEATHER_MULTI_MIN_SOURCES = _weather_multi.get("min_sources", 2)
+WEATHERAPI_KEY = os.getenv("WEATHERAPI_KEY", "")
+VISUAL_CROSSING_KEY = os.getenv("VISUAL_CROSSING_KEY", "")
+
+# -- Weather Elimination Strategy --
+_weather_elim = _weather.get("elimination", {})
+WEATHER_ELIMINATION_ENABLED = _weather_elim.get("enabled", False)
+WEATHER_ELIMINATION_MIN_PROFIT = _weather_elim.get("min_profit_pct", 2.0)
+WEATHER_ELIMINATION_MAX_BET = _weather_elim.get("max_bet", 50)
+WEATHER_ELIMINATION_REQUIRE_ZERO = _weather_elim.get("require_zero_members", True)
+
+# -- Weather Early Detector --
+_weather_early = _weather.get("early_detector", {})
+WEATHER_EARLY_ENABLED = _weather_early.get("enabled", False)
+WEATHER_EARLY_SCAN_INTERVAL = _weather_early.get("scan_interval_sec", 60)
+WEATHER_EARLY_MIN_EDGE = _weather_early.get("min_edge_pct", 5.0)
+WEATHER_EARLY_MIN_CONFIDENCE = _weather_early.get("min_confidence_pct", 40.0)
+WEATHER_EARLY_ENTRY_WINDOW = _weather_early.get("entry_window_sec", 300)
+
+# -- Weather Trailing Stop --
+WEATHER_TRAILING_STOP_ENABLED = _weather.get("trailing_stop_enabled", False)
+WEATHER_TRAILING_STOP_PCT = _weather.get("trailing_stop_pct", 15.0)
+
+# -- Weather Wallet Sharing (usar misma wallet que crypto) --
+WEATHER_USE_CRYPTO_WALLET = _weather.get("use_crypto_wallet", False)
+
 # === Nuevas Features v8.0 ===
 
 # -- Correlation Filter (Alert Trading) --
@@ -494,6 +524,23 @@ def restore_from_db(saved: dict):
     cfg.WEATHER_ARB_FORECAST_REFRESH = _int("weather_forecast_refresh", cfg.WEATHER_ARB_FORECAST_REFRESH)
     cfg.WEATHER_ARB_PAPER_BET = _float("weather_paper_bet", cfg.WEATHER_ARB_PAPER_BET)
     cfg.WEATHER_ARB_TELEGRAM = _bool("weather_telegram", cfg.WEATHER_ARB_TELEGRAM)
+
+    # Weather nuevos
+    cfg.WEATHER_MULTI_SOURCE_ENABLED = _bool("weather_multi_source_enabled", cfg.WEATHER_MULTI_SOURCE_ENABLED)
+    cfg.WEATHER_MULTI_SOURCE_REFRESH = _int("weather_multi_source_refresh", cfg.WEATHER_MULTI_SOURCE_REFRESH)
+    cfg.WEATHER_MULTI_MIN_SOURCES = _int("weather_multi_min_sources", cfg.WEATHER_MULTI_MIN_SOURCES)
+    cfg.WEATHER_ELIMINATION_ENABLED = _bool("weather_elimination_enabled", cfg.WEATHER_ELIMINATION_ENABLED)
+    cfg.WEATHER_ELIMINATION_MIN_PROFIT = _float("weather_elimination_min_profit", cfg.WEATHER_ELIMINATION_MIN_PROFIT)
+    cfg.WEATHER_ELIMINATION_MAX_BET = _float("weather_elimination_max_bet", cfg.WEATHER_ELIMINATION_MAX_BET)
+    cfg.WEATHER_ELIMINATION_REQUIRE_ZERO = _bool("weather_elimination_require_zero", cfg.WEATHER_ELIMINATION_REQUIRE_ZERO)
+    cfg.WEATHER_EARLY_ENABLED = _bool("weather_early_enabled", cfg.WEATHER_EARLY_ENABLED)
+    cfg.WEATHER_EARLY_SCAN_INTERVAL = _int("weather_early_scan_interval", cfg.WEATHER_EARLY_SCAN_INTERVAL)
+    cfg.WEATHER_EARLY_MIN_EDGE = _float("weather_early_min_edge", cfg.WEATHER_EARLY_MIN_EDGE)
+    cfg.WEATHER_EARLY_MIN_CONFIDENCE = _float("weather_early_min_confidence", cfg.WEATHER_EARLY_MIN_CONFIDENCE)
+    cfg.WEATHER_EARLY_ENTRY_WINDOW = _int("weather_early_entry_window", cfg.WEATHER_EARLY_ENTRY_WINDOW)
+    cfg.WEATHER_TRAILING_STOP_ENABLED = _bool("weather_trailing_stop_enabled", cfg.WEATHER_TRAILING_STOP_ENABLED)
+    cfg.WEATHER_TRAILING_STOP_PCT = _float("weather_trailing_stop_pct", cfg.WEATHER_TRAILING_STOP_PCT)
+    cfg.WEATHER_USE_CRYPTO_WALLET = _bool("weather_use_crypto_wallet", cfg.WEATHER_USE_CRYPTO_WALLET)
 
     # === Telegram (desde DB) ===
     if "telegram_bot_token" in saved and saved["telegram_bot_token"]:

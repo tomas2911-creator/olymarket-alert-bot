@@ -45,13 +45,15 @@ class WeatherAutoTrader:
         self._user_id = 1
         self._processing_signals = False
         self._failed_cids: dict[str, float] = {}  # cid → timestamp blacklist
+        # Trailing stop tracking: cid → highest unrealized PnL %
+        self._trailing_highs: dict[str, float] = {}
 
     async def initialize(self, user_id: int = None):
         """Cargar config y crear cliente CLOB si hay credenciales."""
         if user_id is not None:
             self._user_id = user_id
         try:
-            raw = await self.db.get_config_bulk([
+            keys_to_load = [
                 "wt_enabled", "wt_bet_size", "wt_min_edge", "wt_min_confidence",
                 "wt_min_odds", "wt_max_odds", "wt_max_positions", "wt_order_type",
                 "wt_max_daily_loss", "wt_max_daily_trades", "wt_cooldown_sec",
@@ -63,11 +65,36 @@ class WeatherAutoTrader:
                 # Risk management
                 "wt_stop_loss_enabled", "wt_stop_loss_pct",
                 "wt_take_profit_pct", "wt_max_holding_sec",
-            ], user_id=self._user_id)
+                # Trailing stop
+                "wt_trailing_stop_enabled", "wt_trailing_stop_pct",
+                # Wallet sharing
+                "wt_use_crypto_wallet",
+            ]
+            raw = await self.db.get_config_bulk(keys_to_load, user_id=self._user_id)
+
+            # Wallet sharing: si activado, leer credenciales del crypto autotrader
+            use_crypto_wallet = raw.get("wt_use_crypto_wallet") == "true"
+            if use_crypto_wallet:
+                crypto_keys = await self.db.get_config_bulk([
+                    "at_api_key", "at_api_secret", "at_private_key",
+                    "at_passphrase", "at_funder_address",
+                ], user_id=self._user_id)
+                wallet_api_key = crypto_keys.get("at_api_key", "")
+                wallet_api_secret = crypto_keys.get("at_api_secret", "")
+                wallet_private_key = crypto_keys.get("at_private_key", "")
+                wallet_passphrase = crypto_keys.get("at_passphrase", "")
+                wallet_funder = crypto_keys.get("at_funder_address", "")
+            else:
+                wallet_api_key = raw.get("wt_api_key", "")
+                wallet_api_secret = raw.get("wt_api_secret", "")
+                wallet_private_key = raw.get("wt_private_key", "")
+                wallet_passphrase = raw.get("wt_passphrase", "")
+                wallet_funder = raw.get("wt_funder_address", "")
+
             self._config = {
                 "enabled": raw.get("wt_enabled") == "true",
                 "bankroll": float(raw.get("wt_bankroll", 0)),
-                "bet_mode": raw.get("wt_bet_mode", "fixed"),  # "fixed" o "proportional"
+                "bet_mode": raw.get("wt_bet_mode", "fixed"),
                 "bet_size": float(raw.get("wt_bet_size", 1)),
                 "bet_pct": float(raw.get("wt_bet_pct", 2)),
                 "min_edge": float(raw.get("wt_min_edge", 8)),
@@ -80,17 +107,21 @@ class WeatherAutoTrader:
                 "max_daily_trades": int(raw.get("wt_max_daily_trades", 20)),
                 "cooldown_sec": int(raw.get("wt_cooldown_sec", 60)),
                 "cities": [c.strip() for c in raw.get("wt_cities", "").split(",") if c.strip()] or None,
-                # Wallet separada
-                "api_key": raw.get("wt_api_key", ""),
-                "api_secret": raw.get("wt_api_secret", ""),
-                "private_key": raw.get("wt_private_key", ""),
-                "passphrase": raw.get("wt_passphrase", ""),
-                "funder_address": raw.get("wt_funder_address", ""),
+                # Wallet (puede ser shared con crypto)
+                "api_key": wallet_api_key,
+                "api_secret": wallet_api_secret,
+                "private_key": wallet_private_key,
+                "passphrase": wallet_passphrase,
+                "funder_address": wallet_funder,
+                "use_crypto_wallet": use_crypto_wallet,
                 # Risk management
                 "stop_loss_enabled": raw.get("wt_stop_loss_enabled") == "true",
                 "stop_loss_pct": float(raw.get("wt_stop_loss_pct", 30)),
                 "take_profit_pct": float(raw.get("wt_take_profit_pct", 50)),
-                "max_holding_sec": int(raw.get("wt_max_holding_sec", 86400)),  # 24h default
+                "max_holding_sec": int(raw.get("wt_max_holding_sec", 86400)),
+                # Trailing stop
+                "trailing_stop_enabled": raw.get("wt_trailing_stop_enabled") == "true",
+                "trailing_stop_pct": float(raw.get("wt_trailing_stop_pct", 15)),
             }
             self._enabled = self._config["enabled"]
 
@@ -110,9 +141,13 @@ class WeatherAutoTrader:
             bankroll = self._config['bankroll']
             mode = self._config['bet_mode']
             sizing = f"${self._config['bet_size']}" if mode == "fixed" else f"{self._config['bet_pct']}%"
-            print(f"[WeatherTrader] {status}{reason} | bankroll=${bankroll} "
+            wallet_src = "CRYPTO (shared)" if self._config.get('use_crypto_wallet') else "WEATHER (propia)"
+            sl = "ON" if self._config.get('stop_loss_enabled') else "OFF"
+            ts = "ON" if self._config.get('trailing_stop_enabled') else "OFF"
+            print(f"[WeatherTrader] {status}{reason} | wallet={wallet_src} bankroll=${bankroll} "
                   f"modo={mode} sizing={sizing} "
-                  f"edge>={self._config['min_edge']}% conf>={self._config['min_confidence']}%",
+                  f"edge>={self._config['min_edge']}% conf>={self._config['min_confidence']}% "
+                  f"SL={sl} trailing={ts}",
                   flush=True)
         except Exception as e:
             print(f"[WeatherTrader] Error inicializando: {e}", flush=True)
@@ -142,13 +177,44 @@ class WeatherAutoTrader:
                 creds=creds,
             )
             print(f"[WeatherTrader] Cliente CLOB inicializado OK "
-                  f"(funder={'set' if funder else 'NOT SET'})", flush=True)
+                  f"(funder={'set: '+funder[:10]+'...' if funder else 'NOT SET - orders will fail!'})", flush=True)
+            if not funder:
+                print("[WeatherTrader] ⚠️ FUNDER ADDRESS no configurada. Ve a polymarket.com/settings, copia tu Proxy Wallet Address.", flush=True)
+            else:
+                self._setup_allowances()
         except ImportError:
             print("[WeatherTrader] ERROR: py-clob-client no instalado", flush=True)
             self._client = None
         except Exception as e:
             print(f"[WeatherTrader] Error creando cliente CLOB: {e}", flush=True)
             self._client = None
+
+    def _setup_allowances(self):
+        """Diagnosticar token allowances para trading."""
+        if not self._client:
+            return
+        try:
+            from py_clob_client.clob_types import BalanceAllowanceParams
+            try:
+                params = BalanceAllowanceParams(asset_type="COLLATERAL")
+                bal = self._client.get_balance_allowance(params)
+                balance = bal.get("balance", "?") if isinstance(bal, dict) else getattr(bal, "balance", "?")
+                allowance = bal.get("allowance", "?") if isinstance(bal, dict) else getattr(bal, "allowance", "?")
+                print(f"[WeatherTrader] Allowance COLLATERAL: balance={balance} allowance={allowance}", flush=True)
+                try:
+                    allow_val = float(str(allowance))
+                    if allow_val == 0:
+                        print("[WeatherTrader] ⚠️ ALLOWANCE = 0. Ve a polymarket.com, firma 'Enable Trading' + 'Approve Tokens'.", flush=True)
+                except (ValueError, TypeError):
+                    pass
+            except ImportError:
+                pass
+            except Exception as e:
+                print(f"[WeatherTrader] Allowance check error: {e}", flush=True)
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"[WeatherTrader] Allowance setup error: {e}", flush=True)
 
     async def reload_config(self, user_id: int = None):
         """Recargar config desde DB."""
@@ -339,10 +405,12 @@ class WeatherAutoTrader:
                 if not token_id:
                     return {"success": False, "error": "No se encontró token_id Yes"}
 
-            # Precio con slippage para FOK
+            # Precio con slippage configurable para FOK
             is_fok = trade_info["order_type"] == "market"
+            slippage_pct = 5.0  # Default 5%
             if is_fok:
-                order_price = min(round(price + 0.03, 2), 0.99)
+                slippage = round(slippage_pct / 100, 2)
+                order_price = min(round(price + slippage, 2), 0.99)
             else:
                 order_price = round(price, 2)
 
@@ -388,7 +456,49 @@ class WeatherAutoTrader:
             order_type = OrderType.FOK if is_fok else OrderType.GTC
             loop = asyncio.get_running_loop()
             signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
-            resp = await loop.run_in_executor(None, self._client.post_order, signed_order, order_type)
+
+            # Intentar enviar orden; si FOK falla, reintentar como GTC
+            used_order_type = order_type
+            resp = None
+            fok_failed = False
+
+            try:
+                resp = await loop.run_in_executor(None, self._client.post_order, signed_order, order_type)
+            except Exception as fok_err:
+                if order_type == OrderType.FOK:
+                    print(f"[WeatherTrader] FOK excepción ({fok_err}), reintentando como GTC...", flush=True)
+                    fok_failed = True
+                else:
+                    raise
+
+            # Detectar rechazo FOK sin excepción
+            if not fok_failed and order_type == OrderType.FOK and resp is not None:
+                _fok_oid = ""
+                if isinstance(resp, dict):
+                    _fok_oid = resp.get("orderID", resp.get("order_id", "")) or ""
+                elif hasattr(resp, "orderID"):
+                    _fok_oid = getattr(resp, "orderID", "") or ""
+                if not _fok_oid:
+                    fok_failed = True
+                    print(f"[WeatherTrader] FOK rechazada (sin orderID), reintentando como GTC...", flush=True)
+
+            # Fallback: reintentar como GTC si FOK falló
+            if fok_failed:
+                try:
+                    gtc_args = OrderArgs(
+                        price=order_price,
+                        size=shares,
+                        side="BUY",
+                        token_id=token_id,
+                    )
+                    signed_order = await loop.run_in_executor(None, self._client.create_order, gtc_args)
+                    resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
+                    used_order_type = OrderType.GTC
+                except Exception as gtc_err:
+                    print(f"[WeatherTrader] GTC fallback también falló: {gtc_err}", flush=True)
+                    raise
+
+            print(f"[WeatherTrader] post_order response ({used_order_type}): {resp}", flush=True)
 
             # Parsear respuesta
             success = False
@@ -470,6 +580,27 @@ class WeatherAutoTrader:
             else:
                 print(f"[WeatherTrader] ❌ Orden rechazada: {error_msg}", flush=True)
                 self._failed_cids[cid] = time.time()
+                # Guardar intento fallido en DB
+                await self.db.record_weather_trade({
+                    "condition_id": cid,
+                    "order_id": "",
+                    "city": trade_info["city"],
+                    "city_name": trade_info["city_name"],
+                    "date": trade_info["date"],
+                    "range_label": trade_info["range_label"],
+                    "side": "BUY",
+                    "price": price,
+                    "size_usd": bet_size,
+                    "shares": shares,
+                    "token_id": token_id,
+                    "edge_pct": trade_info["edge_pct"],
+                    "confidence": trade_info["confidence"],
+                    "ensemble_prob": trade_info["ensemble_prob"],
+                    "event_slug": trade_info["event_slug"],
+                    "order_type": trade_info["order_type"],
+                    "status": "rejected",
+                    "error": error_msg,
+                }, user_id=self._user_id)
                 return {"success": False, "error": error_msg}
 
         except Exception as e:
@@ -673,6 +804,217 @@ class WeatherAutoTrader:
             pass
 
         return round(total, 2) if total > 0 else None
+
+    # ── Risk Management Activo ──────────────────────────────────────────
+
+    async def check_risk_management(self):
+        """Monitorear posiciones abiertas y ejecutar TP/SL/Trailing.
+
+        Se llama cada 30s desde el signal loop en main.py.
+        """
+        if not self._open_positions or not self._client:
+            return
+
+        cfg = self._config
+        if not cfg.get("stop_loss_enabled") and not cfg.get("trailing_stop_enabled"):
+            # Solo verificar max_holding_sec
+            if not cfg.get("max_holding_sec"):
+                return
+
+        now = time.time()
+        positions_to_sell = []
+
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=8) as client:
+                for cid, trade in list(self._open_positions.items()):
+                    try:
+                        # Obtener precio actual del token Yes
+                        resp = await client.get(f"{CLOB_HOST}/markets/{cid}")
+                        if resp.status_code != 200:
+                            continue
+                        data = resp.json()
+
+                        # Si mercado cerró, dejar que resolve_trades lo maneje
+                        if data.get("closed"):
+                            continue
+
+                        current_price = 0.0
+                        tokens = data.get("tokens", [])
+                        for tok in tokens:
+                            if tok.get("outcome", "").lower() == "yes":
+                                try:
+                                    current_price = float(tok.get("price", 0) or 0)
+                                except (ValueError, TypeError):
+                                    pass
+                                break
+
+                        if current_price <= 0:
+                            continue
+
+                        entry_price = trade.get("price", 0)
+                        size_usd = trade.get("size_usd", 0)
+                        shares = trade.get("shares", 0)
+                        created_ts = trade.get("created_ts", now)
+
+                        if entry_price <= 0 or shares <= 0:
+                            continue
+
+                        # Calcular PnL no realizado
+                        current_value = shares * current_price
+                        unrealized_pnl = current_value - size_usd
+                        unrealized_pnl_pct = (unrealized_pnl / size_usd * 100) if size_usd > 0 else 0
+
+                        reason = ""
+
+                        # 1. Take Profit
+                        tp_pct = cfg.get("take_profit_pct", 50)
+                        if tp_pct > 0 and unrealized_pnl_pct >= tp_pct:
+                            reason = f"TAKE_PROFIT ({unrealized_pnl_pct:.1f}% >= {tp_pct}%)"
+
+                        # 2. Stop Loss
+                        if not reason and cfg.get("stop_loss_enabled"):
+                            sl_pct = cfg.get("stop_loss_pct", 30)
+                            if unrealized_pnl_pct <= -sl_pct:
+                                reason = f"STOP_LOSS ({unrealized_pnl_pct:.1f}% <= -{sl_pct}%)"
+
+                        # 3. Trailing Stop
+                        if not reason and cfg.get("trailing_stop_enabled"):
+                            ts_pct = cfg.get("trailing_stop_pct", 15)
+                            # Actualizar high water mark
+                            prev_high = self._trailing_highs.get(cid, unrealized_pnl_pct)
+                            if unrealized_pnl_pct > prev_high:
+                                self._trailing_highs[cid] = unrealized_pnl_pct
+                            high = self._trailing_highs.get(cid, 0)
+                            # Solo activar trailing si alguna vez estuvo en profit
+                            if high > 5.0 and (high - unrealized_pnl_pct) >= ts_pct:
+                                reason = f"TRAILING_STOP (high={high:.1f}% now={unrealized_pnl_pct:.1f}% drop={high - unrealized_pnl_pct:.1f}%)"
+
+                        # 4. Max Holding Time
+                        if not reason:
+                            max_hold = cfg.get("max_holding_sec", 86400)
+                            if max_hold > 0 and (now - created_ts) > max_hold:
+                                reason = f"MAX_HOLDING ({int(now - created_ts)}s > {max_hold}s)"
+
+                        if reason:
+                            positions_to_sell.append({
+                                "cid": cid,
+                                "trade": trade,
+                                "reason": reason,
+                                "current_price": current_price,
+                                "unrealized_pnl": unrealized_pnl,
+                            })
+
+                    except Exception as e:
+                        print(f"[WeatherTrader] Risk check error {cid[:16]}: {e}", flush=True)
+
+        except Exception as e:
+            print(f"[WeatherTrader] Risk management error: {e}", flush=True)
+            return
+
+        # Ejecutar ventas
+        for item in positions_to_sell:
+            await self.sell_position(
+                item["cid"], item["reason"],
+                current_price=item["current_price"],
+                unrealized_pnl=item["unrealized_pnl"],
+            )
+
+    async def sell_position(self, condition_id: str, reason: str,
+                            current_price: float = 0, unrealized_pnl: float = 0):
+        """Vender una posición abierta (sell Yes tokens)."""
+        if not self._client:
+            return
+
+        trade = self._open_positions.get(condition_id)
+        if not trade:
+            return
+
+        try:
+            token_id = trade.get("token_id", "")
+            if not token_id:
+                token_id = await self._get_yes_token_id(condition_id)
+            if not token_id:
+                print(f"[WeatherTrader] SELL failed: no token_id para {condition_id[:16]}", flush=True)
+                return
+
+            shares = trade.get("shares", 0)
+            if shares <= 0:
+                return
+
+            # Precio de venta: usar current_price con slippage configurable
+            slippage_sell = 0.03  # 3 centavos de slippage para venta
+            sell_price = max(round(current_price - slippage_sell, 2), 0.01)
+
+            from py_clob_client.clob_types import OrderArgs, OrderType
+
+            order_args = OrderArgs(
+                price=sell_price,
+                size=shares,
+                side="SELL",
+                token_id=token_id,
+            )
+
+            loop = asyncio.get_running_loop()
+            signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
+
+            # FOK→GTC fallback para sell
+            resp = None
+            fok_failed = False
+            try:
+                resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.FOK)
+            except Exception as fok_err:
+                print(f"[WeatherTrader] SELL FOK excepción ({fok_err}), reintentando como GTC...", flush=True)
+                fok_failed = True
+
+            if not fok_failed and resp is not None:
+                _fok_oid = ""
+                if isinstance(resp, dict):
+                    _fok_oid = resp.get("orderID", resp.get("order_id", "")) or ""
+                elif hasattr(resp, "orderID"):
+                    _fok_oid = getattr(resp, "orderID", "") or ""
+                if not _fok_oid:
+                    fok_failed = True
+
+            if fok_failed:
+                try:
+                    gtc_args = OrderArgs(price=sell_price, size=shares, side="SELL", token_id=token_id)
+                    signed_order = await loop.run_in_executor(None, self._client.create_order, gtc_args)
+                    resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.GTC)
+                except Exception as gtc_err:
+                    print(f"[WeatherTrader] SELL GTC fallback falló: {gtc_err}", flush=True)
+                    raise
+
+            success = False
+            order_id = ""
+            if isinstance(resp, dict):
+                order_id = resp.get("orderID", resp.get("order_id", "")) or ""
+                success = bool(order_id) and resp.get("success", True)
+            elif hasattr(resp, "success"):
+                success = resp.success
+                order_id = getattr(resp, "orderID", "") or ""
+
+            if success:
+                size_usd = trade.get("size_usd", 0)
+                realized_pnl = round(unrealized_pnl, 2) if unrealized_pnl else 0
+                await self.db.resolve_weather_trade(
+                    condition_id, "sold", realized_pnl, user_id=self._user_id
+                )
+                trade["resolved"] = True
+                trade["result"] = "sold"
+                trade["pnl"] = realized_pnl
+                del self._open_positions[condition_id]
+                self._trailing_highs.pop(condition_id, None)
+
+                city = trade.get("city_name", "?")
+                print(f"[WeatherTrader] 💰 SOLD: {city} {trade.get('range_label','')} "
+                      f"reason={reason} PnL=${realized_pnl:.2f}", flush=True)
+            else:
+                error = resp.get("errorMsg", "") if isinstance(resp, dict) else ""
+                print(f"[WeatherTrader] SELL failed: {reason} → {error}", flush=True)
+
+        except Exception as e:
+            print(f"[WeatherTrader] SELL error: {e}", flush=True)
 
     async def test_connection(self) -> dict:
         """Probar conexión al CLOB."""
