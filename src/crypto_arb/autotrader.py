@@ -444,6 +444,24 @@ class AutoTrader:
             strategy = trade_info.get("strategy", "score")
             if strategy == "sniper" and self._config.get("sniper_use_live_price", False) and live_price > 0:
                 print(f"[AutoTrader] 📡 Live price: {live_price} (señal era {price})", flush=True)
+
+                # Mejora 3: Max price cap — no comprar si live_price > 0.80
+                if live_price > 0.80:
+                    error_msg = f"Live price {live_price} > 0.80 (poco profit potencial)"
+                    print(f"[AutoTrader] ❌ {error_msg}", flush=True)
+                    return {"success": False, "error": error_msg}
+
+                # Mejora 1: Recalcular edge con live_price real
+                fair_odds = trade_info.get("fair_odds", 0)
+                if fair_odds > 0:
+                    real_edge = round((fair_odds - live_price) / live_price * 100, 1)
+                    min_edge = self._config.get("min_edge", 5)
+                    print(f"[AutoTrader] 📐 Edge recalculado: {real_edge}% (fair={fair_odds} live={live_price} min={min_edge}%)", flush=True)
+                    if real_edge < min_edge:
+                        error_msg = f"Edge real {real_edge}% < min {min_edge}% (live_price={live_price})"
+                        print(f"[AutoTrader] ❌ {error_msg}", flush=True)
+                        return {"success": False, "error": error_msg}
+
                 price = live_price
 
             # Redondear precio a 2 decimales (Polymarket usa centavos)
@@ -690,7 +708,7 @@ class AutoTrader:
         """Consultar el endpoint /price del CLOB para obtener el best ask real.
         Nota: /book devuelve datos stale (0.99/0.01) — issue conocido del CLOB.
         /price sí retorna el precio correcto.
-        Si indicative_price > 0, valida que el precio no desvíe más de 30%.
+        Si indicative_price > 0, valida que el precio no desvíe más de 20%.
         Retorna el precio real, o 0 si no hay precio o falla validación.
         """
         try:
@@ -700,7 +718,7 @@ class AutoTrader:
                 price = float(data.get("price", 0))
                 if price > 0 and indicative_price > 0:
                     deviation = abs(price - indicative_price) / indicative_price
-                    if deviation > 0.30:
+                    if deviation > 0.20:
                         print(f"[AutoTrader] ⚠️ /price {price} descartado (desvía {deviation:.0%} del indicativo {indicative_price})", flush=True)
                         return 0
                 return price
