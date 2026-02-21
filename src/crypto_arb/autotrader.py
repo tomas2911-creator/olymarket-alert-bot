@@ -686,19 +686,24 @@ class AutoTrader:
             self._failed_cids[cid] = time.time()
             return {"success": False, "error": error}
 
-    async def _get_best_ask(self, client, token_id: str) -> float:
-        """Consultar el order book del CLOB para obtener el best ask real.
-        Retorna el precio del best ask, o 0 si no hay asks disponibles.
+    async def _get_best_ask(self, client, token_id: str, indicative_price: float = 0) -> float:
+        """Consultar el endpoint /price del CLOB para obtener el best ask real.
+        Nota: /book devuelve datos stale (0.99/0.01) — issue conocido del CLOB.
+        /price sí retorna el precio correcto.
+        Si indicative_price > 0, valida que el precio no desvíe más de 30%.
+        Retorna el precio real, o 0 si no hay precio o falla validación.
         """
         try:
-            resp = await client.get(f"{CLOB_HOST}/book", params={"token_id": token_id})
+            resp = await client.get(f"{CLOB_HOST}/price", params={"token_id": token_id, "side": "BUY"})
             if resp.status_code == 200:
-                book = resp.json()
-                asks = book.get("asks", [])
-                if asks:
-                    # asks están ordenados de menor a mayor precio
-                    best_ask = float(asks[0].get("price", 0))
-                    return best_ask
+                data = resp.json()
+                price = float(data.get("price", 0))
+                if price > 0 and indicative_price > 0:
+                    deviation = abs(price - indicative_price) / indicative_price
+                    if deviation > 0.30:
+                        print(f"[AutoTrader] ⚠️ /price {price} descartado (desvía {deviation:.0%} del indicativo {indicative_price})", flush=True)
+                        return 0
+                return price
         except Exception as e:
             print(f"[AutoTrader] _get_best_ask error: {e}", flush=True)
         return 0
@@ -737,10 +742,10 @@ class AutoTrader:
                         indicative_price = float(token.get("price", 0))
                         live_price = indicative_price
                         if use_book_ask and tid:
-                            best_ask = await self._get_best_ask(client, tid)
+                            best_ask = await self._get_best_ask(client, tid, indicative_price)
                             if best_ask > 0:
                                 live_price = best_ask
-                                print(f"[AutoTrader]   📊 Best ask: {best_ask} (indicativo: {indicative_price})", flush=True)
+                                print(f"[AutoTrader]   📊 Live price: {best_ask} (indicativo: {indicative_price})", flush=True)
                         return (tid, outcome, live_price)
 
                 # Paso 2: Mercados Yes/No — depende del contexto de la pregunta
@@ -773,10 +778,10 @@ class AutoTrader:
                         indicative_price = float(token.get("price", 0))
                         live_price = indicative_price
                         if use_book_ask and tid:
-                            best_ask = await self._get_best_ask(client, tid)
+                            best_ask = await self._get_best_ask(client, tid, indicative_price)
                             if best_ask > 0:
                                 live_price = best_ask
-                                print(f"[AutoTrader]   📊 Best ask: {best_ask} (indicativo: {indicative_price})", flush=True)
+                                print(f"[AutoTrader]   📊 Live price: {best_ask} (indicativo: {indicative_price})", flush=True)
                         return (tid, outcome, live_price)
 
                 print(f"[AutoTrader]   → NO MATCH para direction={direction}", flush=True)
