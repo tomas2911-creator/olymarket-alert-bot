@@ -3453,13 +3453,18 @@
                     </div>
                     <div class="overflow-x-auto"><table class="w-full text-xs">
                         <thead><tr class="text-gray-500 border-b border-gray-800/50">
-                            <th class="text-left p-2">Ciudad</th><th class="text-left p-2">Fecha</th>
-                            <th class="text-left p-2">Rango</th><th class="text-center p-2">Ensemble</th>
-                            <th class="text-center p-2">Entrada</th><th class="text-center p-2">Actual</th>
-                            <th class="text-center p-2">Edge %</th>
-                            <th class="text-right p-2">PnL Sim</th><th class="text-center p-2">Estado</th>
+                            <th class="text-left p-2 cursor-pointer select-none hover:text-sky-400" onclick="colSort('wpp','city',render_wpp)">Ciudad <span id="si-wpp-city" data-sg="wpp" class="text-sky-400 hidden text-[9px]"></span></th>
+                            <th class="text-left p-2 cursor-pointer select-none hover:text-sky-400" onclick="colSort('wpp','date',render_wpp)">Fecha <span id="si-wpp-date" data-sg="wpp" class="text-sky-400 hidden text-[9px]"></span></th>
+                            <th class="text-left p-2 cursor-pointer select-none hover:text-sky-400" onclick="colSort('wpp','range',render_wpp)">Rango <span id="si-wpp-range" data-sg="wpp" class="text-sky-400 hidden text-[9px]"></span></th>
+                            <th class="text-center p-2 cursor-pointer select-none hover:text-sky-400" onclick="colSort('wpp','ensemble',render_wpp)">Ensemble <span id="si-wpp-ensemble" data-sg="wpp" class="text-sky-400 hidden text-[9px]"></span></th>
+                            <th class="text-center p-2 cursor-pointer select-none hover:text-sky-400" onclick="colSort('wpp','entry',render_wpp)">Entrada <span id="si-wpp-entry" data-sg="wpp" class="text-sky-400 hidden text-[9px]"></span></th>
+                            <th class="text-center p-2 cursor-pointer select-none hover:text-sky-400" onclick="colSort('wpp','actual',render_wpp)">Actual <span id="si-wpp-actual" data-sg="wpp" class="text-sky-400 hidden text-[9px]"></span></th>
+                            <th class="text-center p-2 cursor-pointer select-none hover:text-sky-400" onclick="colSort('wpp','edge',render_wpp)">Edge % <span id="si-wpp-edge" data-sg="wpp" class="text-sky-400 hidden text-[9px]"></span></th>
+                            <th class="text-right p-2 cursor-pointer select-none hover:text-sky-400" onclick="colSort('wpp','pnl',render_wpp)">PnL Sim <span id="si-wpp-pnl" data-sg="wpp" class="text-sky-400 hidden text-[9px]"></span></th>
+                            <th class="text-center p-2 cursor-pointer select-none hover:text-sky-400" onclick="colSort('wpp','estado',render_wpp)">Estado <span id="si-wpp-estado" data-sg="wpp" class="text-sky-400 hidden text-[9px]"></span></th>
+                            <th class="text-center p-2">Ver</th>
                         </tr></thead>
-                        <tbody id="wa-paper-body"><tr><td colspan="9" class="text-center text-gray-600 p-6">Sin paper trades aún</td></tr></tbody>
+                        <tbody id="wa-paper-body"><tr><td colspan="10" class="text-center text-gray-600 p-6">Sin paper trades aún</td></tr></tbody>
                     </table></div>
                 </div>
 
@@ -7863,8 +7868,7 @@ async function loadWeatherArb(){
             }).join('');
         }
         // Paper trades + stats
-        const pTbody=document.getElementById('wa-paper-body');
-        const papers=paperR?.trades||[];
+        _wppData=paperR?.trades||[];
         const pStats=paperR?.stats||{};
         // Actualizar stats panel
         document.getElementById('wa-paper-total').textContent=pStats.total_trades||0;
@@ -7878,40 +7882,61 @@ async function loadWeatherArb(){
         const uPnlEl=document.getElementById('wa-paper-upnl');
         uPnlEl.textContent='$'+uPnl.toFixed(2);uPnlEl.className='text-sm font-bold '+(uPnl>0?'text-green-400':uPnl<0?'text-red-400':'text-gray-400');
         document.getElementById('wa-paper-edge').textContent=(pStats.avg_edge||0).toFixed(1)+'%';
-        if(papers.length===0){
-            pTbody.innerHTML='<tr><td colspan="9" class="text-center text-gray-600 p-6">Sin paper trades. Se registran automáticamente cuando hay señales.</td></tr>';
-        }else{
-            pTbody.innerHTML=papers.map(p=>{
-                const pnl=p.resolved?p.pnl:p.unrealized_pnl;
-                const hasPnl=pnl!=null;
-                const pnlColor=hasPnl?(pnl>0?'text-green-400':pnl<0?'text-red-400':'text-gray-400'):'text-gray-600';
-                const pnlText=hasPnl?'$'+pnl.toFixed(2):'—';
-                let status;
-                if(p.resolved){
-                    status=p.result==='win'?'<span class="text-green-400 font-bold">WIN</span>':'<span class="text-red-400 font-bold">LOSS</span>';
-                }else{
-                    status='<span class="text-sky-400">Pendiente</span>';
-                }
-                const curOdds=p.current_odds!=null?p.current_odds.toFixed(2):'—';
-                const curColor=p.current_odds!=null?(p.current_odds>p.entry_odds?'text-green-400':p.current_odds<p.entry_odds?'text-red-400':'text-gray-400'):'text-gray-600';
-                return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
-                    <td class="p-2 text-white">${p.city_name||p.city||''}</td>
-                    <td class="p-2">${p.date||''}</td>
-                    <td class="p-2 font-mono">${p.range_label||''}</td>
-                    <td class="p-2 text-center font-mono text-sky-400">${((p.ensemble_prob||0)*100).toFixed(1)}%</td>
-                    <td class="p-2 text-center font-mono">${(p.entry_odds||0).toFixed(2)}</td>
-                    <td class="p-2 text-center font-mono ${curColor}">${curOdds}</td>
-                    <td class="p-2 text-center font-mono">${(p.edge_pct||0).toFixed(1)}%</td>
-                    <td class="p-2 text-right font-mono ${pnlColor}">${pnlText}</td>
-                    <td class="p-2 text-center">${status}</td>
-                </tr>`;
-            }).join('');
-        }
+        render_wpp();
         // Config tab — cargar valores
         waLoadConfig();
     }catch(e){
         console.error('Weather Arb load error:',e);
     }
+}
+let _wppData=[];
+function render_wpp(){
+    const pTbody=document.getElementById('wa-paper-body');
+    if(_wppData.length===0){
+        pTbody.innerHTML='<tr><td colspan="10" class="text-center text-gray-600 p-6">Sin paper trades. Se registran automáticamente cuando hay señales.</td></tr>';
+        return;
+    }
+    const sorted=sortedData('wpp',_wppData,(p,col)=>{
+        switch(col){
+            case 'city':return(p.city_name||p.city||'').toLowerCase();
+            case 'date':return p.date||'';
+            case 'range':return(p.range_label||'').toLowerCase();
+            case 'ensemble':return p.ensemble_prob||0;
+            case 'entry':return p.entry_odds||0;
+            case 'actual':return p.current_odds||0;
+            case 'edge':return p.edge_pct||0;
+            case 'pnl':return p.resolved?(p.pnl||0):(p.unrealized_pnl||0);
+            case 'estado':return p.resolved?(p.result==='win'?2:0):1;
+            default:return 0;
+        }
+    });
+    pTbody.innerHTML=sorted.map(p=>{
+        const pnl=p.resolved?p.pnl:p.unrealized_pnl;
+        const hasPnl=pnl!=null;
+        const pnlColor=hasPnl?(pnl>0?'text-green-400':pnl<0?'text-red-400':'text-gray-400'):'text-gray-600';
+        const pnlText=hasPnl?'$'+pnl.toFixed(2):'—';
+        let status;
+        if(p.resolved){
+            status=p.result==='win'?'<span class="text-green-400 font-bold">WIN</span>':'<span class="text-red-400 font-bold">LOSS</span>';
+        }else{
+            status='<span class="text-sky-400">Pendiente</span>';
+        }
+        const curOdds=p.current_odds!=null?p.current_odds.toFixed(2):'—';
+        const curColor=p.current_odds!=null?(p.current_odds>p.entry_odds?'text-green-400':p.current_odds<p.entry_odds?'text-red-400':'text-gray-400'):'text-gray-600';
+        const polyBtn=p.event_slug?`<a href="https://polymarket.com/event/${p.event_slug}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 text-xs font-medium transition">Poly</a>`:'—';
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="p-2 text-white">${p.city_name||p.city||''}</td>
+            <td class="p-2">${p.date||''}</td>
+            <td class="p-2 font-mono">${p.range_label||''}</td>
+            <td class="p-2 text-center font-mono text-sky-400">${((p.ensemble_prob||0)*100).toFixed(1)}%</td>
+            <td class="p-2 text-center font-mono">${(p.entry_odds||0).toFixed(2)}</td>
+            <td class="p-2 text-center font-mono ${curColor}">${curOdds}</td>
+            <td class="p-2 text-center font-mono">${(p.edge_pct||0).toFixed(1)}%</td>
+            <td class="p-2 text-right font-mono ${pnlColor}">${pnlText}</td>
+            <td class="p-2 text-center">${status}</td>
+            <td class="p-2 text-center">${polyBtn}</td>
+        </tr>`;
+    }).join('');
 }
 async function waResetPaper(){
     if(!confirm('¿Estás seguro de reiniciar el Paper Trading?\n\nSe borrarán TODOS los paper trades (historial completo).\nEsta acción no se puede deshacer.'))return;
