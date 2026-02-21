@@ -39,6 +39,7 @@ class PaperTrade:
     confidence: float            # Confianza del ensemble
     bet_size: float              # Monto simulado
     unit: str                    # °F o °C
+    strategy: str = "conviction"  # "conviction" (BUY YES) o "elimination" (BUY NO)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     resolved: bool = False
     result: Optional[str] = None  # "win" o "loss"
@@ -63,6 +64,7 @@ class PaperTrade:
             "confidence": round(self.confidence, 1),
             "bet_size": self.bet_size,
             "unit": self.unit,
+            "strategy": self.strategy,
             "created_at": self.created_at.isoformat() if isinstance(self.created_at, datetime) else str(self.created_at),
             "resolved": self.resolved,
             "result": self.result,
@@ -141,6 +143,7 @@ class WeatherPaperTrader:
             confidence=signal.get("confidence", 0),
             bet_size=self.bet_size,
             unit=signal.get("unit", ""),
+            strategy=signal.get("strategy", "conviction"),
             resolution_source=signal.get("resolution_source", ""),
         )
         self._trades.append(trade)
@@ -203,8 +206,15 @@ class WeatherPaperTrader:
                         if not winning:
                             continue
 
-                        # Calcular PnL: compramos Yes
-                        won = winning.lower() == "yes"
+                        # Calcular PnL según strategy
+                        is_elim = trade.strategy == "elimination" or trade.range_label.startswith("ELIM:")
+                        if is_elim:
+                            # Compramos NO: ganamos si outcome es NO
+                            won = winning.lower() == "no"
+                        else:
+                            # Compramos YES: ganamos si outcome es YES
+                            won = winning.lower() == "yes"
+
                         if won:
                             # Cada share paga $1. Shares = bet_size / entry_odds
                             shares = trade.bet_size / trade.entry_odds if trade.entry_odds > 0 else 0
@@ -246,9 +256,11 @@ class WeatherPaperTrader:
                             continue
                         data = resp.json()
                         tokens = data.get("tokens", [])
-                        # Buscar token Yes (compramos Yes)
+                        # Buscar token correcto según strategy
+                        is_elim = trade.strategy == "elimination" or trade.range_label.startswith("ELIM:")
+                        target_outcome = "no" if is_elim else "yes"
                         for tok in tokens:
-                            if tok.get("outcome", "").lower() == "yes":
+                            if tok.get("outcome", "").lower() == target_outcome:
                                 try:
                                     cur_price = float(tok.get("price", 0) or 0)
                                     trade.current_odds = cur_price

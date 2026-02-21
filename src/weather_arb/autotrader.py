@@ -384,6 +384,7 @@ class WeatherAutoTrader:
             "market_question": signal.get("market_question", ""),
             "token_id": signal.get("token_id", ""),
             "unit": signal.get("unit", ""),
+            "strategy": signal.get("strategy", "conviction"),
         }
 
     # ── Ejecución de órdenes ──────────────────────────────────────────
@@ -400,10 +401,16 @@ class WeatherAutoTrader:
 
         try:
             # Si no tenemos token_id del detector, obtenerlo del CLOB
+            is_elimination = trade_info.get("strategy") == "elimination"
             if not token_id:
-                token_id = await self._get_yes_token_id(cid)
-                if not token_id:
-                    return {"success": False, "error": "No se encontró token_id Yes"}
+                if is_elimination:
+                    token_id = await self._get_no_token_id(cid)
+                    if not token_id:
+                        return {"success": False, "error": "No se encontró token_id No"}
+                else:
+                    token_id = await self._get_yes_token_id(cid)
+                    if not token_id:
+                        return {"success": False, "error": "No se encontró token_id Yes"}
 
             # Precio con slippage configurable para FOK
             is_fok = trade_info["order_type"] == "market"
@@ -566,6 +573,7 @@ class WeatherAutoTrader:
                     "ensemble_prob": trade_info["ensemble_prob"],
                     "event_slug": trade_info["event_slug"],
                     "order_type": trade_info["order_type"],
+                    "strategy": trade_info.get("strategy", "conviction"),
                     "unit": trade_info.get("unit", ""),
                     "status": "filled",
                     "created_ts": time.time(),
@@ -598,6 +606,7 @@ class WeatherAutoTrader:
                     "ensemble_prob": trade_info["ensemble_prob"],
                     "event_slug": trade_info["event_slug"],
                     "order_type": trade_info["order_type"],
+                    "strategy": trade_info.get("strategy", "conviction"),
                     "status": "rejected",
                     "error": error_msg,
                 }, user_id=self._user_id)
@@ -622,7 +631,24 @@ class WeatherAutoTrader:
                     if tok.get("outcome", "").lower() == "yes":
                         return tok.get("token_id", "")
         except Exception as e:
-            print(f"[WeatherTrader] Error obteniendo token_id: {e}", flush=True)
+            print(f"[WeatherTrader] Error obteniendo yes token_id: {e}", flush=True)
+        return None
+
+    async def _get_no_token_id(self, condition_id: str) -> Optional[str]:
+        """Obtener token_id del outcome 'No' via CLOB API (para eliminación)."""
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(f"{CLOB_HOST}/markets/{condition_id}")
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+                tokens = data.get("tokens", [])
+                for tok in tokens:
+                    if tok.get("outcome", "").lower() == "no":
+                        return tok.get("token_id", "")
+        except Exception as e:
+            print(f"[WeatherTrader] Error obteniendo no token_id: {e}", flush=True)
         return None
 
     # ── Proceso de señales ─────────────────────────────────────────────
@@ -711,8 +737,15 @@ class WeatherAutoTrader:
                         if not winning_outcome:
                             continue
 
-                        # PnL: compramos Yes
-                        won = winning_outcome.lower() == "yes"
+                        # PnL: depende de si compramos Yes (conviction) o No (elimination)
+                        is_elim = trade.get("strategy") == "elimination" or trade.get("range_label", "").startswith("ELIM:")
+                        if is_elim:
+                            # Compramos NO: ganamos si outcome es NO
+                            won = winning_outcome.lower() == "no"
+                        else:
+                            # Compramos YES: ganamos si outcome es YES
+                            won = winning_outcome.lower() == "yes"
+
                         shares = trade.get("shares", 0)
                         size_usd = trade.get("size_usd", 0)
 
@@ -839,10 +872,14 @@ class WeatherAutoTrader:
                         if data.get("closed"):
                             continue
 
+                        # Determinar si es eliminación para trackear token correcto
+                        is_elim = trade.get("strategy") == "elimination" or trade.get("range_label", "").startswith("ELIM:")
+                        target_outcome = "no" if is_elim else "yes"
+
                         current_price = 0.0
                         tokens = data.get("tokens", [])
                         for tok in tokens:
-                            if tok.get("outcome", "").lower() == "yes":
+                            if tok.get("outcome", "").lower() == target_outcome:
                                 try:
                                     current_price = float(tok.get("price", 0) or 0)
                                 except (ValueError, TypeError):
@@ -922,7 +959,7 @@ class WeatherAutoTrader:
 
     async def sell_position(self, condition_id: str, reason: str,
                             current_price: float = 0, unrealized_pnl: float = 0):
-        """Vender una posición abierta (sell Yes tokens)."""
+        """Vender una posición abierta (sell tokens según strategy)."""
         if not self._client:
             return
 
@@ -931,9 +968,13 @@ class WeatherAutoTrader:
             return
 
         try:
+            is_elim = trade.get("strategy") == "elimination" or trade.get("range_label", "").startswith("ELIM:")
             token_id = trade.get("token_id", "")
             if not token_id:
-                token_id = await self._get_yes_token_id(condition_id)
+                if is_elim:
+                    token_id = await self._get_no_token_id(condition_id)
+                else:
+                    token_id = await self._get_yes_token_id(condition_id)
             if not token_id:
                 print(f"[WeatherTrader] SELL failed: no token_id para {condition_id[:16]}", flush=True)
                 return

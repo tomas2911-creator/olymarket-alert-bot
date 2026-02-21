@@ -54,7 +54,8 @@ class WeatherSignal:
     resolved: bool = False
     result: Optional[str] = None  # "win" o "loss"
     paper_pnl: float = 0.0
-    token_id: str = ""           # Token ID del outcome Yes
+    token_id: str = ""           # Token ID del outcome (Yes para conviction, No para elimination)
+    strategy: str = "conviction"  # "conviction" (BUY YES) o "elimination" (BUY NO)
     resolution_source: str = ""  # URL de Wunderground
 
     @property
@@ -197,13 +198,15 @@ class WeatherArbDetector:
                                 except (json.JSONDecodeError, IndexError, ValueError):
                                     yes_price = 0
 
-                                # Obtener token IDs
+                                # Obtener token IDs (YES = [0], NO = [1])
                                 clob_token_ids = m.get("clobTokenIds", "[]")
                                 try:
                                     token_ids = json.loads(clob_token_ids) if isinstance(clob_token_ids, str) else clob_token_ids
                                     yes_token = token_ids[0] if token_ids else ""
+                                    no_token = token_ids[1] if len(token_ids) > 1 else ""
                                 except (json.JSONDecodeError, IndexError):
                                     yes_token = ""
+                                    no_token = ""
 
                                 ranges.append({
                                     "condition_id": cid,
@@ -212,6 +215,7 @@ class WeatherArbDetector:
                                     "high": range_info["high"],
                                     "yes_price": yes_price,
                                     "yes_token": yes_token,
+                                    "no_token": no_token,
                                     "question": m.get("question", ""),
                                     "volume": float(m.get("volume", 0)),
                                 })
@@ -380,6 +384,7 @@ class WeatherArbDetector:
                     ensemble_members=len(forecast.ensemble_max_temps),
                     unit=city["unit"],
                     token_id=r.get("yes_token", ""),
+                    strategy="conviction",
                     resolution_source=mdata.get("resolution_source", ""),
                 )
                 signals.append(signal)
@@ -477,7 +482,8 @@ class WeatherArbDetector:
                     std_temp=forecast.std_max,
                     ensemble_members=n_members,
                     unit=city["unit"],
-                    token_id=r.get("yes_token", ""),
+                    token_id=r.get("no_token", ""),  # NO token para eliminación
+                    strategy="elimination",
                     resolution_source=mdata.get("resolution_source", ""),
                 )
                 signals.append(signal)
@@ -525,6 +531,7 @@ class WeatherArbDetector:
                 "ensemble_members": s.ensemble_members,
                 "unit": s.unit,
                 "token_id": s.token_id,
+                "strategy": s.strategy,
                 "timestamp": s.timestamp.isoformat(),
                 "resolved": s.resolved,
                 "result": s.result,
