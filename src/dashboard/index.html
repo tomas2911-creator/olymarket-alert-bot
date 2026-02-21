@@ -1087,6 +1087,11 @@
                                     <input type="number" id="at-sniper-tp-pct" value="30" step="5" min="5" max="200" class="w-full bg-gray-800/70 border border-green-700/50 rounded px-3 py-2 text-sm font-mono text-green-300">
                                 </div>
                             </div>
+                            <div class="flex items-center gap-2 mt-1">
+                                <input type="checkbox" id="at-sniper-live-price" class="accent-green-500 w-3.5 h-3.5">
+                                <span class="text-xs text-green-300">📡 Usar precio live del order book</span>
+                                <span class="text-[10px] text-gray-500 ml-1">(usa el precio actual del CLOB en vez de la señal)</span>
+                            </div>
                             <p class="text-[10px] text-gray-500">Sniper usa FOK siempre. Slippage propio (no el general). Cooldown 0 = ejecuta todas las señales sin espera.</p>
                         </div>
                         <p class="text-[10px] text-gray-600">Los parámetros de cada estrategia se configuran en la pestaña Estrategia.</p>
@@ -5586,6 +5591,7 @@ async function loadAutotradeConfig(){
     document.getElementById('at-sniper-entry-max').value=c.sniper_entry_max_sec||150;
     document.getElementById('at-sniper-tp-enabled').checked=!!c.sniper_tp_enabled;
     document.getElementById('at-sniper-tp-pct').value=c.sniper_tp_pct||30;
+    document.getElementById('at-sniper-live-price').checked=!!c.sniper_use_live_price;
     toggleSniperConfig();
     // Risk Management (todo junto)
     document.getElementById('at-max-daily-loss').value=c.max_daily_loss||50;
@@ -5662,6 +5668,7 @@ async function saveAutotradeConfig(){
         sniper_entry_max_sec:parseInt(document.getElementById('at-sniper-entry-max').value)||150,
         sniper_tp_enabled:document.getElementById('at-sniper-tp-enabled').checked,
         sniper_tp_pct:parseFloat(document.getElementById('at-sniper-tp-pct').value)||30,
+        sniper_use_live_price:document.getElementById('at-sniper-live-price').checked,
         // Ejecución
         max_positions:parseInt(document.getElementById('at-max-positions').value)||3,
         order_type:document.getElementById('at-order-type').value,

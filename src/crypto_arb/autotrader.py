@@ -71,7 +71,7 @@ class AutoTrader:
                 "at_ee_take_profit_enabled", "at_ee_take_profit_pct",
                 # Sniper
                 "at_use_sniper", "at_sniper_bet_size", "at_sniper_slippage_pct",
-                "at_sniper_min_move_pct", "at_sniper_max_buy_price",
+                "at_sniper_min_move_pct", "at_sniper_max_buy_price", "at_sniper_use_live_price",
                 "at_sniper_cooldown_sec", "at_sniper_entry_delay_sec",
                 "at_sniper_entry_max_sec", "at_sniper_tp_enabled", "at_sniper_tp_pct",
                 # Maker Orders
@@ -116,6 +116,7 @@ class AutoTrader:
                 "sniper_slippage_pct": float(raw.get("at_sniper_slippage_pct", 5)),
                 "sniper_min_move_pct": float(raw.get("at_sniper_min_move_pct", 0.03)),
                 "sniper_max_buy_price": float(raw.get("at_sniper_max_buy_price", 0.60)),
+                "sniper_use_live_price": raw.get("at_sniper_use_live_price") == "true",
                 "sniper_cooldown_sec": int(raw.get("at_sniper_cooldown_sec", 0)),
                 "sniper_entry_delay_sec": int(raw.get("at_sniper_entry_delay_sec", 55)),
                 "sniper_entry_max_sec": int(raw.get("at_sniper_entry_max_sec", 150)),
@@ -434,8 +435,14 @@ class AutoTrader:
             token_result = await self._get_token_id(cid, direction)
             if not token_result:
                 return {"success": False, "error": f"No se encontró token_id para {direction}"}
-            token_id, selected_outcome = token_result
+            token_id, selected_outcome, live_price = token_result
             print(f"[AutoTrader] Token seleccionado: direction={direction} → outcome='{selected_outcome}' token={token_id[:16]}...", flush=True)
+
+            # Opción: usar precio live del CLOB en vez del poly_odds stale de la señal
+            strategy = trade_info.get("strategy", "score")
+            if strategy == "sniper" and self._config.get("sniper_use_live_price", False) and live_price > 0:
+                print(f"[AutoTrader] 📡 Live price: {live_price} (señal era {price})", flush=True)
+                price = live_price
 
             # Redondear precio a 2 decimales (Polymarket usa centavos)
             price = round(price, 2)
@@ -445,7 +452,6 @@ class AutoTrader:
             # FOK: agregar slippage para encontrar liquidez en el order book
             # El price en FOK BUY es el MÁXIMO que estamos dispuestos a pagar
             is_fok = order_mode == "market"
-            strategy = trade_info.get("strategy", "score")
             if is_fok:
                 # Sniper usa su propio slippage configurable
                 if strategy == "sniper":
@@ -677,8 +683,8 @@ class AutoTrader:
             return {"success": False, "error": error}
 
     async def _get_token_id(self, condition_id: str, direction: str) -> Optional[tuple]:
-        """Obtener (token_id, outcome_label) del outcome correcto via CLOB API.
-        Retorna tupla (token_id, outcome) o None si no se encuentra.
+        """Obtener (token_id, outcome_label, live_price) del outcome correcto via CLOB API.
+        Retorna tupla (token_id, outcome, price) o None si no se encuentra.
         """
         try:
             import httpx
@@ -704,7 +710,7 @@ class AutoTrader:
                     outcome = token.get("outcome", "")
                     if outcome.lower() == target.lower():
                         print(f"[AutoTrader]   → SELECCIONADO: '{outcome}' (match directo)", flush=True)
-                        return (token.get("token_id", ""), outcome)
+                        return (token.get("token_id", ""), outcome, float(token.get("price", 0)))
 
                 # Paso 2: Mercados Yes/No — depende del contexto de la pregunta
                 # Si la pregunta contiene "up or down", Yes=Up y No=Down
@@ -723,13 +729,13 @@ class AutoTrader:
                     # Mercado "Will X go up?": Yes=Up, No=Down
                     if direction == "up" and outcome == "Yes":
                         print(f"[AutoTrader]   → SELECCIONADO: 'Yes' (up→Yes)", flush=True)
-                        return (token.get("token_id", ""), outcome)
+                        return (token.get("token_id", ""), outcome, float(token.get("price", 0)))
                     if direction == "down" and outcome == "Yes" and "down" in q_lower:
                         print(f"[AutoTrader]   → SELECCIONADO: 'Yes' (down question→Yes)", flush=True)
-                        return (token.get("token_id", ""), outcome)
+                        return (token.get("token_id", ""), outcome, float(token.get("price", 0)))
                     if direction == "down" and outcome == "No" and "up" in q_lower and "down" not in q_lower:
                         print(f"[AutoTrader]   → SELECCIONADO: 'No' (up question→No=down)", flush=True)
-                        return (token.get("token_id", ""), outcome)
+                        return (token.get("token_id", ""), outcome, float(token.get("price", 0)))
 
                 print(f"[AutoTrader]   → NO MATCH para direction={direction}", flush=True)
         except Exception as e:
@@ -757,7 +763,7 @@ class AutoTrader:
             token_result = await self._get_token_id(cid, direction)
             if not token_result:
                 return {"success": False, "error": f"No se encontró token_id para {direction}"}
-            token_id, selected_outcome = token_result
+            token_id, selected_outcome, _live_price = token_result
 
             # Precio maker = ask actual - spread_offset
             spread_offset = cfg["maker_spread_offset"]

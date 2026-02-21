@@ -2024,7 +2024,7 @@ async def get_autotrade_config(request: Request):
         "at_slippage_max_pct",
         # Sniper
         "at_use_sniper", "at_sniper_bet_size", "at_sniper_slippage_pct",
-        "at_sniper_min_move_pct", "at_sniper_max_buy_price",
+        "at_sniper_min_move_pct", "at_sniper_max_buy_price", "at_sniper_use_live_price",
         "at_sniper_cooldown_sec", "at_sniper_entry_delay_sec",
         "at_sniper_entry_max_sec", "at_sniper_tp_enabled", "at_sniper_tp_pct",
     ], user_id=uid)
@@ -2081,6 +2081,7 @@ async def get_autotrade_config(request: Request):
         "sniper_slippage_pct": float(raw.get("at_sniper_slippage_pct", 5)),
         "sniper_min_move_pct": float(raw.get("at_sniper_min_move_pct", 0.03)),
         "sniper_max_buy_price": float(raw.get("at_sniper_max_buy_price", 0.60)),
+        "sniper_use_live_price": raw.get("at_sniper_use_live_price") == "true",
         "sniper_cooldown_sec": int(raw.get("at_sniper_cooldown_sec", 0)),
         "sniper_entry_delay_sec": int(raw.get("at_sniper_entry_delay_sec", 55)),
         "sniper_entry_max_sec": int(raw.get("at_sniper_entry_max_sec", 150)),
@@ -2201,6 +2202,8 @@ async def save_autotrade_config(request: Request):
         data["at_sniper_min_move_pct"] = str(body["sniper_min_move_pct"])
     if "sniper_max_buy_price" in body:
         data["at_sniper_max_buy_price"] = str(body["sniper_max_buy_price"])
+    if "sniper_use_live_price" in body:
+        data["at_sniper_use_live_price"] = "true" if body["sniper_use_live_price"] else "false"
     if "sniper_cooldown_sec" in body:
         data["at_sniper_cooldown_sec"] = str(body["sniper_cooldown_sec"])
     if "sniper_entry_delay_sec" in body:
