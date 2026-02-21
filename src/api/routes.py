@@ -2027,6 +2027,7 @@ async def get_autotrade_config(request: Request):
         "at_sniper_min_move_pct", "at_sniper_max_buy_price", "at_sniper_use_live_price",
         "at_sniper_cooldown_sec", "at_sniper_entry_delay_sec",
         "at_sniper_entry_max_sec", "at_sniper_tp_enabled", "at_sniper_tp_pct",
+        "at_sniper_gtc_timeout_sec",
     ], user_id=uid)
     # Estadísticas reales del autotrader
     stats = await db.get_autotrade_stats(user_id=uid)
@@ -2087,6 +2088,7 @@ async def get_autotrade_config(request: Request):
         "sniper_entry_max_sec": int(raw.get("at_sniper_entry_max_sec", 150)),
         "sniper_tp_enabled": raw.get("at_sniper_tp_enabled") == "true",
         "sniper_tp_pct": float(raw.get("at_sniper_tp_pct", 30)),
+        "sniper_gtc_timeout_sec": int(raw.get("at_sniper_gtc_timeout_sec", 40)),
         "min_score": float(raw.get("at_min_score", 0)),
         "use_score_strategy": raw.get("at_use_score_strategy", "true") == "true",
         "use_early_entry": raw.get("at_use_early_entry", "false") == "true",
@@ -2214,6 +2216,8 @@ async def save_autotrade_config(request: Request):
         data["at_sniper_tp_enabled"] = "true" if body["sniper_tp_enabled"] else "false"
     if "sniper_tp_pct" in body:
         data["at_sniper_tp_pct"] = str(body["sniper_tp_pct"])
+    if "sniper_gtc_timeout_sec" in body:
+        data["at_sniper_gtc_timeout_sec"] = str(body["sniper_gtc_timeout_sec"])
     # Maker Orders config
     if "maker_spread_offset" in body:
         data["at_maker_spread_offset"] = str(body["maker_spread_offset"])

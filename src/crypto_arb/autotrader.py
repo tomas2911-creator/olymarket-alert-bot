@@ -74,6 +74,7 @@ class AutoTrader:
                 "at_sniper_min_move_pct", "at_sniper_max_buy_price", "at_sniper_use_live_price",
                 "at_sniper_cooldown_sec", "at_sniper_entry_delay_sec",
                 "at_sniper_entry_max_sec", "at_sniper_tp_enabled", "at_sniper_tp_pct",
+                "at_sniper_gtc_timeout_sec",
                 # Maker Orders
                 "at_maker_spread_offset", "at_maker_max_open_orders",
                 "at_maker_requote_threshold", "at_maker_fill_timeout_sec",
@@ -122,6 +123,7 @@ class AutoTrader:
                 "sniper_entry_max_sec": int(raw.get("at_sniper_entry_max_sec", 150)),
                 "sniper_tp_enabled": raw.get("at_sniper_tp_enabled") == "true",
                 "sniper_tp_pct": float(raw.get("at_sniper_tp_pct", 30)),
+                "sniper_gtc_timeout_sec": int(raw.get("at_sniper_gtc_timeout_sec", 40)),
                 # Maker Orders
                 "maker_spread_offset": float(raw.get("at_maker_spread_offset", config.AT_MAKER_SPREAD_OFFSET)),
                 "maker_max_open_orders": int(raw.get("at_maker_max_open_orders", config.AT_MAKER_MAX_OPEN_ORDERS)),
@@ -587,9 +589,11 @@ class AutoTrader:
             # ── GTC 'live': la orden está en el orderbook pero NO llenada aún ──
             # Hacer polling para verificar si se llena, y cancelar si no.
             if success and resp_status.lower() == "live" and order_id:
-                print(f"[AutoTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill...", flush=True)
+                gtc_timeout = self._config.get("sniper_gtc_timeout_sec", 40)
+                max_polls = max(gtc_timeout // 5, 1)
+                print(f"[AutoTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill ({gtc_timeout}s)...", flush=True)
                 filled = False
-                for attempt in range(8):  # 8 intentos × 5s = 40s máximo
+                for attempt in range(max_polls):
                     await asyncio.sleep(5)
                     try:
                         order_info = await loop.run_in_executor(
@@ -600,7 +604,7 @@ class AutoTrader:
                             current_status = order_info.get("status", "")
                         elif hasattr(order_info, "status"):
                             current_status = getattr(order_info, "status", "")
-                        print(f"[AutoTrader]   polling {attempt+1}/8: status={current_status}", flush=True)
+                        print(f"[AutoTrader]   polling {attempt+1}/{max_polls}: status={current_status}", flush=True)
                         if current_status.lower() == "matched":
                             filled = True
                             break
@@ -682,12 +686,31 @@ class AutoTrader:
             self._failed_cids[cid] = time.time()
             return {"success": False, "error": error}
 
+    async def _get_best_ask(self, client, token_id: str) -> float:
+        """Consultar el order book del CLOB para obtener el best ask real.
+        Retorna el precio del best ask, o 0 si no hay asks disponibles.
+        """
+        try:
+            resp = await client.get(f"{CLOB_HOST}/book", params={"token_id": token_id})
+            if resp.status_code == 200:
+                book = resp.json()
+                asks = book.get("asks", [])
+                if asks:
+                    # asks están ordenados de menor a mayor precio
+                    best_ask = float(asks[0].get("price", 0))
+                    return best_ask
+        except Exception as e:
+            print(f"[AutoTrader] _get_best_ask error: {e}", flush=True)
+        return 0
+
     async def _get_token_id(self, condition_id: str, direction: str) -> Optional[tuple]:
         """Obtener (token_id, outcome_label, live_price) del outcome correcto via CLOB API.
         Retorna tupla (token_id, outcome, price) o None si no se encuentra.
+        Si sniper_use_live_price está ON, consulta el order book para obtener el best ask real.
         """
         try:
             import httpx
+            use_book_ask = self._config.get("sniper_use_live_price", False)
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(f"{CLOB_HOST}/markets/{condition_id}")
                 if resp.status_code != 200:
@@ -710,7 +733,15 @@ class AutoTrader:
                     outcome = token.get("outcome", "")
                     if outcome.lower() == target.lower():
                         print(f"[AutoTrader]   → SELECCIONADO: '{outcome}' (match directo)", flush=True)
-                        return (token.get("token_id", ""), outcome, float(token.get("price", 0)))
+                        tid = token.get("token_id", "")
+                        indicative_price = float(token.get("price", 0))
+                        live_price = indicative_price
+                        if use_book_ask and tid:
+                            best_ask = await self._get_best_ask(client, tid)
+                            if best_ask > 0:
+                                live_price = best_ask
+                                print(f"[AutoTrader]   📊 Best ask: {best_ask} (indicativo: {indicative_price})", flush=True)
+                        return (tid, outcome, live_price)
 
                 # Paso 2: Mercados Yes/No — depende del contexto de la pregunta
                 # Si la pregunta contiene "up or down", Yes=Up y No=Down
@@ -726,16 +757,27 @@ class AutoTrader:
                         # En estos mercados, tokens son Up/Down no Yes/No
                         # Si llegamos aquí, es un caso raro
                         continue
+                    selected = False
                     # Mercado "Will X go up?": Yes=Up, No=Down
                     if direction == "up" and outcome == "Yes":
                         print(f"[AutoTrader]   → SELECCIONADO: 'Yes' (up→Yes)", flush=True)
-                        return (token.get("token_id", ""), outcome, float(token.get("price", 0)))
-                    if direction == "down" and outcome == "Yes" and "down" in q_lower:
+                        selected = True
+                    elif direction == "down" and outcome == "Yes" and "down" in q_lower:
                         print(f"[AutoTrader]   → SELECCIONADO: 'Yes' (down question→Yes)", flush=True)
-                        return (token.get("token_id", ""), outcome, float(token.get("price", 0)))
-                    if direction == "down" and outcome == "No" and "up" in q_lower and "down" not in q_lower:
+                        selected = True
+                    elif direction == "down" and outcome == "No" and "up" in q_lower and "down" not in q_lower:
                         print(f"[AutoTrader]   → SELECCIONADO: 'No' (up question→No=down)", flush=True)
-                        return (token.get("token_id", ""), outcome, float(token.get("price", 0)))
+                        selected = True
+                    if selected:
+                        tid = token.get("token_id", "")
+                        indicative_price = float(token.get("price", 0))
+                        live_price = indicative_price
+                        if use_book_ask and tid:
+                            best_ask = await self._get_best_ask(client, tid)
+                            if best_ask > 0:
+                                live_price = best_ask
+                                print(f"[AutoTrader]   📊 Best ask: {best_ask} (indicativo: {indicative_price})", flush=True)
+                        return (tid, outcome, live_price)
 
                 print(f"[AutoTrader]   → NO MATCH para direction={direction}", flush=True)
         except Exception as e:
@@ -1099,7 +1141,7 @@ class AutoTrader:
                         strategy = trade.get("strategy", "score")
 
                         # 1. Stop-Loss: vender si pérdida > X%
-                        if cfg["stop_loss_pct"] > 0 and pnl_pct <= -cfg["stop_loss_pct"]:
+                        if cfg.get("stop_loss_enabled") and cfg["stop_loss_pct"] > 0 and pnl_pct <= -cfg["stop_loss_pct"]:
                             sell_reason = f"STOP-LOSS ({pnl_pct:.1f}% <= -{cfg['stop_loss_pct']}%)"
 
                         # 2. Take-Profit: vender si ganancia > X%
@@ -1111,7 +1153,7 @@ class AutoTrader:
                             elif strategy == "early_entry" and cfg.get("ee_take_profit_enabled") and cfg.get("ee_take_profit_pct", 0) > 0:
                                 if pnl_pct >= cfg["ee_take_profit_pct"]:
                                     sell_reason = f"TP-EARLY-ENTRY ({pnl_pct:.1f}% >= +{cfg['ee_take_profit_pct']}%)"
-                            elif cfg["take_profit_pct"] > 0 and pnl_pct >= cfg["take_profit_pct"]:
+                            elif cfg.get("stop_loss_enabled") and cfg["take_profit_pct"] > 0 and pnl_pct >= cfg["take_profit_pct"]:
                                 sell_reason = f"TAKE-PROFIT ({pnl_pct:.1f}% >= +{cfg['take_profit_pct']}%)"
 
                         # 3. Max Holding Time: vender si pasó demasiado tiempo
