@@ -115,6 +115,17 @@ class PaperTradeStats:
 class WeatherPaperTrader:
     """Paper trader: registra señales como trades simulados y resuelve con datos reales."""
 
+    @staticmethod
+    def _is_no_trade(trade) -> bool:
+        """Detecta si un trade es de tipo NO (compra token NO).
+        Unifica la lógica para elimination, WU-NO, OBS-NO."""
+        strategy = getattr(trade, 'strategy', '') or (trade.get('strategy', '') if isinstance(trade, dict) else '')
+        label = getattr(trade, 'range_label', '') or (trade.get('range_label', '') if isinstance(trade, dict) else '')
+        return (strategy == "elimination"
+                or label.startswith("ELIM:")
+                or label.startswith("WU-NO:")
+                or label.startswith("OBS-NO:"))
+
     def __init__(self, bet_size: float = 10.0, db=None):
         self.bet_size = bet_size
         self._db = db
@@ -285,8 +296,8 @@ class WeatherPaperTrader:
                             continue
 
                         # Calcular PnL según strategy
-                        is_elim = trade.strategy == "elimination" or trade.range_label.startswith("ELIM:")
-                        if is_elim:
+                        is_no = self._is_no_trade(trade)
+                        if is_no:
                             # Compramos NO: ganamos si outcome es NO
                             won = winning.lower() == "no"
                         else:
@@ -346,8 +357,8 @@ class WeatherPaperTrader:
                         data = resp.json()
                         tokens = data.get("tokens", [])
                         # Buscar token correcto según strategy
-                        is_elim = trade.strategy == "elimination" or trade.range_label.startswith("ELIM:")
-                        target_outcome = "no" if is_elim else "yes"
+                        is_no = self._is_no_trade(trade)
+                        target_outcome = "no" if is_no else "yes"
                         for tok in tokens:
                             if tok.get("outcome", "").lower() == target_outcome:
                                 try:

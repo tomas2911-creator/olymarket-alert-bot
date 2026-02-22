@@ -680,7 +680,7 @@ class WeatherArbDetector:
             observed_rounded = round(observed_high)
 
             # Margen de seguridad: cuánto podría subir aún (aunque esté declining)
-            safety_margin = 2.0 if unit == "celsius" else 3.0  # 2°C o 3°F
+            safety_margin = 3.0 if unit == "celsius" else 5.0  # 3°C o 5°F
 
             # Confianza base
             if local_hour >= self._observation_high_confidence_hour:
@@ -715,20 +715,22 @@ class WeatherArbDetector:
                 if not is_above_impossible and not is_below_exceeded:
                     continue
 
-                # Calcular profit de comprar NO
-                no_price = 1.0 - poly_yes
-                if no_price >= 0.50:
-                    continue  # NO caro → ratio riesgo/recompensa malo
-                profit_pct = ((1.0 / no_price) - 1.0) * 100
-
-                if profit_pct < 20.0:
-                    continue  # Mínimo 20% profit para NO trades
-
                 # Confianza ajustada
                 conf = obs_confidence
                 if is_below_exceeded:
                     # "Ya superamos" es más seguro que "no llegaremos"
                     conf = min(98.0, conf + 5.0)
+
+                # Calcular profit y EV de comprar NO
+                no_price = 1.0 - poly_yes
+                if no_price <= 0.005 or no_price >= 0.995:
+                    continue  # Sin liquidez
+                profit_pct = ((1.0 / no_price) - 1.0) * 100
+
+                # Filtro EV: expected ROI = P(win)*profit - P(loss)*100
+                expected_roi = (conf / 100.0) * profit_pct - (1.0 - conf / 100.0) * 100.0
+                if expected_roi < 5.0:
+                    continue  # Mínimo 5% expected ROI
 
                 # Evitar duplicados
                 cid = r["condition_id"]
@@ -742,7 +744,7 @@ class WeatherArbDetector:
                     city_name=city["name"],
                     date=date_str,
                     range_label=f"OBS-NO: {label}",
-                    ensemble_prob=round(1.0 - (poly_yes * 0.01), 4),  # ~100% prob del NO
+                    ensemble_prob=round(conf / 100.0, 4),
                     poly_odds=round(no_price, 4),
                     edge_pct=round(profit_pct, 2),
                     confidence=round(conf, 1),
@@ -914,31 +916,40 @@ class WeatherArbDetector:
                         is_below_exceeded = True
 
                 # ── Caso 3: NO en bucket inalcanzable ──
-                # Si wu_high + safety < bucket min → imposible llegar
+                # Safety margin mayor para NO (más conservador)
+                no_safety = 3.0 if unit == "celsius" else 5.0
+                if declining:
+                    no_safety = 1.0 if unit == "celsius" else 2.0
                 is_above_impossible = False
                 if low != -999 and low != float("-inf"):
-                    if low > wu_high_rounded + safety_margin:
+                    if low > wu_high_rounded + no_safety:
                         is_above_impossible = True
+
+                # ABOVE_IMPOSSIBLE requiere temp declining (sin declining, la temp puede subir)
+                if is_above_impossible and not declining:
+                    is_above_impossible = False
 
                 if not is_below_exceeded and not is_above_impossible:
                     continue
-
-                # Calcular profit de comprar NO
-                no_price = 1.0 - poly_yes
-                if no_price >= 0.50:
-                    continue  # NO caro → ratio riesgo/recompensa malo
-                profit_pct = ((1.0 / no_price) - 1.0) * 100
-
-                if profit_pct < 20.0:
-                    continue  # Mínimo 20% profit para NO trades
 
                 # Confianza del NO
                 if is_below_exceeded:
                     # Certeza matemática: ya superamos ese bucket
                     conf = 99.0
                 else:
-                    # Inalcanzable: depende de declining
-                    conf = base_confidence if declining else base_confidence - 5.0
+                    # Inalcanzable + declining: alta confianza pero no 99%
+                    conf = min(97.0, base_confidence + 2.0)
+
+                # Calcular profit y EV de comprar NO
+                no_price = 1.0 - poly_yes
+                if no_price <= 0.005 or no_price >= 0.995:
+                    continue  # Sin liquidez
+                profit_pct = ((1.0 / no_price) - 1.0) * 100
+
+                # Filtro EV: expected ROI = P(win)*profit - P(loss)*100
+                expected_roi = (conf / 100.0) * profit_pct - (1.0 - conf / 100.0) * 100.0
+                if expected_roi < 5.0:
+                    continue  # Mínimo 5% expected ROI
 
                 reason = "BELOW_EXCEEDED" if is_below_exceeded else "ABOVE_IMPOSSIBLE"
                 signal = WeatherSignal(

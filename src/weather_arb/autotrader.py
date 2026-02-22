@@ -741,9 +741,13 @@ class WeatherAutoTrader:
                         if not winning_outcome:
                             continue
 
-                        # PnL: depende de si compramos Yes (conviction) o No (elimination)
-                        is_elim = trade.get("strategy") == "elimination" or trade.get("range_label", "").startswith("ELIM:")
-                        if is_elim:
+                        # PnL: depende de si compramos Yes o No (elimination/WU-NO/OBS-NO)
+                        _rl = trade.get("range_label", "")
+                        is_no_trade = (trade.get("strategy") == "elimination"
+                                       or _rl.startswith("ELIM:")
+                                       or _rl.startswith("WU-NO:")
+                                       or _rl.startswith("OBS-NO:"))
+                        if is_no_trade:
                             # Compramos NO: ganamos si outcome es NO
                             won = winning_outcome.lower() == "no"
                         else:
@@ -876,9 +880,13 @@ class WeatherAutoTrader:
                         if data.get("closed"):
                             continue
 
-                        # Determinar si es eliminación para trackear token correcto
-                        is_elim = trade.get("strategy") == "elimination" or trade.get("range_label", "").startswith("ELIM:")
-                        target_outcome = "no" if is_elim else "yes"
+                        # Determinar si es NO trade para trackear token correcto
+                        _rl2 = trade.get("range_label", "")
+                        is_no_trade = (trade.get("strategy") == "elimination"
+                                       or _rl2.startswith("ELIM:")
+                                       or _rl2.startswith("WU-NO:")
+                                       or _rl2.startswith("OBS-NO:"))
+                        target_outcome = "no" if is_no_trade else "yes"
 
                         current_price = 0.0
                         tokens = data.get("tokens", [])
@@ -972,10 +980,14 @@ class WeatherAutoTrader:
             return
 
         try:
-            is_elim = trade.get("strategy") == "elimination" or trade.get("range_label", "").startswith("ELIM:")
+            _rl3 = trade.get("range_label", "")
+            is_no_trade = (trade.get("strategy") == "elimination"
+                           or _rl3.startswith("ELIM:")
+                           or _rl3.startswith("WU-NO:")
+                           or _rl3.startswith("OBS-NO:"))
             token_id = trade.get("token_id", "")
             if not token_id:
-                if is_elim:
+                if is_no_trade:
                     token_id = await self._get_no_token_id(condition_id)
                 else:
                     token_id = await self._get_yes_token_id(condition_id)
