@@ -712,6 +712,10 @@ class WeatherArbDetector:
                     if high < observed_rounded:
                         is_below_exceeded = True
 
+                # ABOVE_IMPOSSIBLE: no apostar NO cuando mercado está >70% YES
+                if is_above_impossible and poly_yes > 0.70:
+                    is_above_impossible = False
+
                 if not is_above_impossible and not is_below_exceeded:
                     continue
 
@@ -723,8 +727,8 @@ class WeatherArbDetector:
 
                 # Calcular profit y EV de comprar NO
                 no_price = 1.0 - poly_yes
-                if no_price <= 0.005 or no_price >= 0.995:
-                    continue  # Sin liquidez
+                if no_price < 0.15:
+                    continue  # Mínimo 15¢ — no apostar contra consenso del mercado
                 profit_pct = ((1.0 / no_price) - 1.0) * 100
 
                 # Filtro EV: expected ROI = P(win)*profit - P(loss)*100
@@ -878,6 +882,10 @@ class WeatherArbDetector:
                         if edge_pct < self._wu_min_edge:
                             continue
 
+                        # Cap: si edge >500%, desacuerdo extremo con mercado → skip
+                        if edge_pct > 500.0:
+                            continue
+
                         signal = WeatherSignal(
                             city=city_slug,
                             city_name=city["name"],
@@ -929,6 +937,10 @@ class WeatherArbDetector:
                 if is_above_impossible and not declining:
                     is_above_impossible = False
 
+                # ABOVE_IMPOSSIBLE: no apostar NO cuando mercado está >70% YES
+                if is_above_impossible and poly_yes > 0.70:
+                    is_above_impossible = False
+
                 if not is_below_exceeded and not is_above_impossible:
                     continue
 
@@ -942,8 +954,8 @@ class WeatherArbDetector:
 
                 # Calcular profit y EV de comprar NO
                 no_price = 1.0 - poly_yes
-                if no_price <= 0.005 or no_price >= 0.995:
-                    continue  # Sin liquidez
+                if no_price < 0.15:
+                    continue  # Mínimo 15¢ — no apostar contra consenso del mercado
                 profit_pct = ((1.0 / no_price) - 1.0) * 100
 
                 # Filtro EV: expected ROI = P(win)*profit - P(loss)*100
