@@ -561,7 +561,7 @@ class PolymarketAlertBot:
         await asyncio.sleep(15)  # Esperar que feed y detector tengan datos
         while self._running and self.weather_detector:
             try:
-                # Señales del detector principal (conviction + elimination)
+                # Señales del detector principal (conviction + observation + elimination)
                 signals = self.weather_detector.get_recent_signals(50)
 
                 # Señales del early detector (si activo)
