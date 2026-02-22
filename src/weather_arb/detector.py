@@ -338,8 +338,15 @@ class WeatherArbDetector:
                     continue  # Probabilidad muy baja, no vale la pena
                 if poly_odds <= 0 or poly_odds >= 1:
                     continue
+                if poly_odds < 0.02:
+                    continue  # Odds < 2¢ → el mercado descarta este rango
                 if poly_odds > self._max_poly_odds:
                     continue  # Odds ya muy alto
+
+                # Filtro de sanidad: si ensemble dice >20% pero Poly dice <5%,
+                # el mercado sabe algo que el modelo no. No apostar.
+                if ensemble_prob > 0.20 and poly_odds < 0.05:
+                    continue
 
                 edge_pct = (ensemble_prob - poly_odds) * 100
                 # Confianza base del ensemble + boost de multi-source

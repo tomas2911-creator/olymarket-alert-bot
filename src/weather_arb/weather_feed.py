@@ -283,6 +283,14 @@ class WeatherFeed:
                                      ranges: list[dict]) -> dict[str, float]:
         """Calcular probabilidad ensemble para cada rango de temperatura.
 
+        Polymarket resuelve con la temperatura HIGH reportada por Weather
+        Underground, que es un entero redondeado. Por eso redondeamos cada
+        miembro del ensemble antes de asignar bucket.
+
+        Además, el ensemble GFS tiene un sesgo frío sistemático de ~0.5-1.5°C
+        respecto al forecast determinístico. Si tenemos el determinístico,
+        ajustamos los miembros para corregir el bias.
+
         Args:
             forecast: CityForecast con ensemble_max_temps
             ranges: Lista de dicts con "label", "low", "high" del mercado Polymarket
@@ -293,22 +301,35 @@ class WeatherFeed:
         if not forecast.ensemble_max_temps or not ranges:
             return {}
 
-        n = len(forecast.ensemble_max_temps)
-        probs = {}
+        temps = list(forecast.ensemble_max_temps)
+        n = len(temps)
 
+        # ── Corrección de bias con forecast determinístico ──
+        # El ensemble GFS tiende a subestimar la max temp vs el modelo
+        # determinístico de alta resolución. Aplicamos shift si disponible.
+        if forecast.deterministic_max is not None and n > 0:
+            ens_mean = sum(temps) / n
+            bias = forecast.deterministic_max - ens_mean
+            # Solo corregir si el bias es positivo (ensemble frío) y razonable
+            if 0.2 < bias < 4.0:
+                temps = [t + bias for t in temps]
+
+        # ── Redondear al entero más cercano (como WU reporta) ──
+        rounded = [round(t) for t in temps]
+
+        probs = {}
         for r in ranges:
             label = r["label"]
             low = r.get("low", float("-inf"))
             high = r.get("high", float("inf"))
-            # Rangos abiertos (or below / or higher): inclusivo ambos lados
-            # Rangos cerrados (X-Y): low <= t < high+1 (cada grado entero es un bucket)
+            # Rangos abiertos (or below / or higher): inclusivo
+            # Rangos cerrados (X-Y): low <= round(t) <= high
             if high == 999 or high == float("inf"):
-                count = sum(1 for t in forecast.ensemble_max_temps if t >= low)
+                count = sum(1 for t in rounded if t >= low)
             elif low == -999 or low == float("-inf"):
-                count = sum(1 for t in forecast.ensemble_max_temps if t <= high)
+                count = sum(1 for t in rounded if t <= high)
             else:
-                # Rango cerrado: incluye temp truncada al entero más cercano
-                count = sum(1 for t in forecast.ensemble_max_temps if low <= t < high + 1)
+                count = sum(1 for t in rounded if low <= t <= high)
             probs[label] = count / n
 
         # Guardar en el forecast
