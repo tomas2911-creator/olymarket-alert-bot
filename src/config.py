@@ -211,6 +211,9 @@ WEATHER_MULTI_MIN_SOURCES = _weather_multi.get("min_sources", 2)
 WEATHERAPI_KEY = os.getenv("WEATHERAPI_KEY", "")
 VISUAL_CROSSING_KEY = os.getenv("VISUAL_CROSSING_KEY", "")
 
+# -- Weather Conviction Strategy (comprar YES en bucket ganador) --
+WEATHER_CONVICTION_ENABLED = _weather.get("conviction_enabled", True)
+
 # -- Weather Elimination Strategy --
 _weather_elim = _weather.get("elimination", {})
 WEATHER_ELIMINATION_ENABLED = _weather_elim.get("enabled", False)
@@ -538,6 +541,7 @@ def restore_from_db(saved: dict):
     cfg.WEATHER_MULTI_SOURCE_ENABLED = _bool("weather_multi_source_enabled", cfg.WEATHER_MULTI_SOURCE_ENABLED)
     cfg.WEATHER_MULTI_SOURCE_REFRESH = _int("weather_multi_source_refresh", cfg.WEATHER_MULTI_SOURCE_REFRESH)
     cfg.WEATHER_MULTI_MIN_SOURCES = _int("weather_multi_min_sources", cfg.WEATHER_MULTI_MIN_SOURCES)
+    cfg.WEATHER_CONVICTION_ENABLED = _bool("weather_conviction_enabled", cfg.WEATHER_CONVICTION_ENABLED)
     cfg.WEATHER_ELIMINATION_ENABLED = _bool("weather_elimination_enabled", cfg.WEATHER_ELIMINATION_ENABLED)
     cfg.WEATHER_ELIMINATION_MIN_PROFIT = _float("weather_elimination_min_profit", cfg.WEATHER_ELIMINATION_MIN_PROFIT)
     cfg.WEATHER_ELIMINATION_MAX_BET = _float("weather_elimination_max_bet", cfg.WEATHER_ELIMINATION_MAX_BET)

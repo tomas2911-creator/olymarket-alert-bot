@@ -3397,6 +3397,7 @@
                         <div class="flex flex-wrap gap-2 text-[10px]">
                             <span id="wa-mod-ensemble" class="px-2 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30">Ensemble (31 GFS)</span>
                             <span id="wa-mod-multi" class="px-2 py-1 rounded-full bg-gray-800/30 text-gray-500 border border-gray-700/30">Multi-Source</span>
+                            <span id="wa-mod-obs" class="px-2 py-1 rounded-full bg-gray-800/30 text-gray-500 border border-gray-700/30">🔭 Observation</span>
                             <span id="wa-mod-elim" class="px-2 py-1 rounded-full bg-gray-800/30 text-gray-500 border border-gray-700/30">Eliminación</span>
                             <span id="wa-mod-early" class="px-2 py-1 rounded-full bg-gray-800/30 text-gray-500 border border-gray-700/30">Early Entry</span>
                             <span id="wa-mod-sl" class="px-2 py-1 rounded-full bg-gray-800/30 text-gray-500 border border-gray-700/30">Stop-Loss</span>
@@ -3599,6 +3600,25 @@
                                     <div><label class="text-[10px] text-gray-500 block mb-1">Paper Bet ($)</label><input type="number" id="wa-det-papbet" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="50" min="1" max="1000"></div>
                                     <div class="flex items-center gap-2 pt-4"><label class="text-[10px] text-gray-500">Telegram Alerts</label><label class="toggle-switch"><input type="checkbox" id="wa-det-telegram" checked><span class="toggle-slider"></span></label></div>
                                 </div>
+                            </div>
+                        </div>
+                        <!-- Estrategias de Señales -->
+                        <div class="bg-gray-800/40 rounded-lg p-4 border border-emerald-900/30">
+                            <h4 class="text-xs font-semibold text-emerald-400 mb-3">🎯 Estrategias de Señales</h4>
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-3 mb-1">
+                                    <label class="toggle-switch"><input type="checkbox" id="wa-det-conviction" checked><span class="toggle-slider"></span></label>
+                                    <label class="text-[10px] text-gray-300">🌡️ <b>Conviction</b> — Ensemble multi-modelo vs odds Polymarket</label>
+                                </div>
+                                <div class="flex items-center gap-3 mb-1">
+                                    <label class="toggle-switch"><input type="checkbox" id="wa-det-observation" checked><span class="toggle-slider"></span></label>
+                                    <label class="text-[10px] text-gray-300">🔭 <b>Observation</b> — METAR tiempo real same-day</label>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3 pl-6">
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Hora Local Mín</label><input type="number" id="wa-det-obsminhour" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="14" min="8" max="20"></div>
+                                    <div><label class="text-[10px] text-gray-500 block mb-1">Hora Alta Confianza</label><input type="number" id="wa-det-obsconfhour" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="16" min="10" max="22"></div>
+                                </div>
+                                <div class="text-[10px] text-gray-500">Desactiva Conviction y Elimination para probar solo Observation</div>
                             </div>
                         </div>
                         <!-- Multi-Source -->
@@ -7799,9 +7819,11 @@ async function loadWeatherArb(){
             sTbody.innerHTML=signals.map(s=>{
                 const edgeColor=s.edge_pct>=15?'text-green-400':s.edge_pct>=8?'text-yellow-400':'text-gray-400';
                 const ts=s.timestamp?new Date(s.timestamp).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'';
-                const isElim=(s.range_label||'').startsWith('ELIM:');
+                const isElim=s.strategy==='elimination'||(s.range_label||'').startsWith('ELIM:');
+                const isObs=s.strategy==='observation';
                 const isEarly=s._early||s.strategy==='early_entry';
                 let badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-sky-900/40 text-sky-400">CONV</span>';
+                if(isObs)badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-emerald-900/40 text-emerald-400">OBS</span>';
                 if(isElim)badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-red-900/40 text-red-400">ELIM</span>';
                 if(isEarly)badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-yellow-900/40 text-yellow-400">EARLY</span>';
                 return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
@@ -8126,6 +8148,11 @@ async function waLoadDetectorConfig(){
         document.getElementById('wa-det-refresh').value=r.forecast_refresh||1800;
         document.getElementById('wa-det-papbet').value=r.paper_bet||50;
         document.getElementById('wa-det-telegram').checked=r.telegram_alerts!==false;
+        // Strategies
+        document.getElementById('wa-det-conviction').checked=r.conviction_enabled!==false;
+        document.getElementById('wa-det-observation').checked=r.observation_enabled!==false;
+        document.getElementById('wa-det-obsminhour').value=r.observation_min_hour||14;
+        document.getElementById('wa-det-obsconfhour').value=r.observation_high_conf_hour||16;
         // Multi-source
         document.getElementById('wa-det-multi').checked=r.multi_source_enabled||false;
         document.getElementById('wa-det-multirefresh').value=r.multi_source_refresh||3600;
@@ -8135,8 +8162,9 @@ async function waLoadDetectorConfig(){
         document.getElementById('wa-det-elimprofit').value=r.elimination_min_profit||2;
         document.getElementById('wa-det-elimbet').value=r.elimination_max_bet||50;
         document.getElementById('wa-det-elimzero').checked=r.elimination_require_zero!==false;
-        // Module badge for elimination
+        // Module badges
         if(r.elimination_enabled){document.getElementById('wa-mod-elim').className='px-2 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30';}
+        if(r.observation_enabled){document.getElementById('wa-mod-obs').className='px-2 py-1 rounded-full bg-green-900/30 text-green-400 border border-green-800/30';}
         // Early detector
         document.getElementById('wa-det-early').checked=r.early_enabled||false;
         document.getElementById('wa-det-earlyscan').value=r.early_scan_interval||60;
@@ -8155,6 +8183,11 @@ async function waSaveDetectorConfig(){
             forecast_refresh:parseInt(document.getElementById('wa-det-refresh').value)||1800,
             paper_bet:parseFloat(document.getElementById('wa-det-papbet').value)||50,
             telegram_alerts:document.getElementById('wa-det-telegram').checked,
+            // Strategies
+            conviction_enabled:document.getElementById('wa-det-conviction').checked,
+            observation_enabled:document.getElementById('wa-det-observation').checked,
+            observation_min_hour:parseInt(document.getElementById('wa-det-obsminhour').value)||14,
+            observation_high_conf_hour:parseInt(document.getElementById('wa-det-obsconfhour').value)||16,
             // Multi-source
             multi_source_enabled:document.getElementById('wa-det-multi').checked,
             multi_source_refresh:parseInt(document.getElementById('wa-det-multirefresh').value)||3600,

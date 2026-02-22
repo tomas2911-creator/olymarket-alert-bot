@@ -4270,12 +4270,17 @@ async def get_weather_detector_config(request: Request):
         "feature_weather_arb", "weather_min_edge", "weather_min_confidence",
         "weather_max_poly_odds", "weather_scan_interval", "weather_forecast_refresh",
         "weather_paper_bet", "weather_telegram",
+        # Strategies
+        "weather_conviction_enabled",
         # Multi-source
         "weather_multi_source_enabled", "weather_multi_source_refresh",
         "weather_multi_min_sources",
         # Elimination
         "weather_elimination_enabled", "weather_elimination_min_profit",
         "weather_elimination_max_bet", "weather_elimination_require_zero",
+        # Observation
+        "weather_observation_enabled", "weather_observation_min_hour",
+        "weather_observation_high_conf_hour", "weather_observation_max_poly_odds",
         # Early detector
         "weather_early_enabled", "weather_early_scan_interval",
         "weather_early_min_edge", "weather_early_min_confidence",
@@ -4294,6 +4299,8 @@ async def get_weather_detector_config(request: Request):
         "forecast_refresh": int(raw.get("weather_forecast_refresh", config.WEATHER_ARB_FORECAST_REFRESH)),
         "paper_bet": float(raw.get("weather_paper_bet", config.WEATHER_ARB_PAPER_BET)),
         "telegram_alerts": raw.get("weather_telegram", str(config.WEATHER_ARB_TELEGRAM)).lower() in ("true", "1"),
+        # Strategies
+        "conviction_enabled": raw.get("weather_conviction_enabled", str(config.WEATHER_CONVICTION_ENABLED)).lower() in ("true", "1"),
         # Multi-source
         "multi_source_enabled": raw.get("weather_multi_source_enabled", str(config.WEATHER_MULTI_SOURCE_ENABLED)).lower() in ("true", "1"),
         "multi_source_refresh": int(raw.get("weather_multi_source_refresh", config.WEATHER_MULTI_SOURCE_REFRESH)),
@@ -4303,6 +4310,11 @@ async def get_weather_detector_config(request: Request):
         "elimination_min_profit": float(raw.get("weather_elimination_min_profit", config.WEATHER_ELIMINATION_MIN_PROFIT)),
         "elimination_max_bet": float(raw.get("weather_elimination_max_bet", config.WEATHER_ELIMINATION_MAX_BET)),
         "elimination_require_zero": raw.get("weather_elimination_require_zero", str(config.WEATHER_ELIMINATION_REQUIRE_ZERO)).lower() in ("true", "1"),
+        # Observation
+        "observation_enabled": raw.get("weather_observation_enabled", str(config.WEATHER_OBSERVATION_ENABLED)).lower() in ("true", "1"),
+        "observation_min_hour": int(raw.get("weather_observation_min_hour", config.WEATHER_OBSERVATION_MIN_HOUR)),
+        "observation_high_conf_hour": int(raw.get("weather_observation_high_conf_hour", config.WEATHER_OBSERVATION_HIGH_CONF_HOUR)),
+        "observation_max_poly_odds": float(raw.get("weather_observation_max_poly_odds", config.WEATHER_OBSERVATION_MAX_POLY_ODDS)),
         # Early detector
         "early_enabled": raw.get("weather_early_enabled", str(config.WEATHER_EARLY_ENABLED)).lower() in ("true", "1"),
         "early_scan_interval": int(raw.get("weather_early_scan_interval", config.WEATHER_EARLY_SCAN_INTERVAL)),
@@ -4333,6 +4345,7 @@ async def save_weather_detector_config(request: Request):
         "forecast_refresh": ("weather_forecast_refresh", str),
         "paper_bet": ("weather_paper_bet", str),
         "telegram_alerts": ("weather_telegram", lambda v: "true" if v else "false"),
+        "conviction_enabled": ("weather_conviction_enabled", lambda v: "true" if v else "false"),
         "multi_source_enabled": ("weather_multi_source_enabled", lambda v: "true" if v else "false"),
         "multi_source_refresh": ("weather_multi_source_refresh", str),
         "multi_min_sources": ("weather_multi_min_sources", str),
@@ -4340,6 +4353,10 @@ async def save_weather_detector_config(request: Request):
         "elimination_min_profit": ("weather_elimination_min_profit", str),
         "elimination_max_bet": ("weather_elimination_max_bet", str),
         "elimination_require_zero": ("weather_elimination_require_zero", lambda v: "true" if v else "false"),
+        "observation_enabled": ("weather_observation_enabled", lambda v: "true" if v else "false"),
+        "observation_min_hour": ("weather_observation_min_hour", str),
+        "observation_high_conf_hour": ("weather_observation_high_conf_hour", str),
+        "observation_max_poly_odds": ("weather_observation_max_poly_odds", str),
         "early_enabled": ("weather_early_enabled", lambda v: "true" if v else "false"),
         "early_scan_interval": ("weather_early_scan_interval", str),
         "early_min_edge": ("weather_early_min_edge", str),
@@ -4366,10 +4383,15 @@ async def save_weather_detector_config(request: Request):
                 "min_confidence": float(data.get("weather_min_confidence", config.WEATHER_ARB_MIN_CONFIDENCE)),
                 "max_poly_odds": float(data.get("weather_max_poly_odds", config.WEATHER_ARB_MAX_POLY_ODDS)),
                 "scan_interval": int(data.get("weather_scan_interval", config.WEATHER_ARB_SCAN_INTERVAL)),
+                "conviction_enabled": data.get("weather_conviction_enabled", str(config.WEATHER_CONVICTION_ENABLED)).lower() in ("true", "1"),
                 "elimination_enabled": data.get("weather_elimination_enabled", str(config.WEATHER_ELIMINATION_ENABLED)).lower() in ("true", "1"),
                 "elimination_min_profit": float(data.get("weather_elimination_min_profit", config.WEATHER_ELIMINATION_MIN_PROFIT)),
                 "elimination_max_bet": float(data.get("weather_elimination_max_bet", config.WEATHER_ELIMINATION_MAX_BET)),
                 "elimination_require_zero": data.get("weather_elimination_require_zero", str(config.WEATHER_ELIMINATION_REQUIRE_ZERO)).lower() in ("true", "1"),
+                "observation_enabled": data.get("weather_observation_enabled", str(config.WEATHER_OBSERVATION_ENABLED)).lower() in ("true", "1"),
+                "observation_min_hour": int(data.get("weather_observation_min_hour", config.WEATHER_OBSERVATION_MIN_HOUR)),
+                "observation_high_confidence_hour": int(data.get("weather_observation_high_conf_hour", config.WEATHER_OBSERVATION_HIGH_CONF_HOUR)),
+                "observation_max_poly_odds": float(data.get("weather_observation_max_poly_odds", config.WEATHER_OBSERVATION_MAX_POLY_ODDS)),
             })
         if getattr(bot, "weather_autotrader", None):
             await bot.weather_autotrader.reload_config(user_id=uid)

@@ -449,6 +449,7 @@ class PolymarketAlertBot:
                 "max_poly_odds": config.WEATHER_ARB_MAX_POLY_ODDS,
                 "scan_interval": config.WEATHER_ARB_SCAN_INTERVAL,
                 "enabled_cities": cities,
+                "conviction_enabled": config.WEATHER_CONVICTION_ENABLED,
                 "elimination_enabled": config.WEATHER_ELIMINATION_ENABLED,
                 "elimination_min_profit": config.WEATHER_ELIMINATION_MIN_PROFIT,
                 "elimination_max_bet": config.WEATHER_ELIMINATION_MAX_BET,

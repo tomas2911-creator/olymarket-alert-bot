@@ -85,6 +85,8 @@ class WeatherArbDetector:
         self._max_poly_odds = 0.85    # No comprar si odds ya muy alto
         self._scan_interval = 300     # Escanear mercados cada 5 min
         self._enabled_cities: Optional[list[str]] = None  # None = todas
+        # Conviction strategy (comprar YES en bucket ganador)
+        self._conviction_enabled = True
         # Elimination strategy
         self._elimination_enabled = False
         self._elimination_min_profit = 2.0  # % mínimo de profit
@@ -103,6 +105,8 @@ class WeatherArbDetector:
         self._max_poly_odds = cfg.get("max_poly_odds", self._max_poly_odds)
         self._scan_interval = cfg.get("scan_interval", self._scan_interval)
         self._enabled_cities = cfg.get("enabled_cities", self._enabled_cities)
+        # Conviction strategy
+        self._conviction_enabled = cfg.get("conviction_enabled", self._conviction_enabled)
         # Elimination strategy
         self._elimination_enabled = cfg.get("elimination_enabled", self._elimination_enabled)
         self._elimination_min_profit = cfg.get("elimination_min_profit", self._elimination_min_profit)
@@ -127,9 +131,10 @@ class WeatherArbDetector:
                     self._last_scan = now
 
                 # Buscar señales de convicción (comprar YES)
-                signals = await self._check_edges()
-                for signal in signals:
-                    self._record_signal(signal)
+                if self._conviction_enabled:
+                    signals = await self._check_edges()
+                    for signal in signals:
+                        self._record_signal(signal)
 
                 # Buscar señales de observación (same-day METAR edge)
                 if self._observation_enabled and self.metar_feed:
