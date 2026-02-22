@@ -18,6 +18,7 @@ import httpx
 
 from src import config
 from src.weather_arb.weather_feed import WeatherFeed, CITY_BY_SLUG, WEATHER_CITIES
+from src.weather_arb.metar_feed import MetarFeed
 
 logger = structlog.get_logger()
 
@@ -69,9 +70,10 @@ class WeatherSignal:
 class WeatherArbDetector:
     """Detecta oportunidades de arbitraje en mercados weather de Polymarket."""
 
-    def __init__(self, weather_feed: WeatherFeed, multi_feed=None):
+    def __init__(self, weather_feed: WeatherFeed, multi_feed=None, metar_feed=None):
         self.feed = weather_feed
         self.multi_feed = multi_feed  # MultiWeatherFeed opcional
+        self.metar_feed = metar_feed  # MetarFeed para observaciones en tiempo real
         self._active_markets: dict[str, dict] = {}  # event_slug → market_data
         self._last_scan = 0.0
         self._signals_today: list[WeatherSignal] = []
@@ -88,6 +90,11 @@ class WeatherArbDetector:
         self._elimination_min_profit = 2.0  # % mínimo de profit
         self._elimination_max_bet = 50      # Máximo por trade de eliminación
         self._elimination_require_zero = True  # Requerir 0/31 miembros en rango
+        # Observation strategy (same-day METAR edge)
+        self._observation_enabled = True
+        self._observation_min_hour = 14  # Hora local mínima para señales de observación
+        self._observation_high_confidence_hour = 16  # Hora local para confianza máxima
+        self._observation_max_poly_odds = 0.85  # No comprar si ya > 85¢
 
     def configure(self, cfg: dict):
         """Actualizar configuración desde config.py o DB."""
@@ -101,6 +108,11 @@ class WeatherArbDetector:
         self._elimination_min_profit = cfg.get("elimination_min_profit", self._elimination_min_profit)
         self._elimination_max_bet = cfg.get("elimination_max_bet", self._elimination_max_bet)
         self._elimination_require_zero = cfg.get("elimination_require_zero", self._elimination_require_zero)
+        # Observation strategy
+        self._observation_enabled = cfg.get("observation_enabled", self._observation_enabled)
+        self._observation_min_hour = cfg.get("observation_min_hour", self._observation_min_hour)
+        self._observation_high_confidence_hour = cfg.get("observation_high_confidence_hour", self._observation_high_confidence_hour)
+        self._observation_max_poly_odds = cfg.get("observation_max_poly_odds", self._observation_max_poly_odds)
 
     async def start(self):
         """Loop principal: escanear mercados y detectar divergencias."""
@@ -118,6 +130,12 @@ class WeatherArbDetector:
                 signals = await self._check_edges()
                 for signal in signals:
                     self._record_signal(signal)
+
+                # Buscar señales de observación (same-day METAR edge)
+                if self._observation_enabled and self.metar_feed:
+                    obs_signals = await self._check_observation_edges()
+                    for signal in obs_signals:
+                        self._record_signal(signal)
 
                 # Buscar señales de eliminación (comprar NO)
                 if self._elimination_enabled:
@@ -398,6 +416,133 @@ class WeatherArbDetector:
 
         return signals
 
+    async def _check_observation_edges(self) -> list[WeatherSignal]:
+        """Buscar edge usando observaciones METAR en tiempo real (same-day).
+
+        Lógica: si la hora local >= 14:00 y tenemos el observed_high del día,
+        podemos estimar con alta confianza en qué bucket caerá la resolución.
+        Si el mercado no ajustó precios → edge enorme.
+        """
+        signals = []
+        if not self.metar_feed:
+            return signals
+
+        now_utc = datetime.now(timezone.utc)
+        today_str = now_utc.strftime("%Y-%m-%d")
+
+        for slug, mdata in self._active_markets.items():
+            city = mdata["city"]
+            city_slug = city["slug"]
+            date_str = mdata["date"]
+            ranges = mdata["ranges"]
+
+            # Solo aplica a mercados de HOY
+            if date_str != today_str:
+                continue
+
+            # Verificar hora local de la ciudad
+            tz_name = city.get("tz", "UTC")
+            try:
+                from zoneinfo import ZoneInfo
+                local_now = now_utc.astimezone(ZoneInfo(tz_name))
+                local_hour = local_now.hour
+            except Exception:
+                continue
+
+            if local_hour < self._observation_min_hour:
+                continue
+
+            # Obtener observación METAR
+            if not self.metar_feed.is_observation_fresh(city_slug, max_age_sec=1800):
+                continue
+
+            unit = city["unit"]
+            observed_high = self.metar_feed.get_observed_high(city_slug, unit=unit)
+            if observed_high is None:
+                continue
+
+            # Calcular confianza basada en hora local
+            if local_hour >= self._observation_high_confidence_hour:
+                obs_confidence = 95.0
+            else:
+                # Interpolación lineal entre min_hour y high_confidence_hour
+                progress = (local_hour - self._observation_min_hour) / max(1, self._observation_high_confidence_hour - self._observation_min_hour)
+                obs_confidence = 70.0 + progress * 25.0  # 70% a 95%
+
+            # Boost extra si la temperatura ya está bajando
+            if self.metar_feed.is_temp_declining(city_slug):
+                obs_confidence = min(98.0, obs_confidence + 5.0)
+
+            # Encontrar el bucket correcto para el observed_high
+            observed_rounded = round(observed_high)
+
+            for r in ranges:
+                label = r["label"]
+                low = r["low"]
+                high = r["high"]
+                poly_odds = r["yes_price"]
+
+                # Determinar si observed_high cae en este bucket
+                in_bucket = False
+                if high == 999 or high == float("inf"):
+                    in_bucket = observed_rounded >= low
+                elif low == -999 or low == float("-inf"):
+                    in_bucket = observed_rounded <= high
+                else:
+                    in_bucket = low <= observed_rounded <= high
+
+                if not in_bucket:
+                    continue
+
+                # Este es el bucket donde observed_high cae
+                if poly_odds <= 0 or poly_odds >= 1:
+                    continue
+                if poly_odds > self._observation_max_poly_odds:
+                    continue
+
+                # Edge = diferencia entre confianza observada y precio del mercado
+                obs_prob = obs_confidence / 100.0
+                edge_pct = (obs_prob - poly_odds) * 100
+
+                if edge_pct < 5.0:  # Mínimo 5% edge para observation
+                    continue
+
+                # Evitar duplicados
+                cid = r["condition_id"]
+                already = any(s.condition_id == cid and s.strategy == "observation"
+                              for s in self._signals_today)
+                if already:
+                    continue
+
+                signal = WeatherSignal(
+                    city=city_slug,
+                    city_name=city["name"],
+                    date=date_str,
+                    range_label=label,
+                    ensemble_prob=obs_prob,
+                    poly_odds=poly_odds,
+                    edge_pct=round(edge_pct, 2),
+                    confidence=round(obs_confidence, 1),
+                    condition_id=cid,
+                    market_question=r.get("question", ""),
+                    event_slug=slug,
+                    mean_temp=observed_high,
+                    std_temp=0.0,
+                    ensemble_members=0,
+                    unit=unit,
+                    token_id=r.get("yes_token", ""),
+                    strategy="observation",
+                    resolution_source=mdata.get("resolution_source", ""),
+                )
+                signals.append(signal)
+                print(f"[WeatherDetector] 🔭 OBSERVATION SIGNAL: {city['name']} {date_str} "
+                      f"→ {label} observed_high={observed_high:.0f} "
+                      f"poly={poly_odds:.2f} edge={edge_pct:.1f}% "
+                      f"conf={obs_confidence:.0f}% declining={self.metar_feed.is_temp_declining(city_slug)}",
+                      flush=True)
+
+        return signals
+
     async def _check_elimination_edges(self) -> list[WeatherSignal]:
         """Buscar rangos con 0% ensemble pero >3¢ en Polymarket → comprar NO.
 
@@ -509,9 +654,12 @@ class WeatherArbDetector:
     def _record_signal(self, signal: WeatherSignal):
         """Registrar señal en la lista del día."""
         self._signals_today.append(signal)
-        is_elim = signal.range_label.startswith("ELIM:")
-        emoji = "🚫" if is_elim else "🌡️"
-        stype = "ELIMINACIÓN" if is_elim else "SEÑAL"
+        if signal.strategy == "elimination":
+            emoji, stype = "🚫", "ELIMINACIÓN"
+        elif signal.strategy == "observation":
+            emoji, stype = "🔭", "OBSERVACIÓN"
+        else:
+            emoji, stype = "🌡️", "SEÑAL"
         print(f"[WeatherDetector] {emoji} {stype}: {signal.city_name} {signal.date} "
               f"→ {signal.range_label} | ensemble={signal.ensemble_prob:.0%} "
               f"poly={signal.poly_odds:.0%} edge={signal.edge_pct:.1f}% "

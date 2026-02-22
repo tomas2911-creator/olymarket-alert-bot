@@ -218,6 +218,15 @@ WEATHER_ELIMINATION_MIN_PROFIT = _weather_elim.get("min_profit_pct", 2.0)
 WEATHER_ELIMINATION_MAX_BET = _weather_elim.get("max_bet", 50)
 WEATHER_ELIMINATION_REQUIRE_ZERO = _weather_elim.get("require_zero_members", True)
 
+# -- Weather METAR Observation (same-day real-time edge) --
+_weather_metar = _weather.get("metar", {})
+WEATHER_METAR_ENABLED = _weather_metar.get("enabled", True)
+WEATHER_METAR_REFRESH = _weather_metar.get("refresh_sec", 300)
+WEATHER_OBSERVATION_ENABLED = _weather_metar.get("observation_enabled", True)
+WEATHER_OBSERVATION_MIN_HOUR = _weather_metar.get("min_hour", 14)
+WEATHER_OBSERVATION_HIGH_CONF_HOUR = _weather_metar.get("high_confidence_hour", 16)
+WEATHER_OBSERVATION_MAX_POLY_ODDS = _weather_metar.get("max_poly_odds", 0.85)
+
 # -- Weather Early Detector --
 _weather_early = _weather.get("early_detector", {})
 WEATHER_EARLY_ENABLED = _weather_early.get("enabled", False)
@@ -533,6 +542,12 @@ def restore_from_db(saved: dict):
     cfg.WEATHER_ELIMINATION_MIN_PROFIT = _float("weather_elimination_min_profit", cfg.WEATHER_ELIMINATION_MIN_PROFIT)
     cfg.WEATHER_ELIMINATION_MAX_BET = _float("weather_elimination_max_bet", cfg.WEATHER_ELIMINATION_MAX_BET)
     cfg.WEATHER_ELIMINATION_REQUIRE_ZERO = _bool("weather_elimination_require_zero", cfg.WEATHER_ELIMINATION_REQUIRE_ZERO)
+    cfg.WEATHER_METAR_ENABLED = _bool("weather_metar_enabled", cfg.WEATHER_METAR_ENABLED)
+    cfg.WEATHER_METAR_REFRESH = _int("weather_metar_refresh", cfg.WEATHER_METAR_REFRESH)
+    cfg.WEATHER_OBSERVATION_ENABLED = _bool("weather_observation_enabled", cfg.WEATHER_OBSERVATION_ENABLED)
+    cfg.WEATHER_OBSERVATION_MIN_HOUR = _int("weather_observation_min_hour", cfg.WEATHER_OBSERVATION_MIN_HOUR)
+    cfg.WEATHER_OBSERVATION_HIGH_CONF_HOUR = _int("weather_observation_high_conf_hour", cfg.WEATHER_OBSERVATION_HIGH_CONF_HOUR)
+    cfg.WEATHER_OBSERVATION_MAX_POLY_ODDS = _float("weather_observation_max_poly_odds", cfg.WEATHER_OBSERVATION_MAX_POLY_ODDS)
     cfg.WEATHER_EARLY_ENABLED = _bool("weather_early_enabled", cfg.WEATHER_EARLY_ENABLED)
     cfg.WEATHER_EARLY_SCAN_INTERVAL = _int("weather_early_scan_interval", cfg.WEATHER_EARLY_SCAN_INTERVAL)
     cfg.WEATHER_EARLY_MIN_EDGE = _float("weather_early_min_edge", cfg.WEATHER_EARLY_MIN_EDGE)

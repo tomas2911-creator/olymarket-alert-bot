@@ -53,6 +53,7 @@ from src.weather_arb.autotrader import WeatherAutoTrader
 from src.weather_arb.backtester import WeatherPaperTrader
 from src.weather_arb.multi_feed import MultiWeatherFeed
 from src.weather_arb.early_weather import EarlyWeatherDetector
+from src.weather_arb.metar_feed import MetarFeed
 from src.crypto_arb.paper_trader import MakerPaperTrader
 
 structlog.configure(
@@ -430,10 +431,17 @@ class PolymarketAlertBot:
                 "weatherapi_key": config.WEATHERAPI_KEY,
                 "visual_crossing_key": config.VISUAL_CROSSING_KEY,
             })
-            # Detector con multi-source
+            # METAR feed (observaciones en tiempo real de aeropuertos)
+            self.metar_feed = MetarFeed(
+                cities=cities,
+                refresh_interval=config.WEATHER_METAR_REFRESH,
+            )
+            self.metar_feed._enabled = config.WEATHER_METAR_ENABLED
+            # Detector con multi-source + METAR
             self.weather_detector = WeatherArbDetector(
                 self.weather_feed,
                 multi_feed=self.weather_multi_feed,
+                metar_feed=self.metar_feed,
             )
             self.weather_detector.configure({
                 "min_edge": config.WEATHER_ARB_MIN_EDGE,
@@ -445,6 +453,10 @@ class PolymarketAlertBot:
                 "elimination_min_profit": config.WEATHER_ELIMINATION_MIN_PROFIT,
                 "elimination_max_bet": config.WEATHER_ELIMINATION_MAX_BET,
                 "elimination_require_zero": config.WEATHER_ELIMINATION_REQUIRE_ZERO,
+                "observation_enabled": config.WEATHER_OBSERVATION_ENABLED,
+                "observation_min_hour": config.WEATHER_OBSERVATION_MIN_HOUR,
+                "observation_high_confidence_hour": config.WEATHER_OBSERVATION_HIGH_CONF_HOUR,
+                "observation_max_poly_odds": config.WEATHER_OBSERVATION_MAX_POLY_ODDS,
             })
             self.weather_paper = WeatherPaperTrader(bet_size=config.WEATHER_ARB_PAPER_BET, db=self.db)
             await self.weather_paper.load_from_db()
@@ -466,15 +478,19 @@ class PolymarketAlertBot:
             asyncio.create_task(self._run_weather_signal_loop())
             asyncio.create_task(self._run_weather_multi_feed())
             asyncio.create_task(self._run_weather_early_detector())
+            asyncio.create_task(self._run_metar_feed())
             at_status = "ON" if self.weather_autotrader._enabled and self.weather_autotrader._client else "OFF (solo señales + paper)"
             multi_status = "ON" if config.WEATHER_MULTI_SOURCE_ENABLED else "OFF"
             early_status = "ON" if config.WEATHER_EARLY_ENABLED else "OFF"
             elim_status = "ON" if config.WEATHER_ELIMINATION_ENABLED else "OFF"
+            metar_status = "ON" if config.WEATHER_METAR_ENABLED else "OFF"
+            obs_status = "ON" if config.WEATHER_OBSERVATION_ENABLED else "OFF"
             print(f"Weather Arb iniciado: cities={cities or 'ALL'} "
                   f"edge>={config.WEATHER_ARB_MIN_EDGE}% "
                   f"conf>={config.WEATHER_ARB_MIN_CONFIDENCE}% "
                   f"autotrader={at_status} multi_source={multi_status} "
-                  f"early={early_status} elimination={elim_status}", flush=True)
+                  f"early={early_status} elimination={elim_status} "
+                  f"metar={metar_status} observation={obs_status}", flush=True)
         except Exception as e:
             print(f"Error iniciando Weather Arb: {e}", flush=True)
             import traceback
@@ -520,6 +536,17 @@ class PolymarketAlertBot:
                 await self.weather_early_detector.start()
             except Exception as e:
                 print(f"[EarlyWeather] Error: {e}", flush=True)
+            if self._running:
+                await asyncio.sleep(30)
+
+    async def _run_metar_feed(self):
+        """Loop para METAR observation feed (aviationweather.gov)."""
+        await asyncio.sleep(5)  # Iniciar rápido para tener observaciones pronto
+        while self._running and hasattr(self, 'metar_feed') and self.metar_feed:
+            try:
+                await self.metar_feed.start()
+            except Exception as e:
+                print(f"[MetarFeed] Error: {e}", flush=True)
             if self._running:
                 await asyncio.sleep(30)
 
@@ -591,6 +618,8 @@ class PolymarketAlertBot:
             await self.weather_feed.stop()
         if self.weather_detector:
             await self.weather_detector.stop()
+        if hasattr(self, 'metar_feed') and self.metar_feed:
+            await self.metar_feed.stop()
         await self.db.close()
 
     async def _on_ws_trade(self, data: dict):

@@ -51,48 +51,48 @@ class CityForecast:
 # Ciudades con mercados de temperatura en Polymarket
 # lat/lon son de la estación meteorológica que usa Wunderground para resolución
 WEATHER_CITIES = [
-    {"slug": "nyc", "name": "New York City", "lat": 40.77, "lon": -73.87,
+    {"slug": "nyc", "name": "New York City", "lat": 40.7728, "lon": -73.8726,
      "unit": "fahrenheit", "station": "KLGA", "country": "us",
-     "wunder_path": "us/ny/new-york-city/KLGA"},
-    {"slug": "london", "name": "London", "lat": 51.51, "lon": 0.05,
+     "wunder_path": "us/ny/new-york-city/KLGA", "tz": "America/New_York"},
+    {"slug": "london", "name": "London", "lat": 51.5053, "lon": 0.0553,
      "unit": "celsius", "station": "EGLC", "country": "gb",
-     "wunder_path": "gb/london/EGLC"},
-    {"slug": "chicago", "name": "Chicago", "lat": 41.98, "lon": -87.90,
+     "wunder_path": "gb/london/EGLC", "tz": "Europe/London"},
+    {"slug": "chicago", "name": "Chicago", "lat": 41.9742, "lon": -87.9073,
      "unit": "fahrenheit", "station": "KORD", "country": "us",
-     "wunder_path": "us/il/chicago/KORD"},
-    {"slug": "dallas", "name": "Dallas", "lat": 32.85, "lon": -96.85,
+     "wunder_path": "us/il/chicago/KORD", "tz": "America/Chicago"},
+    {"slug": "dallas", "name": "Dallas", "lat": 32.8998, "lon": -97.0403,
      "unit": "fahrenheit", "station": "KDFW", "country": "us",
-     "wunder_path": "us/tx/dallas/KDFW"},
-    {"slug": "atlanta", "name": "Atlanta", "lat": 33.63, "lon": -84.44,
+     "wunder_path": "us/tx/dallas/KDFW", "tz": "America/Chicago"},
+    {"slug": "atlanta", "name": "Atlanta", "lat": 33.6407, "lon": -84.4277,
      "unit": "fahrenheit", "station": "KATL", "country": "us",
-     "wunder_path": "us/ga/atlanta/KATL"},
-    {"slug": "miami", "name": "Miami", "lat": 25.79, "lon": -80.29,
+     "wunder_path": "us/ga/atlanta/KATL", "tz": "America/New_York"},
+    {"slug": "miami", "name": "Miami", "lat": 25.7959, "lon": -80.2870,
      "unit": "fahrenheit", "station": "KMIA", "country": "us",
-     "wunder_path": "us/fl/miami/KMIA"},
-    {"slug": "toronto", "name": "Toronto", "lat": 43.68, "lon": -79.63,
+     "wunder_path": "us/fl/miami/KMIA", "tz": "America/New_York"},
+    {"slug": "toronto", "name": "Toronto", "lat": 43.6772, "lon": -79.6306,
      "unit": "celsius", "station": "CYYZ", "country": "ca",
-     "wunder_path": "ca/on/toronto/CYYZ"},
-    {"slug": "seattle", "name": "Seattle", "lat": 47.45, "lon": -122.31,
+     "wunder_path": "ca/on/toronto/CYYZ", "tz": "America/Toronto"},
+    {"slug": "seattle", "name": "Seattle", "lat": 47.4502, "lon": -122.3088,
      "unit": "fahrenheit", "station": "KSEA", "country": "us",
-     "wunder_path": "us/wa/seattle/KSEA"},
-    {"slug": "paris", "name": "Paris", "lat": 49.01, "lon": 2.55,
+     "wunder_path": "us/wa/seattle/KSEA", "tz": "America/Los_Angeles"},
+    {"slug": "paris", "name": "Paris", "lat": 49.0097, "lon": 2.5478,
      "unit": "celsius", "station": "LFPG", "country": "fr",
-     "wunder_path": "fr/paris/LFPG"},
-    {"slug": "seoul", "name": "Seoul", "lat": 37.57, "lon": 127.0,
+     "wunder_path": "fr/paris/LFPG", "tz": "Europe/Paris"},
+    {"slug": "seoul", "name": "Seoul", "lat": 37.5583, "lon": 126.7906,
      "unit": "celsius", "station": "RKSS", "country": "kr",
-     "wunder_path": "kr/seoul/RKSS"},
-    {"slug": "wellington", "name": "Wellington", "lat": -41.33, "lon": 174.81,
+     "wunder_path": "kr/seoul/RKSS", "tz": "Asia/Seoul"},
+    {"slug": "wellington", "name": "Wellington", "lat": -41.3272, "lon": 174.8050,
      "unit": "celsius", "station": "NZWN", "country": "nz",
-     "wunder_path": "nz/wellington/NZWN"},
-    {"slug": "buenos-aires", "name": "Buenos Aires", "lat": -34.56, "lon": -58.54,
+     "wunder_path": "nz/wellington/NZWN", "tz": "Pacific/Auckland"},
+    {"slug": "buenos-aires", "name": "Buenos Aires", "lat": -34.5592, "lon": -58.5356,
      "unit": "celsius", "station": "SAEZ", "country": "ar",
-     "wunder_path": "ar/buenos-aires/SAEZ"},
-    {"slug": "sao-paulo", "name": "Sao Paulo", "lat": -23.63, "lon": -46.66,
+     "wunder_path": "ar/buenos-aires/SAEZ", "tz": "America/Argentina/Buenos_Aires"},
+    {"slug": "sao-paulo", "name": "Sao Paulo", "lat": -23.6261, "lon": -46.6564,
      "unit": "celsius", "station": "SBSP", "country": "br",
-     "wunder_path": "br/sao-paulo/SBSP"},
-    {"slug": "ankara", "name": "Ankara", "lat": 40.13, "lon": 32.99,
+     "wunder_path": "br/sao-paulo/SBSP", "tz": "America/Sao_Paulo"},
+    {"slug": "ankara", "name": "Ankara", "lat": 40.1281, "lon": 32.9951,
      "unit": "celsius", "station": "LTAC", "country": "tr",
-     "wunder_path": "tr/ankara/LTAC"},
+     "wunder_path": "tr/ankara/LTAC", "tz": "Europe/Istanbul"},
 ]
 
 # Índice rápido por slug
@@ -201,12 +201,13 @@ class WeatherFeed:
         unit = city["unit"]
         temp_unit = unit  # "fahrenheit" o "celsius"
 
-        # Consultar ensemble (31 miembros GFS)
+        # Consultar ensemble multi-modelo (200+ miembros: GFS 31 + ECMWF 51 + ICON 40 + GEM 21)
+        ensemble_models = "gfs_seamless,ecmwf_ifs025,icon_seamless,gem_global"
         resp = await client.get(ENSEMBLE_API_URL, params={
             "latitude": lat,
             "longitude": lon,
             "hourly": "temperature_2m",
-            "models": "gfs_seamless",
+            "models": ensemble_models,
             "forecast_days": 3,
             "temperature_unit": temp_unit,
         })
@@ -223,23 +224,51 @@ class WeatherFeed:
         if not members:
             return
 
-        # Consultar forecast determinístico (alta resolución) como referencia
+        # Consultar forecast determinístico multi-modelo como referencia
+        # Media ponderada de ECMWF (peso 1.3), GFS (1.0), ICON (0.9), GEM (0.8)
         det_max_by_date = {}
+        det_models = "ecmwf_ifs04,gfs_seamless,icon_seamless,gem_seamless"
+        det_weights = {"ecmwf_ifs04": 1.3, "gfs_seamless": 1.0, "icon_seamless": 0.9, "gem_seamless": 0.8}
         try:
             resp2 = await client.get(FORECAST_API_URL, params={
                 "latitude": lat,
                 "longitude": lon,
                 "daily": "temperature_2m_max",
+                "models": det_models,
                 "forecast_days": 3,
                 "temperature_unit": temp_unit,
             })
             if resp2.status_code == 200:
                 det_data = resp2.json()
-                det_dates = det_data.get("daily", {}).get("time", [])
-                det_maxs = det_data.get("daily", {}).get("temperature_2m_max", [])
-                for d, m in zip(det_dates, det_maxs):
-                    if m is not None:
-                        det_max_by_date[d] = m
+                daily = det_data.get("daily", {})
+                det_dates = daily.get("time", [])
+                # Calcular media ponderada de todos los modelos por fecha
+                model_maxs = {}  # model_key → [max_temps]
+                for key, vals in daily.items():
+                    if key.startswith("temperature_2m_max"):
+                        model_maxs[key] = vals
+                if model_maxs:
+                    for i, d in enumerate(det_dates):
+                        weighted_sum = 0.0
+                        total_weight = 0.0
+                        for key, vals in model_maxs.items():
+                            if i < len(vals) and vals[i] is not None:
+                                # Determinar peso del modelo
+                                w = 1.0
+                                for model_name, weight in det_weights.items():
+                                    if model_name in key:
+                                        w = weight
+                                        break
+                                weighted_sum += vals[i] * w
+                                total_weight += w
+                        if total_weight > 0:
+                            det_max_by_date[d] = round(weighted_sum / total_weight, 1)
+                else:
+                    # Fallback: si solo hay un campo genérico
+                    det_maxs = daily.get("temperature_2m_max", [])
+                    for d, m in zip(det_dates, det_maxs):
+                        if m is not None:
+                            det_max_by_date[d] = m
         except Exception:
             pass
 
