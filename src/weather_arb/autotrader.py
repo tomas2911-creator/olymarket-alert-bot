@@ -401,9 +401,13 @@ class WeatherAutoTrader:
 
         try:
             # Si no tenemos token_id del detector, obtenerlo del CLOB
-            is_elimination = trade_info.get("strategy") == "elimination"
+            range_label = trade_info.get("range_label", "")
+            is_no_trade = (trade_info.get("strategy") == "elimination"
+                           or range_label.startswith("WU-NO:")
+                           or range_label.startswith("OBS-NO:")
+                           or range_label.startswith("ELIM:"))
             if not token_id:
-                if is_elimination:
+                if is_no_trade:
                     token_id = await self._get_no_token_id(cid)
                     if not token_id:
                         return {"success": False, "error": "No se encontró token_id No"}

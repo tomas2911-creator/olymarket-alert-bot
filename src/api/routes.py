@@ -4281,6 +4281,10 @@ async def get_weather_detector_config(request: Request):
         # Observation
         "weather_observation_enabled", "weather_observation_min_hour",
         "weather_observation_high_conf_hour", "weather_observation_max_poly_odds",
+        # Wunderground
+        "weather_wu_enabled", "weather_wu_min_hour",
+        "weather_wu_high_conf_hour", "weather_wu_min_edge",
+        "weather_wu_max_poly_odds",
         # Early detector
         "weather_early_enabled", "weather_early_scan_interval",
         "weather_early_min_edge", "weather_early_min_confidence",
@@ -4315,6 +4319,12 @@ async def get_weather_detector_config(request: Request):
         "observation_min_hour": int(raw.get("weather_observation_min_hour", config.WEATHER_OBSERVATION_MIN_HOUR)),
         "observation_high_conf_hour": int(raw.get("weather_observation_high_conf_hour", config.WEATHER_OBSERVATION_HIGH_CONF_HOUR)),
         "observation_max_poly_odds": float(raw.get("weather_observation_max_poly_odds", config.WEATHER_OBSERVATION_MAX_POLY_ODDS)),
+        # Wunderground
+        "wu_enabled": raw.get("weather_wu_enabled", str(config.WEATHER_WU_ENABLED)).lower() in ("true", "1"),
+        "wu_min_hour": int(raw.get("weather_wu_min_hour", config.WEATHER_WU_MIN_HOUR)),
+        "wu_high_conf_hour": int(raw.get("weather_wu_high_conf_hour", config.WEATHER_WU_HIGH_CONF_HOUR)),
+        "wu_min_edge": float(raw.get("weather_wu_min_edge", config.WEATHER_WU_MIN_EDGE)),
+        "wu_max_poly_odds": float(raw.get("weather_wu_max_poly_odds", config.WEATHER_WU_MAX_POLY_ODDS)),
         # Early detector
         "early_enabled": raw.get("weather_early_enabled", str(config.WEATHER_EARLY_ENABLED)).lower() in ("true", "1"),
         "early_scan_interval": int(raw.get("weather_early_scan_interval", config.WEATHER_EARLY_SCAN_INTERVAL)),
@@ -4357,6 +4367,11 @@ async def save_weather_detector_config(request: Request):
         "observation_min_hour": ("weather_observation_min_hour", str),
         "observation_high_conf_hour": ("weather_observation_high_conf_hour", str),
         "observation_max_poly_odds": ("weather_observation_max_poly_odds", str),
+        "wu_enabled": ("weather_wu_enabled", lambda v: "true" if v else "false"),
+        "wu_min_hour": ("weather_wu_min_hour", str),
+        "wu_high_conf_hour": ("weather_wu_high_conf_hour", str),
+        "wu_min_edge": ("weather_wu_min_edge", str),
+        "wu_max_poly_odds": ("weather_wu_max_poly_odds", str),
         "early_enabled": ("weather_early_enabled", lambda v: "true" if v else "false"),
         "early_scan_interval": ("weather_early_scan_interval", str),
         "early_min_edge": ("weather_early_min_edge", str),
@@ -4392,7 +4407,16 @@ async def save_weather_detector_config(request: Request):
                 "observation_min_hour": int(data.get("weather_observation_min_hour", config.WEATHER_OBSERVATION_MIN_HOUR)),
                 "observation_high_confidence_hour": int(data.get("weather_observation_high_conf_hour", config.WEATHER_OBSERVATION_HIGH_CONF_HOUR)),
                 "observation_max_poly_odds": float(data.get("weather_observation_max_poly_odds", config.WEATHER_OBSERVATION_MAX_POLY_ODDS)),
+                "wu_enabled": data.get("weather_wu_enabled", str(config.WEATHER_WU_ENABLED)).lower() in ("true", "1"),
+                "wu_min_hour": int(data.get("weather_wu_min_hour", config.WEATHER_WU_MIN_HOUR)),
+                "wu_high_confidence_hour": int(data.get("weather_wu_high_conf_hour", config.WEATHER_WU_HIGH_CONF_HOUR)),
+                "wu_min_edge": float(data.get("weather_wu_min_edge", config.WEATHER_WU_MIN_EDGE)),
+                "wu_max_poly_odds": float(data.get("weather_wu_max_poly_odds", config.WEATHER_WU_MAX_POLY_ODDS)),
             })
+        # Actualizar wu_feed enabled state
+        if getattr(bot, "wu_feed", None):
+            wu_en = data.get("weather_wu_enabled", str(config.WEATHER_WU_ENABLED)).lower() in ("true", "1")
+            bot.wu_feed._enabled = wu_en
         if getattr(bot, "weather_autotrader", None):
             await bot.weather_autotrader.reload_config(user_id=uid)
         if getattr(bot, "weather_multi_feed", None):

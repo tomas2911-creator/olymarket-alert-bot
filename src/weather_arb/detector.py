@@ -70,10 +70,11 @@ class WeatherSignal:
 class WeatherArbDetector:
     """Detecta oportunidades de arbitraje en mercados weather de Polymarket."""
 
-    def __init__(self, weather_feed: WeatherFeed, multi_feed=None, metar_feed=None):
+    def __init__(self, weather_feed: WeatherFeed, multi_feed=None, metar_feed=None, wu_feed=None):
         self.feed = weather_feed
         self.multi_feed = multi_feed  # MultiWeatherFeed opcional
         self.metar_feed = metar_feed  # MetarFeed para observaciones en tiempo real
+        self.wu_feed = wu_feed        # WundergroundFeed — fuente de resolución
         self._active_markets: dict[str, dict] = {}  # event_slug → market_data
         self._last_scan = 0.0
         self._signals_today: list[WeatherSignal] = []
@@ -97,6 +98,12 @@ class WeatherArbDetector:
         self._observation_min_hour = 14  # Hora local mínima para señales de observación
         self._observation_high_confidence_hour = 16  # Hora local para confianza máxima
         self._observation_max_poly_odds = 0.85  # No comprar si ya > 85¢
+        # WU strategy (Weather Underground — fuente de resolución)
+        self._wu_enabled = False
+        self._wu_min_hour = 15
+        self._wu_high_confidence_hour = 17
+        self._wu_min_edge = 3.0  # Edge mínimo más bajo porque confianza es ~99%
+        self._wu_max_poly_odds = 0.92  # Permitir odds más altos (más seguros)
 
     def configure(self, cfg: dict):
         """Actualizar configuración desde config.py o DB."""
@@ -117,6 +124,12 @@ class WeatherArbDetector:
         self._observation_min_hour = cfg.get("observation_min_hour", self._observation_min_hour)
         self._observation_high_confidence_hour = cfg.get("observation_high_confidence_hour", self._observation_high_confidence_hour)
         self._observation_max_poly_odds = cfg.get("observation_max_poly_odds", self._observation_max_poly_odds)
+        # WU strategy
+        self._wu_enabled = cfg.get("wu_enabled", self._wu_enabled)
+        self._wu_min_hour = cfg.get("wu_min_hour", self._wu_min_hour)
+        self._wu_high_confidence_hour = cfg.get("wu_high_confidence_hour", self._wu_high_confidence_hour)
+        self._wu_min_edge = cfg.get("wu_min_edge", self._wu_min_edge)
+        self._wu_max_poly_odds = cfg.get("wu_max_poly_odds", self._wu_max_poly_odds)
 
     async def start(self):
         """Loop principal: escanear mercados y detectar divergencias."""
@@ -144,6 +157,12 @@ class WeatherArbDetector:
                     # Observation elimination: NO en buckets imposibles según METAR
                     obs_elim_signals = await self._check_observation_elim_edges()
                     for signal in obs_elim_signals:
+                        self._record_signal(signal)
+
+                # Buscar señales WU (Weather Underground — fuente de resolución)
+                if self._wu_enabled and self.wu_feed:
+                    wu_signals = await self._check_wu_edges()
+                    for signal in wu_signals:
                         self._record_signal(signal)
 
                 # Buscar señales de eliminación (comprar NO)
@@ -742,6 +761,211 @@ class WeatherArbDetector:
                 print(f"[WeatherDetector] 🔭❌ OBS-ELIM: {city['name']} {date_str} "
                       f"→ NO on {label} ({reason}) high={observed_high:.0f} "
                       f"yes={poly_yes:.2f} profit={profit_pct:.1f}% conf={conf:.0f}%",
+                      flush=True)
+
+        return signals
+
+    async def _check_wu_edges(self) -> list[WeatherSignal]:
+        """Señales basadas en Weather Underground — la fuente de resolución de Polymarket.
+
+        WU reporta temperatureMaxSince7Am que es EXACTAMENTE lo que Polymarket usa.
+        Tipos de señales:
+        1. YES en bucket correcto (WU high cae en ese bucket) — conf 95-99%
+        2. NO en buckets ya superados (WU high > bucket max) — certeza matemática
+        3. NO en buckets imposibles (WU high + margen < bucket min, si declining) — conf 90-95%
+        """
+        signals = []
+        if not self.wu_feed:
+            return signals
+
+        now_utc = datetime.now(timezone.utc)
+        today_str = now_utc.strftime("%Y-%m-%d")
+
+        for slug, mdata in self._active_markets.items():
+            city = mdata["city"]
+            city_slug = city["slug"]
+            date_str = mdata["date"]
+            ranges = mdata["ranges"]
+
+            if date_str != today_str:
+                continue
+
+            # Verificar hora local
+            tz_name = city.get("tz", "UTC")
+            try:
+                from zoneinfo import ZoneInfo
+                local_now = now_utc.astimezone(ZoneInfo(tz_name))
+                local_hour = local_now.hour
+            except Exception:
+                continue
+
+            if local_hour < self._wu_min_hour:
+                continue
+
+            # Verificar que WU tiene datos frescos
+            if not self.wu_feed.is_wu_fresh(city_slug, max_age_sec=900):
+                continue
+
+            unit = city["unit"]
+            wu_high = self.wu_feed.get_wu_high(city_slug, unit=unit)
+            if wu_high is None:
+                continue
+
+            wu_high_rounded = round(wu_high)
+
+            # Verificar si temp está declining (METAR si disponible)
+            declining = False
+            if self.metar_feed and self.metar_feed.is_temp_declining(city_slug):
+                declining = True
+
+            # Confianza base según hora
+            if local_hour >= self._wu_high_confidence_hour:
+                base_confidence = 97.0
+            else:
+                progress = (local_hour - self._wu_min_hour) / max(1, self._wu_high_confidence_hour - self._wu_min_hour)
+                base_confidence = 88.0 + progress * 9.0
+
+            # Margen de seguridad para buckets "above" (solo si no declining)
+            safety_margin = 1.0 if unit == "celsius" else 2.0
+            if declining:
+                safety_margin = 0.0  # Si declining, no puede subir más
+
+            yes_generated = False  # Solo 1 YES por ciudad
+
+            for r in ranges:
+                label = r["label"]
+                low = r["low"]
+                high = r["high"]
+                poly_yes = r["yes_price"]
+                cid = r["condition_id"]
+
+                if poly_yes <= 0.005 or poly_yes >= 0.995:
+                    continue
+
+                # Evitar duplicados
+                already = any(s.condition_id == cid for s in self._signals_today)
+                if already:
+                    continue
+
+                # ── Caso 1: YES en bucket correcto ──
+                # WU high cae dentro del rango [low, high]
+                in_bucket = False
+                if low == -999 or low == float("-inf"):
+                    in_bucket = wu_high_rounded <= high
+                elif high == 999 or high == float("inf"):
+                    in_bucket = wu_high_rounded >= low
+                else:
+                    in_bucket = low <= wu_high_rounded <= high
+
+                if in_bucket and not yes_generated:
+                    # Solo generar YES si declining O hora >= high_confidence
+                    if declining or local_hour >= self._wu_high_confidence_hour:
+                        poly_odds = poly_yes
+                        if poly_odds > self._wu_max_poly_odds:
+                            continue  # Mercado ya ajustó, sin edge
+
+                        # Confianza ajustada
+                        conf = base_confidence
+                        if declining:
+                            conf = min(99.0, conf + 2.0)
+
+                        # Edge: diferencia entre nuestra confianza y lo que el mercado cobra
+                        fair_prob = conf / 100.0
+                        edge_pct = ((fair_prob / poly_odds) - 1.0) * 100 if poly_odds > 0 else 0
+
+                        if edge_pct < self._wu_min_edge:
+                            continue
+
+                        signal = WeatherSignal(
+                            city=city_slug,
+                            city_name=city["name"],
+                            date=date_str,
+                            range_label=f"WU-YES: {label}",
+                            ensemble_prob=round(fair_prob, 4),
+                            poly_odds=round(poly_odds, 4),
+                            edge_pct=round(min(edge_pct, 50.0), 2),
+                            confidence=round(conf, 1),
+                            condition_id=cid,
+                            market_question=r.get("question", ""),
+                            event_slug=slug,
+                            mean_temp=wu_high,
+                            std_temp=0.0,
+                            ensemble_members=0,
+                            unit=unit,
+                            token_id=r.get("yes_token", ""),
+                            strategy="wunderground",
+                            resolution_source=mdata.get("resolution_source", ""),
+                        )
+                        signals.append(signal)
+                        yes_generated = True
+                        unit_sym = "F" if unit == "fahrenheit" else "C"
+                        print(f"[WeatherDetector] 🌡️✅ WU-YES: {city['name']} {date_str} "
+                              f"→ {label} wu_high={wu_high:.0f}°{unit_sym} "
+                              f"odds={poly_odds:.2f} edge={edge_pct:.1f}% "
+                              f"conf={conf:.0f}% declining={declining}",
+                              flush=True)
+                    continue
+
+                # ── Caso 2: NO en bucket ya superado ──
+                # Si WU high > bucket max → ese bucket ya es imposible (certeza matemática)
+                is_below_exceeded = False
+                if high != 999 and high != float("inf"):
+                    if wu_high_rounded > high:
+                        is_below_exceeded = True
+
+                # ── Caso 3: NO en bucket inalcanzable ──
+                # Si wu_high + safety < bucket min → imposible llegar
+                is_above_impossible = False
+                if low != -999 and low != float("-inf"):
+                    if low > wu_high_rounded + safety_margin:
+                        is_above_impossible = True
+
+                if not is_below_exceeded and not is_above_impossible:
+                    continue
+
+                # Calcular profit de comprar NO
+                no_price = 1.0 - poly_yes
+                if no_price >= 0.995:
+                    continue  # NO ya cuesta 99.5¢
+                profit_pct = ((1.0 / no_price) - 1.0) * 100
+
+                if profit_pct < 1.0:
+                    continue  # Mínimo 1% profit
+
+                # Confianza del NO
+                if is_below_exceeded:
+                    # Certeza matemática: ya superamos ese bucket
+                    conf = 99.0
+                else:
+                    # Inalcanzable: depende de declining
+                    conf = base_confidence if declining else base_confidence - 5.0
+
+                reason = "BELOW_EXCEEDED" if is_below_exceeded else "ABOVE_IMPOSSIBLE"
+                signal = WeatherSignal(
+                    city=city_slug,
+                    city_name=city["name"],
+                    date=date_str,
+                    range_label=f"WU-NO: {label}",
+                    ensemble_prob=round(conf / 100.0, 4),
+                    poly_odds=round(no_price, 4),
+                    edge_pct=round(profit_pct, 2),
+                    confidence=round(conf, 1),
+                    condition_id=cid,
+                    market_question=r.get("question", ""),
+                    event_slug=slug,
+                    mean_temp=wu_high,
+                    std_temp=0.0,
+                    ensemble_members=0,
+                    unit=unit,
+                    token_id=r.get("no_token", ""),
+                    strategy="wunderground",
+                    resolution_source=mdata.get("resolution_source", ""),
+                )
+                signals.append(signal)
+                unit_sym = "F" if unit == "fahrenheit" else "C"
+                print(f"[WeatherDetector] 🌡️❌ WU-NO: {city['name']} {date_str} "
+                      f"→ NO on {label} ({reason}) wu_high={wu_high:.0f}°{unit_sym} "
+                      f"no_price={no_price:.2f} profit={profit_pct:.1f}% conf={conf:.0f}%",
                       flush=True)
 
         return signals

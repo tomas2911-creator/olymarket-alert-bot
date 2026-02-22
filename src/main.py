@@ -54,6 +54,7 @@ from src.weather_arb.backtester import WeatherPaperTrader
 from src.weather_arb.multi_feed import MultiWeatherFeed
 from src.weather_arb.early_weather import EarlyWeatherDetector
 from src.weather_arb.metar_feed import MetarFeed
+from src.weather_arb.wu_feed import WundergroundFeed
 from src.crypto_arb.paper_trader import MakerPaperTrader
 
 structlog.configure(
@@ -437,11 +438,19 @@ class PolymarketAlertBot:
                 refresh_interval=config.WEATHER_METAR_REFRESH,
             )
             self.metar_feed._enabled = config.WEATHER_METAR_ENABLED
-            # Detector con multi-source + METAR
+            # WU feed (Weather Underground — fuente de resolución)
+            self.wu_feed = WundergroundFeed(
+                api_key=config.WU_API_KEY,
+                refresh_sec=config.WEATHER_WU_REFRESH_SEC,
+                cities=cities,
+            )
+            self.wu_feed._enabled = config.WEATHER_WU_ENABLED
+            # Detector con multi-source + METAR + WU
             self.weather_detector = WeatherArbDetector(
                 self.weather_feed,
                 multi_feed=self.weather_multi_feed,
                 metar_feed=self.metar_feed,
+                wu_feed=self.wu_feed,
             )
             self.weather_detector.configure({
                 "min_edge": config.WEATHER_ARB_MIN_EDGE,
@@ -458,6 +467,11 @@ class PolymarketAlertBot:
                 "observation_min_hour": config.WEATHER_OBSERVATION_MIN_HOUR,
                 "observation_high_confidence_hour": config.WEATHER_OBSERVATION_HIGH_CONF_HOUR,
                 "observation_max_poly_odds": config.WEATHER_OBSERVATION_MAX_POLY_ODDS,
+                "wu_enabled": config.WEATHER_WU_ENABLED,
+                "wu_min_hour": config.WEATHER_WU_MIN_HOUR,
+                "wu_high_confidence_hour": config.WEATHER_WU_HIGH_CONF_HOUR,
+                "wu_min_edge": config.WEATHER_WU_MIN_EDGE,
+                "wu_max_poly_odds": config.WEATHER_WU_MAX_POLY_ODDS,
             })
             self.weather_paper = WeatherPaperTrader(bet_size=config.WEATHER_ARB_PAPER_BET, db=self.db)
             await self.weather_paper.load_from_db()
@@ -480,18 +494,21 @@ class PolymarketAlertBot:
             asyncio.create_task(self._run_weather_multi_feed())
             asyncio.create_task(self._run_weather_early_detector())
             asyncio.create_task(self._run_metar_feed())
+            asyncio.create_task(self._run_wu_feed())
             at_status = "ON" if self.weather_autotrader._enabled and self.weather_autotrader._client else "OFF (solo señales + paper)"
             multi_status = "ON" if config.WEATHER_MULTI_SOURCE_ENABLED else "OFF"
             early_status = "ON" if config.WEATHER_EARLY_ENABLED else "OFF"
             elim_status = "ON" if config.WEATHER_ELIMINATION_ENABLED else "OFF"
             metar_status = "ON" if config.WEATHER_METAR_ENABLED else "OFF"
             obs_status = "ON" if config.WEATHER_OBSERVATION_ENABLED else "OFF"
+            wu_status = "ON" if config.WEATHER_WU_ENABLED else "OFF"
             print(f"Weather Arb iniciado: cities={cities or 'ALL'} "
                   f"edge>={config.WEATHER_ARB_MIN_EDGE}% "
                   f"conf>={config.WEATHER_ARB_MIN_CONFIDENCE}% "
                   f"autotrader={at_status} multi_source={multi_status} "
                   f"early={early_status} elimination={elim_status} "
-                  f"metar={metar_status} observation={obs_status}", flush=True)
+                  f"metar={metar_status} observation={obs_status} "
+                  f"wunderground={wu_status}", flush=True)
         except Exception as e:
             print(f"Error iniciando Weather Arb: {e}", flush=True)
             import traceback
@@ -548,6 +565,17 @@ class PolymarketAlertBot:
                 await self.metar_feed.start()
             except Exception as e:
                 print(f"[MetarFeed] Error: {e}", flush=True)
+            if self._running:
+                await asyncio.sleep(30)
+
+    async def _run_wu_feed(self):
+        """Loop para Weather Underground feed (fuente de resolución)."""
+        await asyncio.sleep(8)  # Esperar un poco después de METAR
+        while self._running and hasattr(self, 'wu_feed') and self.wu_feed:
+            try:
+                await self.wu_feed.start()
+            except Exception as e:
+                print(f"[WU Feed] Error: {e}", flush=True)
             if self._running:
                 await asyncio.sleep(30)
 
