@@ -717,12 +717,12 @@ class WeatherArbDetector:
 
                 # Calcular profit de comprar NO
                 no_price = 1.0 - poly_yes
-                if no_price >= 0.99:
-                    continue  # NO ya cuesta 99¢, sin profit
+                if no_price >= 0.50:
+                    continue  # NO caro → ratio riesgo/recompensa malo
                 profit_pct = ((1.0 / no_price) - 1.0) * 100
 
-                if profit_pct < 1.5:
-                    continue  # Mínimo 1.5% profit
+                if profit_pct < 20.0:
+                    continue  # Mínimo 20% profit para NO trades
 
                 # Confianza ajustada
                 conf = obs_confidence
@@ -925,12 +925,12 @@ class WeatherArbDetector:
 
                 # Calcular profit de comprar NO
                 no_price = 1.0 - poly_yes
-                if no_price >= 0.995:
-                    continue  # NO ya cuesta 99.5¢
+                if no_price >= 0.50:
+                    continue  # NO caro → ratio riesgo/recompensa malo
                 profit_pct = ((1.0 / no_price) - 1.0) * 100
 
-                if profit_pct < 1.0:
-                    continue  # Mínimo 1% profit
+                if profit_pct < 20.0:
+                    continue  # Mínimo 20% profit para NO trades
 
                 # Confianza del NO
                 if is_below_exceeded:
