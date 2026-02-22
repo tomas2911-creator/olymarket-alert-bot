@@ -104,14 +104,15 @@ class MetarFeed:
     def is_temp_declining(self, city_slug: str) -> bool:
         """Verificar si la temperatura actual es menor que el máximo observado.
         Indica que el pico del día ya pasó.
+        Requiere al menos 1.5°F de caída para evitar ruido en lecturas METAR.
         """
         obs = self._observations.get(city_slug)
         if not obs or obs.temp_f is None:
             return False
         if obs.observed_high_f <= -999:
             return False
-        # La temp actual es al menos 1°F menor que el máximo
-        return obs.temp_f < (obs.observed_high_f - 0.5)
+        # La temp actual es al menos 1.5°F menor que el máximo (evitar ruido)
+        return obs.temp_f < (obs.observed_high_f - 1.5)
 
     async def start(self):
         """Loop principal: actualizar observaciones periódicamente."""

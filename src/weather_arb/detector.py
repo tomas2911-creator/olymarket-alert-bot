@@ -424,9 +424,12 @@ class WeatherArbDetector:
     async def _check_observation_edges(self) -> list[WeatherSignal]:
         """Buscar edge usando observaciones METAR en tiempo real (same-day).
 
-        Lógica: si la hora local >= 14:00 y tenemos el observed_high del día,
-        podemos estimar con alta confianza en qué bucket caerá la resolución.
-        Si el mercado no ajustó precios → edge enorme.
+        Lógica mejorada v2:
+        1. REQUIERE que la temperatura esté bajando (peak ya pasó)
+        2. Solo UNA señal por ciudad/fecha (la primera es nuestra apuesta)
+        3. Valida con el ensemble: si el modelo dice mucho más alto, skip
+        4. Edge máximo 40% — si es mayor, el mercado sabe algo que no sabemos
+        5. Margen dentro del bucket: si estamos en el borde, menos confianza
         """
         signals = []
         if not self.metar_feed:
@@ -434,6 +437,10 @@ class WeatherArbDetector:
 
         now_utc = datetime.now(timezone.utc)
         today_str = now_utc.strftime("%Y-%m-%d")
+
+        # Dedup: máximo 1 señal observation por ciudad/fecha
+        obs_city_dates = {(s.city, s.date) for s in self._signals_today
+                         if s.strategy == "observation"}
 
         for slug, mdata in self._active_markets.items():
             city = mdata["city"]
@@ -443,6 +450,10 @@ class WeatherArbDetector:
 
             # Solo aplica a mercados de HOY
             if date_str != today_str:
+                continue
+
+            # Dedup: ya tenemos señal observation para esta ciudad/fecha
+            if (city_slug, date_str) in obs_city_dates:
                 continue
 
             # Verificar hora local de la ciudad
@@ -457,6 +468,10 @@ class WeatherArbDetector:
             if local_hour < self._observation_min_hour:
                 continue
 
+            # REQUIERE que la temperatura esté bajando (el peak ya pasó)
+            if not self.metar_feed.is_temp_declining(city_slug):
+                continue
+
             # Obtener observación METAR
             if not self.metar_feed.is_observation_fresh(city_slug, max_age_sec=1800):
                 continue
@@ -466,17 +481,35 @@ class WeatherArbDetector:
             if observed_high is None:
                 continue
 
-            # Calcular confianza basada en hora local
-            if local_hour >= self._observation_high_confidence_hour:
-                obs_confidence = 95.0
-            else:
-                # Interpolación lineal entre min_hour y high_confidence_hour
-                progress = (local_hour - self._observation_min_hour) / max(1, self._observation_high_confidence_hour - self._observation_min_hour)
-                obs_confidence = 70.0 + progress * 25.0  # 70% a 95%
+            # Validar con ensemble: si el modelo predice mucho más alto, skip
+            forecast = self.feed.get_forecast(city_slug, date_str)
+            ensemble_agrees = True
+            ensemble_mean = None
+            if forecast and forecast.mean_max is not None:
+                ensemble_mean = forecast.mean_max
+                # Si ensemble predice ≥3° más que observado, la temp podría subir aún
+                margin = 3.0 if unit == "celsius" else 5.0  # 3°C o 5°F
+                if ensemble_mean > observed_high + margin:
+                    # Ensemble dice mucho más alto → no confiamos en que sea el peak
+                    print(f"[WeatherDetector] 🔭 SKIP {city['name']}: ensemble={ensemble_mean:.1f} >> observed={observed_high:.1f} (+{margin}° margin)",
+                          flush=True)
+                    continue
+                # Si ensemble predice menos que observado → super confianza
+                if ensemble_mean <= observed_high:
+                    ensemble_agrees = True  # Ensemble confirma
+                else:
+                    ensemble_agrees = False  # Ensemble dice un poco más alto
 
-            # Boost extra si la temperatura ya está bajando
-            if self.metar_feed.is_temp_declining(city_slug):
-                obs_confidence = min(98.0, obs_confidence + 5.0)
+            # Calcular confianza basada en hora local + declining + ensemble
+            if local_hour >= self._observation_high_confidence_hour:
+                obs_confidence = 90.0
+            else:
+                progress = (local_hour - self._observation_min_hour) / max(1, self._observation_high_confidence_hour - self._observation_min_hour)
+                obs_confidence = 65.0 + progress * 25.0  # 65% a 90%
+
+            # Boost si ensemble confirma
+            if ensemble_agrees and ensemble_mean is not None:
+                obs_confidence = min(95.0, obs_confidence + 5.0)
 
             # Encontrar el bucket correcto para el observed_high
             observed_rounded = round(observed_high)
@@ -499,6 +532,16 @@ class WeatherArbDetector:
                 if not in_bucket:
                     continue
 
+                # Penalizar si estamos en el borde del bucket (±1° del límite)
+                margin_penalty = 0.0
+                if high != 999 and high != float("inf"):
+                    if observed_rounded >= high:
+                        margin_penalty = 10.0  # Justo en el borde superior
+                if low != -999 and low != float("-inf"):
+                    if observed_rounded <= low:
+                        margin_penalty = 10.0  # Justo en el borde inferior
+                obs_confidence_adj = obs_confidence - margin_penalty
+
                 # Este es el bucket donde observed_high cae
                 if poly_odds <= 0 or poly_odds >= 1:
                     continue
@@ -506,13 +549,17 @@ class WeatherArbDetector:
                     continue
 
                 # Edge = diferencia entre confianza observada y precio del mercado
-                obs_prob = obs_confidence / 100.0
+                obs_prob = obs_confidence_adj / 100.0
                 edge_pct = (obs_prob - poly_odds) * 100
 
                 if edge_pct < 5.0:  # Mínimo 5% edge para observation
                     continue
+                if edge_pct > 40.0:  # Máximo 40% — edge mayor = algo está mal
+                    print(f"[WeatherDetector] 🔭 SKIP {city['name']} {label}: edge={edge_pct:.1f}% > 40% cap (poly={poly_odds:.2f})",
+                          flush=True)
+                    continue
 
-                # Evitar duplicados
+                # Evitar duplicados por condition_id
                 cid = r["condition_id"]
                 already = any(s.condition_id == cid and s.strategy == "observation"
                               for s in self._signals_today)
@@ -527,7 +574,7 @@ class WeatherArbDetector:
                     ensemble_prob=obs_prob,
                     poly_odds=poly_odds,
                     edge_pct=round(edge_pct, 2),
-                    confidence=round(obs_confidence, 1),
+                    confidence=round(obs_confidence_adj, 1),
                     condition_id=cid,
                     market_question=r.get("question", ""),
                     event_slug=slug,
@@ -540,11 +587,14 @@ class WeatherArbDetector:
                     resolution_source=mdata.get("resolution_source", ""),
                 )
                 signals.append(signal)
-                print(f"[WeatherDetector] 🔭 OBSERVATION SIGNAL: {city['name']} {date_str} "
-                      f"→ {label} observed_high={observed_high:.0f} "
+                obs_city_dates.add((city_slug, date_str))
+                print(f"[WeatherDetector] 🔭 OBS SIGNAL: {city['name']} {date_str} "
+                      f"→ {label} high={observed_high:.0f} "
                       f"poly={poly_odds:.2f} edge={edge_pct:.1f}% "
-                      f"conf={obs_confidence:.0f}% declining={self.metar_feed.is_temp_declining(city_slug)}",
+                      f"conf={obs_confidence_adj:.0f}% "
+                      f"ensemble_mean={ensemble_mean or '?'} declining=True",
                       flush=True)
+                break  # Solo 1 bucket por ciudad/fecha
 
         return signals
 
