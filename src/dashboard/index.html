@@ -7943,8 +7943,11 @@ async function waResetPaper(){
     try{
         const r=await apiFetch('/api/weather-arb/reset-paper',{method:'POST'});
         if(r&&r.status==='ok'){
+            // Limpiar UI inmediatamente ANTES del alert (alert bloquea JS)
+            _wppData=[];
+            render_wpp();
+            await loadWeatherArb();
             alert(`Paper Trading reiniciado.\n${r.deleted} trades borrados.`);
-            loadWeatherArb();
         }else{
             alert('Error: '+(r?.error||'desconocido'));
         }

@@ -4239,6 +4239,12 @@ async def weather_reset_paper_trades(request: Request):
             deleted = await bot.weather_paper.reset(user_id=uid)
         except Exception as e:
             return {"status": "error", "error": str(e)}
+    # También limpiar señales del detector para que no se re-registren inmediatamente
+    if bot and getattr(bot, "weather_detector", None):
+        try:
+            bot.weather_detector._signals_today.clear()
+        except Exception:
+            pass
     return {"status": "ok", "deleted": deleted, "message": f"Paper trading reiniciado. {deleted} trades borrados."}
 
 
