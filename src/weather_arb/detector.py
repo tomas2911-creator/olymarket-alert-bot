@@ -141,6 +141,10 @@ class WeatherArbDetector:
                     obs_signals = await self._check_observation_edges()
                     for signal in obs_signals:
                         self._record_signal(signal)
+                    # Observation elimination: NO en buckets imposibles según METAR
+                    obs_elim_signals = await self._check_observation_elim_edges()
+                    for signal in obs_elim_signals:
+                        self._record_signal(signal)
 
                 # Buscar señales de eliminación (comprar NO)
                 if self._elimination_enabled:
@@ -465,11 +469,14 @@ class WeatherArbDetector:
             except Exception:
                 continue
 
-            if local_hour < self._observation_min_hour:
+            # Permitir 1 hora antes si la temp ya está declining
+            declining = self.metar_feed.is_temp_declining(city_slug)
+            effective_min_hour = self._observation_min_hour - 1 if declining else self._observation_min_hour
+            if local_hour < effective_min_hour:
                 continue
 
             # REQUIERE que la temperatura esté bajando (el peak ya pasó)
-            if not self.metar_feed.is_temp_declining(city_slug):
+            if not declining:
                 continue
 
             # Obtener observación METAR
@@ -595,6 +602,147 @@ class WeatherArbDetector:
                       f"ensemble_mean={ensemble_mean or '?'} declining=True",
                       flush=True)
                 break  # Solo 1 bucket por ciudad/fecha
+
+        return signals
+
+    async def _check_observation_elim_edges(self) -> list[WeatherSignal]:
+        """Comprar NO en buckets imposibles según observación METAR real-time.
+
+        Cuando la temp ya está bajando y observamos un máximo de X°:
+        - Buckets cuyo MÍNIMO > observed + margen → imposible llegar allá → NO
+        - Buckets cuyo MÁXIMO < observed → ya se superó → NO
+
+        Esto genera 2-4 trades extra por ciudad además del YES de observation.
+        Profit mínimo configurable: 2% (NO a 98¢ → +2%).
+        """
+        signals = []
+        if not self.metar_feed:
+            return signals
+
+        now_utc = datetime.now(timezone.utc)
+        today_str = now_utc.strftime("%Y-%m-%d")
+
+        for slug, mdata in self._active_markets.items():
+            city = mdata["city"]
+            city_slug = city["slug"]
+            date_str = mdata["date"]
+            ranges = mdata["ranges"]
+
+            if date_str != today_str:
+                continue
+
+            # Verificar hora local
+            tz_name = city.get("tz", "UTC")
+            try:
+                from zoneinfo import ZoneInfo
+                local_now = now_utc.astimezone(ZoneInfo(tz_name))
+                local_hour = local_now.hour
+            except Exception:
+                continue
+
+            # Permitir 1 hora antes si declining
+            declining = self.metar_feed.is_temp_declining(city_slug)
+            effective_min_hour = self._observation_min_hour - 1 if declining else self._observation_min_hour
+            if local_hour < effective_min_hour:
+                continue
+
+            # REQUIERE temp declining
+            if not declining:
+                continue
+
+            if not self.metar_feed.is_observation_fresh(city_slug, max_age_sec=1800):
+                continue
+
+            unit = city["unit"]
+            observed_high = self.metar_feed.get_observed_high(city_slug, unit=unit)
+            if observed_high is None:
+                continue
+
+            observed_rounded = round(observed_high)
+
+            # Margen de seguridad: cuánto podría subir aún (aunque esté declining)
+            safety_margin = 2.0 if unit == "celsius" else 3.0  # 2°C o 3°F
+
+            # Confianza base
+            if local_hour >= self._observation_high_confidence_hour:
+                obs_confidence = 92.0
+            else:
+                progress = (local_hour - self._observation_min_hour) / max(1, self._observation_high_confidence_hour - self._observation_min_hour)
+                obs_confidence = 70.0 + progress * 22.0
+
+            for r in ranges:
+                label = r["label"]
+                low = r["low"]
+                high = r["high"]
+                poly_yes = r["yes_price"]
+
+                if poly_yes <= 0.01 or poly_yes >= 0.98:
+                    continue  # Sin profit o sin liquidez
+
+                # Caso 1: Bucket "por encima" → mínimo del bucket > observed + margin
+                # Si bucket es "55°F or above" y observed=48, 55 > 48+3 = 51 → imposible
+                is_above_impossible = False
+                if low != -999 and low != float("-inf"):
+                    if low > observed_rounded + safety_margin:
+                        is_above_impossible = True
+
+                # Caso 2: Bucket "por debajo" → máximo del bucket < observed
+                # Si bucket es "below 44°F" y observed=48, 44 < 48 → ya se superó
+                is_below_exceeded = False
+                if high != 999 and high != float("inf"):
+                    if high < observed_rounded:
+                        is_below_exceeded = True
+
+                if not is_above_impossible and not is_below_exceeded:
+                    continue
+
+                # Calcular profit de comprar NO
+                no_price = 1.0 - poly_yes
+                if no_price >= 0.99:
+                    continue  # NO ya cuesta 99¢, sin profit
+                profit_pct = ((1.0 / no_price) - 1.0) * 100
+
+                if profit_pct < 1.5:
+                    continue  # Mínimo 1.5% profit
+
+                # Confianza ajustada
+                conf = obs_confidence
+                if is_below_exceeded:
+                    # "Ya superamos" es más seguro que "no llegaremos"
+                    conf = min(98.0, conf + 5.0)
+
+                # Evitar duplicados
+                cid = r["condition_id"]
+                already = any(s.condition_id == cid for s in self._signals_today)
+                if already:
+                    continue
+
+                reason = "ABOVE_IMPOSSIBLE" if is_above_impossible else "BELOW_EXCEEDED"
+                signal = WeatherSignal(
+                    city=city_slug,
+                    city_name=city["name"],
+                    date=date_str,
+                    range_label=f"OBS-NO: {label}",
+                    ensemble_prob=round(1.0 - (poly_yes * 0.01), 4),  # ~100% prob del NO
+                    poly_odds=round(no_price, 4),
+                    edge_pct=round(profit_pct, 2),
+                    confidence=round(conf, 1),
+                    condition_id=cid,
+                    market_question=r.get("question", ""),
+                    event_slug=slug,
+                    mean_temp=observed_high,
+                    std_temp=0.0,
+                    ensemble_members=0,
+                    unit=unit,
+                    token_id=r.get("no_token", ""),  # NO token
+                    strategy="observation",
+                    resolution_source=mdata.get("resolution_source", ""),
+                )
+                signals.append(signal)
+                print(f"[WeatherDetector] 🔭❌ OBS-ELIM: {city['name']} {date_str} "
+                      f"→ NO on {label} ({reason}) high={observed_high:.0f} "
+                      f"yes={poly_yes:.2f} profit={profit_pct:.1f}% conf={conf:.0f}%",
+                      flush=True)
 
         return signals
 

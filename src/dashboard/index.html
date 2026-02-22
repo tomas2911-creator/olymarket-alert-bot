@@ -7821,9 +7821,11 @@ async function loadWeatherArb(){
                 const ts=s.timestamp?new Date(s.timestamp).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'';
                 const isElim=s.strategy==='elimination'||(s.range_label||'').startsWith('ELIM:');
                 const isObs=s.strategy==='observation';
+                const isObsNo=(s.range_label||'').startsWith('OBS-NO:');
                 const isEarly=s._early||s.strategy==='early_entry';
                 let badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-sky-900/40 text-sky-400">CONV</span>';
-                if(isObs)badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-emerald-900/40 text-emerald-400">OBS</span>';
+                if(isObs&&!isObsNo)badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-emerald-900/40 text-emerald-400">OBS</span>';
+                if(isObsNo)badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-orange-900/40 text-orange-400">OBS-NO</span>';
                 if(isElim)badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-red-900/40 text-red-400">ELIM</span>';
                 if(isEarly)badge='<span class="px-1.5 py-0.5 rounded text-[9px] bg-yellow-900/40 text-yellow-400">EARLY</span>';
                 return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
