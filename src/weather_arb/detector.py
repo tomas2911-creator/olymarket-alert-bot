@@ -725,8 +725,9 @@ class WeatherArbDetector:
                 no_price = 1.0 - poly_yes
 
                 # Filtros de no_price diferenciados por certeza:
-                if is_below_exceeded and no_price < 0.20:
-                    continue  # Certeza matemática pero sin liquidez suficiente
+                # OBS usa METAR (menos confiable que WU) → exigir más acuerdo del mercado
+                if is_below_exceeded and no_price < 0.70:
+                    continue  # METAR puede ser stale/diferir de fuente de resolución
                 if is_above_impossible and no_price < 0.80:
                     continue  # Mercado no concuerda lo suficiente con nuestra predicción
                 profit_pct = ((1.0 / no_price) - 1.0) * 100
