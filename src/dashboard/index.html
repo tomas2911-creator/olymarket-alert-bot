@@ -2915,8 +2915,9 @@
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('usdc_in')">Capital <span id="bsort-usdc_in"></span></th>
                                 <th class="px-2 py-1.5 text-center cursor-pointer hover:text-violet-400" onclick="sortBatchBy('score')">Score <span id="bsort-score"></span></th>
                                 <th class="px-2 py-1.5 text-center">🔍</th>
+                                <th class="px-2 py-1.5 text-center">PM</th>
                             </tr></thead>
-                            <tbody id="bscan-ranking-body"><tr><td colspan="11" class="text-center py-4 text-gray-600">Click en un botón para iniciar análisis</td></tr></tbody>
+                            <tbody id="bscan-ranking-body"><tr><td colspan="12" class="text-center py-4 text-gray-600">Click en un botón para iniciar análisis</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -7198,7 +7199,7 @@ function renderBatchResults(results){
 function _renderBatchTable(results){
     const body=document.getElementById('bscan-ranking-body');
     const n=results.length;
-    if(n===0){body.innerHTML='<tr><td colspan="11" class="text-center py-4 text-gray-600">Sin resultados con estos filtros.</td></tr>';return;}
+    if(n===0){body.innerHTML='<tr><td colspan="12" class="text-center py-4 text-gray-600">Sin resultados con estos filtros.</td></tr>';return;}
     const badgeMap={elite:'🏆',hot:'📈',market_maker:'⚠️',inactive:'💀',one_hit:'🎰',whale:'🐋',cold:'📉'};
     const gradeColors={S:'bg-purple-600/60 text-purple-200',A:'bg-green-600/60 text-green-200',B:'bg-blue-600/60 text-blue-200',C:'bg-yellow-600/60 text-yellow-200',D:'bg-orange-600/60 text-orange-200',F:'bg-red-600/60 text-red-200'};
     const offset=_bscanPage*_bscanPageSize;
@@ -7229,6 +7230,7 @@ function _renderBatchTable(results){
             <td class="px-2 py-1.5 text-right font-mono ${r.usdc_in?'text-violet-300':'text-gray-500'}">${r.usdc_in?'⛓️$'+fmt(Math.round(r.usdc_in)):(r.estimated_initial?'$'+fmt(Math.round(r.estimated_initial)):'-')}</td>
             <td class="px-2 py-1.5 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${gc}">${grade} ${score}</span></td>
             <td class="px-2 py-1.5 text-center"><button onclick="event.stopPropagation();scanWalletFromAddr('${r.address}')" class="text-violet-400 hover:text-violet-300 text-[10px]">🔍</button></td>
+            <td class="px-2 py-1.5 text-center"><a href="https://polymarket.com/profile/${r.address}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-blue-400 hover:text-blue-300 text-[10px]" title="Ver en Polymarket">🌐</a></td>
         </tr>`;
     }).join('');
 }
