@@ -1,6 +1,6 @@
-"""Cliente PolygonScan para análisis on-chain de wallets en Polygon.
+"""Cliente Etherscan V2 para análisis on-chain de wallets en Polygon.
 
-Usa PolygonScan API (api.polygonscan.com/api):
+Usa Etherscan V2 API (api.etherscan.io/v2/api con chainid=137):
 1. Normal Transactions (txlist) → edad on-chain, cantidad de TXs
 2. ERC20 Token Transfers (tokentx) → flujo de USDC (in/out), fuente de fondeo
 3. ERC1155 Token Transfers (token1155tx) → posiciones en Polymarket (shares)
@@ -15,8 +15,9 @@ from src import config
 
 logger = structlog.get_logger()
 
-# PolygonScan API nativa
-POLYGONSCAN_API = "https://api.polygonscan.com/api"
+# Etherscan V2 API — soporta multi-chain con chainid
+ETHERSCAN_V2_API = "https://api.etherscan.io/v2/api"
+CHAINID_POLYGON = "137"
 
 # USDC en Polygon
 USDC_NATIVE = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"   # USDC nativo
@@ -28,10 +29,11 @@ POLYMARKET_CTF = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
 
 
 async def _api_call(client: httpx.AsyncClient, params: dict) -> dict:
-    """Llamada genérica a PolygonScan API con manejo de errores."""
+    """Llamada genérica a Etherscan V2 API con chainid y manejo de errores."""
+    params["chainid"] = CHAINID_POLYGON
     params["apikey"] = config.POLYGONSCAN_API_KEY
     try:
-        resp = await client.get(POLYGONSCAN_API, params=params)
+        resp = await client.get(ETHERSCAN_V2_API, params=params)
         if resp.status_code == 200:
             data = resp.json()
             if data.get("status") == "1" and isinstance(data.get("result"), list):
