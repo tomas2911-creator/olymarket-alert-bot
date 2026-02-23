@@ -2811,7 +2811,7 @@
                         <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Prom. WR</div><div class="text-sm font-bold" id="bscan-avg-wr">0%</div></div>
                         <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Mejor PnL</div><div class="text-sm font-bold text-green-400" id="bscan-best-pnl">$0</div></div>
                         <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">PnL Promedio</div><div class="text-sm font-bold" id="bscan-avg-pnl">$0</div></div>
-                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Score 4-5⭐</div><div class="text-sm font-bold text-yellow-400" id="bscan-top-count">0</div></div>
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Score A+</div><div class="text-sm font-bold text-yellow-400" id="bscan-top-count">0</div></div>
                     </div>
                     <!-- Filtros Avanzados -->
                     <div id="bscan-filters" class="hidden mb-3">
@@ -2845,8 +2845,8 @@
                             </div>
                             <!-- Score -->
                             <div class="bg-gray-800/40 rounded p-2">
-                                <div class="text-[9px] text-gray-500 mb-1">Score (1-5)</div>
-                                <div class="flex gap-1"><input id="bf-score-min" type="number" placeholder="Min" min="1" max="5" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-score-max" type="number" placeholder="Max" min="1" max="5" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                                <div class="text-[9px] text-gray-500 mb-1">Score (0-100)</div>
+                                <div class="flex gap-1"><input id="bf-score-min" type="number" placeholder="Min" min="0" max="100" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-score-max" type="number" placeholder="Max" min="0" max="100" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
                             </div>
                             <!-- Trades -->
                             <div class="bg-gray-800/40 rounded p-2">
@@ -2868,6 +2868,16 @@
                                 <div class="text-[9px] text-gray-500 mb-1">Posiciones Abiertas</div>
                                 <div class="flex gap-1"><input id="bf-pos-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-pos-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
                             </div>
+                            <!-- Profit Factor -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Profit Factor</div>
+                                <div class="flex gap-1"><input id="bf-pf-min" type="number" step="0.1" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-pf-max" type="number" step="0.1" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- PnL 30d -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">PnL 30d ($)</div>
+                                <div class="flex gap-1"><input id="bf-pnl30-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-pnl30-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
                             <!-- Origen + Ordenar -->
                             <div class="bg-gray-800/40 rounded p-2">
                                 <div class="text-[9px] text-gray-500 mb-1">Origen / Ordenar</div>
@@ -2876,7 +2886,7 @@
                                         <option value="">Todas</option><option value="wallets">Wallets</option><option value="top_wallets">Top</option><option value="whales">Whales</option>
                                     </select>
                                     <select id="bscan-filter-sort" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1 py-0.5 text-[10px] text-gray-300">
-                                        <option value="total_pnl">PnL</option><option value="win_rate">WR</option><option value="roi_pct">ROI</option><option value="total_trades">Trades</option><option value="portfolio_value">Portfolio</option><option value="score">Score</option><option value="estimated_initial">Capital</option><option value="days_active">Días</option>
+                                        <option value="total_pnl">PnL Total</option><option value="pnl_30d">PnL 30d</option><option value="profit_factor">Profit Factor</option><option value="win_rate">WR</option><option value="roi_pct">ROI</option><option value="score">Score</option><option value="total_trades">Trades</option><option value="portfolio_value">Portfolio</option><option value="max_drawdown">Drawdown</option><option value="estimated_initial">Capital</option>
                                     </select>
                                 </div>
                             </div>
@@ -2890,36 +2900,42 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Tabla Ranking -->
+                    <!-- Tabla Ranking v2 -->
                     <div id="bscan-table-wrap" class="hidden overflow-x-auto" style="max-height:400px;overflow-y:auto">
                         <table class="w-full text-xs">
                             <thead class="sticky top-0 bg-dark-800"><tr class="text-gray-500 uppercase border-b border-gray-700/50">
                                 <th class="px-2 py-1.5 text-center">#</th>
                                 <th class="px-2 py-1.5 text-left">Wallet</th>
-                                <th class="px-2 py-1.5 text-center cursor-pointer hover:text-violet-400" onclick="sortBatchBy('source')">Origen <span id="bsort-source"></span></th>
-                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('total_trades')">Trades <span id="bsort-total_trades"></span></th>
-                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('win_rate')">Win Rate <span id="bsort-win_rate"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('total_pnl')">PnL Total <span id="bsort-total_pnl"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('pnl_30d')">PnL 30d <span id="bsort-pnl_30d"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('profit_factor')">PF <span id="bsort-profit_factor"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('win_rate')">WR% <span id="bsort-win_rate"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('roi_pct')">ROI <span id="bsort-roi_pct"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('portfolio_value')">Portfolio <span id="bsort-portfolio_value"></span></th>
+                                <th class="px-2 py-1.5 text-right">Capital</th>
                                 <th class="px-2 py-1.5 text-center cursor-pointer hover:text-violet-400" onclick="sortBatchBy('score')">Score <span id="bsort-score"></span></th>
-                                <th class="px-2 py-1.5 text-center">Acción</th>
+                                <th class="px-2 py-1.5 text-center">🔍</th>
                             </tr></thead>
-                            <tbody id="bscan-ranking-body"><tr><td colspan="10" class="text-center py-4 text-gray-600">Click en un botón para iniciar análisis</td></tr></tbody>
+                            <tbody id="bscan-ranking-body"><tr><td colspan="11" class="text-center py-4 text-gray-600">Click en un botón para iniciar análisis</td></tr></tbody>
                         </table>
                     </div>
                 </div>
                 <!-- Resultado -->
                 <div id="wscan-result" class="hidden">
-                    <!-- KPIs -->
-                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-4" id="wscan-kpis">
+                    <!-- Score + Badges header -->
+                    <div class="flex items-center gap-3 mb-3">
+                        <span id="wscan-grade-badge" class="px-3 py-1 rounded-lg text-lg font-bold bg-gray-700/50 text-gray-300">F 0</span>
+                        <span id="wscan-badges" class="text-sm"></span>
+                        <div class="ml-auto flex gap-3 text-xs">
+                            <a id="wscan-link-poly" href="#" target="_blank" class="text-violet-400 hover:underline">🔗 Polymarket</a>
+                            <a id="wscan-link-scan" href="#" target="_blank" class="text-purple-400 hover:underline">🔗 PolygonScan</a>
+                        </div>
+                    </div>
+                    <!-- KPIs Row 1: Core -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-2" id="wscan-kpis">
                         <div class="bg-gray-800/40 rounded-lg p-2 text-center">
                             <div class="text-[10px] text-gray-500 uppercase">Portfolio</div>
                             <div class="text-lg font-bold text-violet-400" id="wscan-portfolio">$0</div>
-                        </div>
-                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
-                            <div class="text-[10px] text-gray-500 uppercase">Capital Inicial</div>
-                            <div class="text-lg font-bold text-gray-300" id="wscan-initial">$0</div>
                         </div>
                         <div class="bg-gray-800/40 rounded-lg p-2 text-center">
                             <div class="text-[10px] text-gray-500 uppercase">PnL Total</div>
@@ -2934,12 +2950,43 @@
                             <div class="text-lg font-bold" id="wscan-wr">0%</div>
                         </div>
                         <div class="bg-gray-800/40 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500 uppercase">Profit Factor</div>
+                            <div class="text-lg font-bold" id="wscan-pf">0</div>
+                        </div>
+                        <div class="bg-gray-800/40 rounded-lg p-2 text-center">
                             <div class="text-[10px] text-gray-500 uppercase">Total Trades</div>
                             <div class="text-lg font-bold text-gray-300" id="wscan-trades">0</div>
                         </div>
                     </div>
-                    <!-- Detalle extra -->
-                    <div class="grid grid-cols-3 md:grid-cols-5 gap-2 mb-4">
+                    <!-- KPIs Row 2: Period + Risk -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-2">
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">PnL 7d</div>
+                            <div class="text-sm font-bold" id="wscan-pnl7d">$0</div>
+                        </div>
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">PnL 30d</div>
+                            <div class="text-sm font-bold" id="wscan-pnl30d">$0</div>
+                        </div>
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Max Drawdown</div>
+                            <div class="text-sm font-bold text-red-400" id="wscan-dd">$0</div>
+                        </div>
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Avg Trade Size</div>
+                            <div class="text-sm font-bold text-gray-300" id="wscan-avgsize">$0</div>
+                        </div>
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">Trades/Semana</div>
+                            <div class="text-sm font-bold text-gray-300" id="wscan-tpw">0</div>
+                        </div>
+                        <div class="bg-gray-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-gray-500">WR Ponderado</div>
+                            <div class="text-sm font-bold" id="wscan-wwr">0%</div>
+                        </div>
+                    </div>
+                    <!-- KPIs Row 3: Detail -->
+                    <div class="grid grid-cols-3 md:grid-cols-5 gap-2 mb-3">
                         <div class="bg-gray-800/30 rounded-lg p-2 text-center">
                             <div class="text-[10px] text-gray-500">W / L</div>
                             <div class="text-sm font-bold"><span class="text-green-400" id="wscan-wins">0</span> / <span class="text-red-400" id="wscan-losses">0</span></div>
@@ -2961,10 +3008,33 @@
                             <div class="text-sm font-bold text-gray-300" id="wscan-days">-</div>
                         </div>
                     </div>
-                    <!-- Links -->
-                    <div class="flex gap-3 mb-4 text-xs">
-                        <a id="wscan-link-poly" href="#" target="_blank" class="text-violet-400 hover:underline">🔗 Ver en Polymarket</a>
-                        <a id="wscan-link-scan" href="#" target="_blank" class="text-purple-400 hover:underline">🔗 PolygonScan</a>
+                    <!-- KPIs Row 4: On-Chain (PolygonScan) -->
+                    <div id="wscan-onchain-row" class="hidden grid grid-cols-3 md:grid-cols-5 gap-2 mb-3">
+                        <div class="bg-violet-900/20 border border-violet-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-violet-400">⛓️ USDC Depositado</div>
+                            <div class="text-sm font-bold text-violet-300" id="wscan-usdc-in">-</div>
+                        </div>
+                        <div class="bg-violet-900/20 border border-violet-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-violet-400">⛓️ USDC Retirado</div>
+                            <div class="text-sm font-bold text-violet-300" id="wscan-usdc-out">-</div>
+                        </div>
+                        <div class="bg-violet-900/20 border border-violet-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-violet-400">⛓️ Fondeado por</div>
+                            <div class="text-[10px] font-mono text-violet-300 truncate" id="wscan-funded-by">-</div>
+                        </div>
+                        <div class="bg-violet-900/20 border border-violet-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-violet-400">⛓️ Edad On-Chain</div>
+                            <div class="text-sm font-bold text-violet-300" id="wscan-onchain-age">-</div>
+                        </div>
+                        <div class="bg-violet-900/20 border border-violet-800/30 rounded-lg p-2 text-center">
+                            <div class="text-[10px] text-violet-400">⛓️ TXs Totales</div>
+                            <div class="text-sm font-bold text-violet-300" id="wscan-onchain-txs">-</div>
+                        </div>
+                    </div>
+                    <!-- Score Components Bar -->
+                    <div id="wscan-score-components" class="mb-4 hidden">
+                        <div class="text-[10px] text-gray-500 mb-1 uppercase">Score Desglose</div>
+                        <div class="flex gap-1 flex-wrap" id="wscan-score-bars"></div>
                     </div>
                     <!-- Posiciones Abiertas -->
                     <h4 class="text-xs font-semibold text-gray-400 mb-2">📊 Posiciones Abiertas (<span id="wscan-pos-count">0</span>)</h4>
@@ -6773,9 +6843,19 @@ function scanWalletFromAddr(addr){
     setTimeout(()=>runWalletScan(addr),100);
 }
 function renderWalletScan(d){
-    // KPIs
+    // Grade + Score badge
+    const gradeColors={S:'bg-purple-600/60 text-purple-200',A:'bg-green-600/60 text-green-200',B:'bg-blue-600/60 text-blue-200',C:'bg-yellow-600/60 text-yellow-200',D:'bg-orange-600/60 text-orange-200',F:'bg-red-600/60 text-red-200'};
+    const badgeMap={elite:'🏆 Elite',hot:'📈 Hot',market_maker:'⚠️ MM',inactive:'💀 Inactivo',one_hit:'🎰 One-Hit',whale:'🐋 Whale',cold:'📉 Cold'};
+    const grade=d.grade||'F';
+    const gc=gradeColors[grade]||gradeColors.F;
+    const gEl=document.getElementById('wscan-grade-badge');
+    gEl.textContent=grade+' '+(d.score||0);
+    gEl.className='px-3 py-1 rounded-lg text-lg font-bold '+gc;
+    const bdgsEl=document.getElementById('wscan-badges');
+    const ba=d.badges||[];
+    bdgsEl.innerHTML=ba.map(b=>`<span class="px-1.5 py-0.5 rounded bg-gray-700/50 text-[10px] mr-1">${badgeMap[b]||b}</span>`).join('');
+    // KPIs Row 1
     document.getElementById('wscan-portfolio').textContent='$'+fmt(Math.round(d.portfolio_value));
-    document.getElementById('wscan-initial').textContent='$'+fmt(Math.round(d.estimated_initial_capital));
     const pnlEl=document.getElementById('wscan-pnl');
     pnlEl.textContent=(d.total_pnl>=0?'+':'-')+`$${fmt(Math.abs(Math.round(d.total_pnl)))}`;
     pnlEl.className='text-lg font-bold '+(d.total_pnl>=0?'text-green-400':'text-red-400');
@@ -6787,14 +6867,33 @@ function renderWalletScan(d){
     const isPartial=sampled>0&&d.total_trades>0&&sampled<d.total_trades*0.8;
     wrEl.textContent=(isPartial?'~':'')+d.win_rate+'%';
     wrEl.className='text-lg font-bold '+(d.win_rate>=60?'text-green-400':d.win_rate>=40?'text-yellow-400':'text-red-400');
+    const pfEl=document.getElementById('wscan-pf');
+    const pf=d.profit_factor||0;
+    pfEl.textContent=pf.toFixed(2);
+    pfEl.className='text-lg font-bold '+(pf>=2?'text-green-400':pf>=1?'text-yellow-400':'text-red-400');
     document.getElementById('wscan-trades').textContent=fmt(d.total_trades);
-    // Detalle
+    // KPIs Row 2: Period + Risk
+    const p7El=document.getElementById('wscan-pnl7d');
+    const p7=d.pnl_7d||0;
+    p7El.textContent=(p7>=0?'+':'-')+'$'+fmt(Math.abs(Math.round(p7)));
+    p7El.className='text-sm font-bold '+(p7>=0?'text-green-400':'text-red-400');
+    const p30El=document.getElementById('wscan-pnl30d');
+    const p30=d.pnl_30d||0;
+    p30El.textContent=(p30>=0?'+':'-')+'$'+fmt(Math.abs(Math.round(p30)));
+    p30El.className='text-sm font-bold '+(p30>=0?'text-green-400':'text-red-400');
+    document.getElementById('wscan-dd').textContent='-$'+fmt(Math.round(d.max_drawdown||0));
+    document.getElementById('wscan-avgsize').textContent='$'+fmt(Math.round(d.avg_trade_size||0));
+    document.getElementById('wscan-tpw').textContent=(d.trades_per_week||0).toFixed(1);
+    const wwrEl=document.getElementById('wscan-wwr');
+    const wwr=d.weighted_win_rate||0;
+    wwrEl.textContent=wwr.toFixed(1)+'%';
+    wwrEl.className='text-sm font-bold '+(wwr>=60?'text-green-400':wwr>=40?'text-yellow-400':'text-red-400');
+    // KPIs Row 3: Detail
     document.getElementById('wscan-wins').textContent=(isPartial?'~':'')+d.wins;
     document.getElementById('wscan-losses').textContent=(isPartial?'~':'')+d.losses;
     const realEl=document.getElementById('wscan-realized');
     realEl.textContent=(d.realized_pnl>=0?'+':'-')+`$${fmt(Math.abs(Math.round(d.realized_pnl)))}`;
     realEl.className='text-sm font-bold '+(d.realized_pnl>=0?'text-green-400':'text-red-400');
-    // Unrealized PnL (nuevo)
     const unrEl=document.getElementById('wscan-unrealized');
     if(unrEl){
         const ur=d.unrealized_pnl||0;
@@ -6806,6 +6905,26 @@ function renderWalletScan(d){
         catch(e){document.getElementById('wscan-first').textContent=d.first_trade_date.slice(0,10);}
     }else{document.getElementById('wscan-first').textContent='-';}
     document.getElementById('wscan-days').textContent=d.days_active?d.days_active+' días':'-';
+    // On-Chain Row
+    const onchainRow=document.getElementById('wscan-onchain-row');
+    if(d.usdc_in||d.usdc_out||d.onchain_age_days){
+        onchainRow.classList.remove('hidden');
+        document.getElementById('wscan-usdc-in').textContent=d.usdc_in?'$'+fmt(Math.round(d.usdc_in)):'-';
+        document.getElementById('wscan-usdc-out').textContent=d.usdc_out?'$'+fmt(Math.round(d.usdc_out)):'-';
+        document.getElementById('wscan-funded-by').textContent=d.funded_by?(d.funded_by.slice(0,6)+'...'+d.funded_by.slice(-4)):'-';
+        document.getElementById('wscan-onchain-age').textContent=d.onchain_age_days?d.onchain_age_days+' días':'-';
+        document.getElementById('wscan-onchain-txs').textContent=d.onchain_tx_count?fmt(d.onchain_tx_count):'-';
+    }else{onchainRow.classList.add('hidden');}
+    // Score Components
+    if(d.score_components){
+        const compEl=document.getElementById('wscan-score-components');
+        compEl.classList.remove('hidden');
+        const labels={profit_factor:'PF',win_rate:'WR',consistency:'Consist.',experience:'Exp.',risk:'Risk',roi:'ROI',activity:'Activ.'};
+        const colors={profit_factor:'bg-violet-500',win_rate:'bg-blue-500',consistency:'bg-green-500',experience:'bg-yellow-500',risk:'bg-red-500',roi:'bg-cyan-500',activity:'bg-orange-500'};
+        document.getElementById('wscan-score-bars').innerHTML=Object.entries(d.score_components).map(([k,v])=>{
+            return`<div class="flex-1 min-w-[60px]"><div class="text-[9px] text-gray-500 mb-0.5">${labels[k]||k} <span class="text-gray-400">${v}</span></div><div class="h-1.5 bg-gray-700 rounded-full overflow-hidden"><div class="${colors[k]||'bg-gray-500'} h-full rounded-full" style="width:${v}%"></div></div></div>`;
+        }).join('');
+    }
     // Links
     document.getElementById('wscan-link-poly').href=polyProfile(d.address);
     document.getElementById('wscan-link-scan').href='https://polygonscan.com/address/'+d.address;
@@ -6989,6 +7108,8 @@ function _getBscanFilterParams(){
         ['bf-cap-min','capital_min'],['bf-cap-max','capital_max'],
         ['bf-days-min','days_min'],['bf-days-max','days_max'],
         ['bf-pos-min','positions_min'],['bf-pos-max','positions_max'],
+        ['bf-pf-min','pf_min'],['bf-pf-max','pf_max'],
+        ['bf-pnl30-min','pnl30_min'],['bf-pnl30-max','pnl30_max'],
     ];
     fields.forEach(([elId,param])=>{
         const el=document.getElementById(elId);
@@ -7000,7 +7121,8 @@ function applyBatchFilters(){_bscanPage=0;loadBatchResults();}
 function clearBatchFilters(){
     ['bf-pnl-min','bf-pnl-max','bf-port-min','bf-port-max','bf-roi-min','bf-roi-max',
      'bf-wr-min','bf-wr-max','bf-score-min','bf-score-max','bf-trades-min','bf-trades-max',
-     'bf-cap-min','bf-cap-max','bf-days-min','bf-days-max','bf-pos-min','bf-pos-max'].forEach(id=>{
+     'bf-cap-min','bf-cap-max','bf-days-min','bf-days-max','bf-pos-min','bf-pos-max',
+     'bf-pf-min','bf-pf-max','bf-pnl30-min','bf-pnl30-max'].forEach(id=>{
         const el=document.getElementById(id);if(el)el.value='';
     });
     const srcEl=document.getElementById('bscan-filter-source');if(srcEl)srcEl.value='';
@@ -7063,9 +7185,9 @@ function renderBatchResults(results){
         const avgPnlEl=document.getElementById('bscan-avg-pnl');
         avgPnlEl.textContent=(avgPnl>=0?'+':'-')+'$'+fmt(Math.abs(Math.round(avgPnl)));
         avgPnlEl.className='text-sm font-bold '+(avgPnl>=0?'text-green-400':'text-red-400');
-        document.getElementById('bscan-top-count').textContent=results.filter(r=>(r.score||0)>=4).length;
+        document.getElementById('bscan-top-count').textContent=results.filter(r=>(r.score||0)>=70).length;
     }
-    ['source','total_trades','win_rate','total_pnl','roi_pct','portfolio_value','score'].forEach(c=>{
+    ['total_pnl','pnl_30d','profit_factor','win_rate','roi_pct','portfolio_value','score'].forEach(c=>{
         const el=document.getElementById('bsort-'+c);
         if(el)el.textContent=c===_bscanSortCol?(_bscanSortDir==='DESC'?'▼':'▲'):'';
     });
@@ -7074,28 +7196,36 @@ function renderBatchResults(results){
 function _renderBatchTable(results){
     const body=document.getElementById('bscan-ranking-body');
     const n=results.length;
-    if(n===0){body.innerHTML='<tr><td colspan="10" class="text-center py-4 text-gray-600">Sin resultados con estos filtros.</td></tr>';return;}
-    const srcLabels={wallets:'📋 Wallet',top_wallets:'⭐ Top',whales:'🐋 Whale'};
-    const srcColors={wallets:'text-violet-400',top_wallets:'text-emerald-400',whales:'text-cyan-400'};
-    const stars=s=>{if(s>=5)return'⭐⭐⭐⭐⭐';if(s>=4)return'⭐⭐⭐⭐';if(s>=3)return'⭐⭐⭐';if(s>=2)return'⭐⭐';return'⭐';};
+    if(n===0){body.innerHTML='<tr><td colspan="11" class="text-center py-4 text-gray-600">Sin resultados con estos filtros.</td></tr>';return;}
+    const badgeMap={elite:'🏆',hot:'📈',market_maker:'⚠️',inactive:'💀',one_hit:'🎰',whale:'🐋',cold:'📉'};
+    const gradeColors={S:'bg-purple-600/60 text-purple-200',A:'bg-green-600/60 text-green-200',B:'bg-blue-600/60 text-blue-200',C:'bg-yellow-600/60 text-yellow-200',D:'bg-orange-600/60 text-orange-200',F:'bg-red-600/60 text-red-200'};
     const offset=_bscanPage*_bscanPageSize;
     body.innerHTML=results.map((r,i)=>{
         const pnlC=(r.total_pnl||0)>=0?'text-green-400':'text-red-400';
+        const p30=r.pnl_30d||0;
+        const p30C=p30>=0?'text-green-400':'text-red-400';
+        const pf=r.profit_factor||0;
+        const pfC=pf>=2?'text-green-400':pf>=1?'text-yellow-400':'text-red-400';
         const roiC=(r.roi_pct||0)>=0?'text-green-400':'text-red-400';
         const wrC=(r.win_rate||0)>=60?'text-green-400':(r.win_rate||0)>=40?'text-yellow-400':'text-red-400';
         const name=r.name||r.address.slice(0,8)+'...';
         const addrShort=r.address.slice(0,6)+'...'+r.address.slice(-4);
-        const src=r.source||'';
+        let bdgs='';
+        try{const ba=typeof r.badges==='string'?JSON.parse(r.badges):r.badges||[];bdgs=ba.map(b=>badgeMap[b]||'').join('');}catch(e){}
+        const grade=r.grade||'F';
+        const gc=gradeColors[grade]||gradeColors.F;
+        const score=r.score||0;
         return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20 cursor-pointer" onclick="scanWalletFromAddr('${r.address}')">
             <td class="px-2 py-1.5 text-center text-gray-500 font-mono">${offset+i+1}</td>
-            <td class="px-2 py-1.5 text-left"><div class="font-medium text-gray-200">${name}</div><div class="text-[10px] text-gray-500 font-mono">${addrShort}</div></td>
-            <td class="px-2 py-1.5 text-center ${srcColors[src]||'text-gray-400'} text-[10px]">${srcLabels[src]||src}</td>
-            <td class="px-2 py-1.5 text-right font-mono">${fmt(r.total_trades||0)}</td>
-            <td class="px-2 py-1.5 text-right font-mono ${wrC}">${(r.win_rate||0).toFixed(1)}%</td>
+            <td class="px-2 py-1.5 text-left"><div class="font-medium text-gray-200">${name}</div><div class="text-[10px] text-gray-500 font-mono">${addrShort} ${bdgs}</div></td>
             <td class="px-2 py-1.5 text-right font-mono ${pnlC}">${(r.total_pnl||0)>=0?'+':''}$${fmt(Math.abs(Math.round(r.total_pnl||0)))}</td>
+            <td class="px-2 py-1.5 text-right font-mono ${p30C}">${p30>=0?'+':''}$${fmt(Math.abs(Math.round(p30)))}</td>
+            <td class="px-2 py-1.5 text-right font-mono ${pfC}">${pf.toFixed(1)}</td>
+            <td class="px-2 py-1.5 text-right font-mono ${wrC}">${(r.win_rate||0).toFixed(1)}%</td>
             <td class="px-2 py-1.5 text-right font-mono ${roiC}">${(r.roi_pct||0)>=0?'+':''}${(r.roi_pct||0).toFixed(1)}%</td>
             <td class="px-2 py-1.5 text-right font-mono text-gray-300">$${fmt(Math.round(r.portfolio_value||0))}</td>
-            <td class="px-2 py-1.5 text-center text-[10px]">${stars(r.score||0)}</td>
+            <td class="px-2 py-1.5 text-right font-mono ${r.usdc_in?'text-violet-300':'text-gray-500'}">${r.usdc_in?'⛓️$'+fmt(Math.round(r.usdc_in)):(r.estimated_initial?'$'+fmt(Math.round(r.estimated_initial)):'-')}</td>
+            <td class="px-2 py-1.5 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${gc}">${grade} ${score}</span></td>
             <td class="px-2 py-1.5 text-center"><button onclick="event.stopPropagation();scanWalletFromAddr('${r.address}')" class="text-violet-400 hover:text-violet-300 text-[10px]">🔍</button></td>
         </tr>`;
     }).join('');

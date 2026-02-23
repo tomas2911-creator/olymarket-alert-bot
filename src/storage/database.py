@@ -560,6 +560,30 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_wscan_score ON wallet_scan_cache(score);
                 CREATE INDEX IF NOT EXISTS idx_wscan_portfolio ON wallet_scan_cache(portfolio_value);
                 CREATE INDEX IF NOT EXISTS idx_wscan_winrate ON wallet_scan_cache(win_rate);
+            """)
+            # === Wallet Scan v2 migrations ===
+            await conn.execute("""
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS profit_factor DOUBLE PRECISION DEFAULT 0;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS avg_trade_size DOUBLE PRECISION DEFAULT 0;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS max_drawdown DOUBLE PRECISION DEFAULT 0;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS weighted_win_rate DOUBLE PRECISION DEFAULT 0;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS last_trade_ts TIMESTAMPTZ;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS pnl_7d DOUBLE PRECISION DEFAULT 0;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS pnl_30d DOUBLE PRECISION DEFAULT 0;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS vol_7d DOUBLE PRECISION DEFAULT 0;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS vol_30d DOUBLE PRECISION DEFAULT 0;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS trades_per_week DOUBLE PRECISION DEFAULT 0;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS buy_sell_ratio DOUBLE PRECISION DEFAULT 0;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS grade TEXT DEFAULT 'F';
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS score_components JSONB DEFAULT '{}';
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS badges TEXT DEFAULT '[]';
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS usdc_in DOUBLE PRECISION;
+                CREATE INDEX IF NOT EXISTS idx_wscan_pnl30d ON wallet_scan_cache(pnl_30d);
+                CREATE INDEX IF NOT EXISTS idx_wscan_pf ON wallet_scan_cache(profit_factor);
+                CREATE INDEX IF NOT EXISTS idx_wscan_grade ON wallet_scan_cache(grade);
+                CREATE INDEX IF NOT EXISTS idx_wscan_last_trade ON wallet_scan_cache(last_trade_ts);
+            """)
+            await conn.execute("""
 
                 CREATE TABLE IF NOT EXISTS batch_scan_jobs (
                     id              SERIAL PRIMARY KEY,
@@ -4072,13 +4096,19 @@ class Database:
     # ── Batch Wallet Scan ────────────────────────────────────────
     async def save_scan_result(self, data: dict):
         """Guardar o actualizar resultado de scan de una wallet."""
+        import json as _json
         async with self._pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO wallet_scan_cache (address, source, name, profile_image,
                     portfolio_value, estimated_initial, total_pnl, realized_pnl,
                     roi_pct, win_rate, wins, losses, total_trades,
-                    days_active, open_positions, score, scanned_at)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
+                    days_active, open_positions, score,
+                    profit_factor, avg_trade_size, max_drawdown, weighted_win_rate,
+                    last_trade_ts, pnl_7d, pnl_30d, vol_7d, vol_30d,
+                    trades_per_week, buy_sell_ratio, grade, score_components, badges,
+                    usdc_in, scanned_at)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
                 ON CONFLICT (address) DO UPDATE SET
                     source = EXCLUDED.source,
                     name = COALESCE(NULLIF(EXCLUDED.name,''), wallet_scan_cache.name),
@@ -4095,6 +4125,21 @@ class Database:
                     days_active = EXCLUDED.days_active,
                     open_positions = EXCLUDED.open_positions,
                     score = EXCLUDED.score,
+                    profit_factor = EXCLUDED.profit_factor,
+                    avg_trade_size = EXCLUDED.avg_trade_size,
+                    max_drawdown = EXCLUDED.max_drawdown,
+                    weighted_win_rate = EXCLUDED.weighted_win_rate,
+                    last_trade_ts = EXCLUDED.last_trade_ts,
+                    pnl_7d = EXCLUDED.pnl_7d,
+                    pnl_30d = EXCLUDED.pnl_30d,
+                    vol_7d = EXCLUDED.vol_7d,
+                    vol_30d = EXCLUDED.vol_30d,
+                    trades_per_week = EXCLUDED.trades_per_week,
+                    buy_sell_ratio = EXCLUDED.buy_sell_ratio,
+                    grade = EXCLUDED.grade,
+                    score_components = EXCLUDED.score_components,
+                    badges = EXCLUDED.badges,
+                    usdc_in = EXCLUDED.usdc_in,
                     scanned_at = NOW()
             """,
                 data.get("address", ""),
@@ -4113,6 +4158,21 @@ class Database:
                 data.get("days_active", 0),
                 data.get("open_positions", 0),
                 data.get("score", 0),
+                data.get("profit_factor", 0),
+                data.get("avg_trade_size", 0),
+                data.get("max_drawdown", 0),
+                data.get("weighted_win_rate", 0),
+                data.get("last_trade_ts"),
+                data.get("pnl_7d", 0),
+                data.get("pnl_30d", 0),
+                data.get("vol_7d", 0),
+                data.get("vol_30d", 0),
+                data.get("trades_per_week", 0),
+                data.get("buy_sell_ratio", 0),
+                data.get("grade", "F"),
+                _json.dumps(data.get("score_components", {})),
+                _json.dumps(data.get("badges", [])),
+                data.get("usdc_in"),
             )
 
     async def get_scan_results(self, source: str = "", sort_by: str = "total_pnl",
@@ -4139,6 +4199,10 @@ class Database:
                 ("capital_min", "estimated_initial", ">="), ("capital_max", "estimated_initial", "<="),
                 ("days_min", "days_active", ">="), ("days_max", "days_active", "<="),
                 ("positions_min", "open_positions", ">="), ("positions_max", "open_positions", "<="),
+                ("pf_min", "profit_factor", ">="), ("pf_max", "profit_factor", "<="),
+                ("pnl30_min", "pnl_30d", ">="), ("pnl30_max", "pnl_30d", "<="),
+                ("pnl7_min", "pnl_7d", ">="), ("pnl7_max", "pnl_7d", "<="),
+                ("dd_min", "max_drawdown", ">="), ("dd_max", "max_drawdown", "<="),
             ]
             for key, col, op in range_filters:
                 val = f.get(key)
@@ -4149,7 +4213,9 @@ class Database:
 
             valid_sorts = {"total_pnl", "win_rate", "roi_pct", "total_trades",
                            "portfolio_value", "score", "estimated_initial",
-                           "days_active", "open_positions", "realized_pnl"}
+                           "days_active", "open_positions", "realized_pnl",
+                           "profit_factor", "pnl_7d", "pnl_30d", "max_drawdown",
+                           "weighted_win_rate", "avg_trade_size", "grade"}
             order = sort_by if sort_by in valid_sorts else "total_pnl"
             direction = "ASC" if sort_dir.upper() == "ASC" else "DESC"
 

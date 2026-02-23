@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 
 from src import config
+from src.api.polygonscan import get_wallet_onchain_info, get_usdc_capital
 
 # Rate limiting simple para auth endpoints
 _auth_attempts: dict[str, list[float]] = defaultdict(list)
@@ -455,12 +456,59 @@ async def wallet_scan(request: Request, address: str):
                 pass
             return []
 
+        async def _fetch_lb_week():
+            try:
+                r = await client.get(f"{_POLY_DATA_API}/v1/leaderboard",
+                                     params={"user": addr, "period": "WEEK", "order": "PNL"})
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, list) and data:
+                        return data[0]
+            except Exception:
+                pass
+            return None
+
+        async def _fetch_lb_month():
+            try:
+                r = await client.get(f"{_POLY_DATA_API}/v1/leaderboard",
+                                     params={"user": addr, "period": "MONTH", "order": "PNL"})
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, list) and data:
+                        return data[0]
+            except Exception:
+                pass
+            return None
+
+        async def _fetch_onchain():
+            """Capital real via PolygonScan (USDC transfers on-chain)."""
+            try:
+                if config.POLYGONSCAN_API_KEY:
+                    return await get_wallet_onchain_info(addr)
+            except Exception:
+                pass
+            return None
+
         # Ejecutar todo en paralelo
         (portfolio_value, leaderboard, traded_count, profile,
-         positions, closed_positions, activity_recent) = await asyncio.gather(
+         positions, closed_positions, activity_recent,
+         lb_week, lb_month, onchain_info) = await asyncio.gather(
             _fetch_portfolio(), _fetch_leaderboard(), _fetch_traded(),
-            _fetch_profile(), _fetch_positions(), _fetch_closed(), _fetch_activity()
+            _fetch_profile(), _fetch_positions(), _fetch_closed(), _fetch_activity(),
+            _fetch_lb_week(), _fetch_lb_month(), _fetch_onchain()
         )
+
+        # PnL por período
+        pnl_7d = 0
+        vol_7d = 0
+        pnl_30d = 0
+        vol_30d = 0
+        if lb_week and isinstance(lb_week, dict):
+            pnl_7d = lb_week.get("pnl", 0) or 0
+            vol_7d = lb_week.get("vol", 0) or 0
+        if lb_month and isinstance(lb_month, dict):
+            pnl_30d = lb_month.get("pnl", 0) or 0
+            vol_30d = lb_month.get("vol", 0) or 0
 
         # ── Perfil del trader ──
         profile_name = ""
@@ -546,8 +594,23 @@ async def wallet_scan(request: Request, address: str):
         else:
             realized_pnl = closed_pnl
 
-        # Volumen oficial como base de inversión (más preciso que sumar posiciones parciales)
-        if official_volume and official_volume > 0:
+        # Capital real on-chain (USDC depositado)
+        usdc_in = None
+        usdc_out = None
+        funded_by = None
+        onchain_age_days = None
+        onchain_tx_count = None
+        if onchain_info and isinstance(onchain_info, dict):
+            usdc_in = onchain_info.get("usdc_in")
+            usdc_out = onchain_info.get("usdc_out")
+            funded_by = onchain_info.get("funded_by")
+            onchain_age_days = onchain_info.get("age_days")
+            onchain_tx_count = onchain_info.get("tx_count")
+
+        # Capital estimado — jerarquía: usdc_in > volumen oficial > suma posiciones
+        if usdc_in and usdc_in > 0:
+            estimated_initial = round(usdc_in, 2)
+        elif official_volume and official_volume > 0:
             estimated_initial = round(official_volume, 2)
         else:
             total_invested = open_total_bought + closed_total_bought
@@ -605,6 +668,36 @@ async def wallet_scan(request: Request, address: str):
         # Actividad reciente agrupada
         recent_trades = _group_activity(activity_recent)
 
+        # Métricas avanzadas v2
+        adv = _calc_advanced_metrics(closed_positions, positions, total_markets, days_active or 0)
+
+        base_result = {
+            "address": addr,
+            "portfolio_value": round(portfolio_value, 2),
+            "estimated_initial_capital": round(estimated_initial, 2),
+            "estimated_initial": round(estimated_initial, 2),
+            "total_pnl": total_pnl,
+            "official_pnl": round(official_pnl, 2) if official_pnl is not None else None,
+            "official_volume": round(official_volume, 2) if official_volume is not None else None,
+            "roi_pct": roi_pct,
+            "win_rate": win_rate,
+            "wins": closed_wins,
+            "losses": closed_losses,
+            "total_trades": total_markets,
+            "days_active": days_active,
+            "profit_factor": adv["profit_factor"],
+            "avg_trade_size": adv["avg_trade_size"],
+            "max_drawdown": adv["max_drawdown"],
+            "weighted_win_rate": adv["weighted_win_rate"],
+            "trades_per_week": adv["trades_per_week"],
+            "last_trade_ts": adv["last_trade_ts"],
+            "pnl_7d": round(pnl_7d, 2),
+            "pnl_30d": round(pnl_30d, 2),
+        }
+
+        score_data = _calc_wallet_score_v2(base_result)
+        badges = _calc_badges(base_result)
+
         return {
             "address": addr,
             "profile_name": profile_name,
@@ -630,6 +723,24 @@ async def wallet_scan(request: Request, address: str):
             "open_positions_count": len(open_positions_list),
             "open_positions": open_positions_list[:30],
             "recent_trades": recent_trades,
+            "profit_factor": adv["profit_factor"],
+            "avg_trade_size": adv["avg_trade_size"],
+            "max_drawdown": adv["max_drawdown"],
+            "weighted_win_rate": adv["weighted_win_rate"],
+            "trades_per_week": adv["trades_per_week"],
+            "pnl_7d": round(pnl_7d, 2),
+            "pnl_30d": round(pnl_30d, 2),
+            "vol_7d": round(vol_7d, 2),
+            "vol_30d": round(vol_30d, 2),
+            "usdc_in": usdc_in,
+            "usdc_out": usdc_out,
+            "funded_by": funded_by,
+            "onchain_age_days": onchain_age_days,
+            "onchain_tx_count": onchain_tx_count,
+            "score": score_data["score"],
+            "grade": score_data["grade"],
+            "score_components": score_data["components"],
+            "badges": badges,
         }
 
 
@@ -742,14 +853,15 @@ async def _run_batch_scan(db, addresses: list[dict], source: str, job_id: int):
             async with sem:
                 result = await _scan_wallet_for_batch(addr)
                 if result:
-                    score = _calc_wallet_score(result)
+                    score_data = _calc_wallet_score_v2(result)
+                    badges = _calc_badges(result)
                     await db.save_scan_result({
                         "address": addr,
                         "source": source,
                         "name": name,
                         "profile_image": profile_image,
                         "portfolio_value": result.get("portfolio_value", 0),
-                        "estimated_initial": result.get("estimated_initial_capital", 0),
+                        "estimated_initial": result.get("estimated_initial", 0),
                         "total_pnl": result.get("total_pnl", 0),
                         "realized_pnl": result.get("realized_pnl", 0),
                         "roi_pct": result.get("roi_pct", 0),
@@ -759,7 +871,22 @@ async def _run_batch_scan(db, addresses: list[dict], source: str, job_id: int):
                         "total_trades": result.get("total_trades", 0),
                         "days_active": result.get("days_active", 0),
                         "open_positions": result.get("open_positions_count", 0),
-                        "score": score,
+                        "score": score_data["score"],
+                        "profit_factor": result.get("profit_factor", 0),
+                        "avg_trade_size": result.get("avg_trade_size", 0),
+                        "max_drawdown": result.get("max_drawdown", 0),
+                        "weighted_win_rate": result.get("weighted_win_rate", 0),
+                        "last_trade_ts": result.get("last_trade_ts"),
+                        "pnl_7d": result.get("pnl_7d", 0),
+                        "pnl_30d": result.get("pnl_30d", 0),
+                        "vol_7d": result.get("vol_7d", 0),
+                        "vol_30d": result.get("vol_30d", 0),
+                        "trades_per_week": result.get("trades_per_week", 0),
+                        "buy_sell_ratio": 0,
+                        "grade": score_data["grade"],
+                        "score_components": score_data["components"],
+                        "badges": badges,
+                        "usdc_in": result.get("usdc_in"),
                     })
                 else:
                     async with _lock:
@@ -869,8 +996,42 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                     pass
                 return closed
 
-            portfolio_value, leaderboard, traded_count, positions, closed_positions = await asyncio.gather(
-                _val(), _lb(), _traded(), _pos(), _closed()
+            async def _lb_week():
+                try:
+                    r = await client.get(f"{_POLY_DATA_API}/v1/leaderboard",
+                                         params={"user": addr, "period": "WEEK", "order": "PNL"})
+                    if r.status_code == 200:
+                        data = r.json()
+                        if isinstance(data, list) and data:
+                            return data[0]
+                except Exception:
+                    pass
+                return None
+
+            async def _lb_month():
+                try:
+                    r = await client.get(f"{_POLY_DATA_API}/v1/leaderboard",
+                                         params={"user": addr, "period": "MONTH", "order": "PNL"})
+                    if r.status_code == 200:
+                        data = r.json()
+                        if isinstance(data, list) and data:
+                            return data[0]
+                except Exception:
+                    pass
+                return None
+
+            async def _onchain():
+                try:
+                    if config.POLYGONSCAN_API_KEY:
+                        return await get_usdc_capital(addr)
+                except Exception:
+                    pass
+                return None
+
+            (portfolio_value, leaderboard, traded_count, positions,
+             closed_positions, lb_week, lb_month, onchain_info) = await asyncio.gather(
+                _val(), _lb(), _traded(), _pos(), _closed(),
+                _lb_week(), _lb_month(), _onchain()
             )
 
             # PnL oficial y volumen del leaderboard
@@ -879,6 +1040,18 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
             if leaderboard and isinstance(leaderboard, dict):
                 official_pnl = leaderboard.get("pnl")
                 official_volume = leaderboard.get("vol")
+
+            # PnL por período
+            pnl_7d = 0
+            vol_7d = 0
+            pnl_30d = 0
+            vol_30d = 0
+            if lb_week and isinstance(lb_week, dict):
+                pnl_7d = lb_week.get("pnl", 0) or 0
+                vol_7d = lb_week.get("vol", 0) or 0
+            if lb_month and isinstance(lb_month, dict):
+                pnl_30d = lb_month.get("pnl", 0) or 0
+                vol_30d = lb_month.get("vol", 0) or 0
 
             # Métricas desde posiciones abiertas — usar cashPnl del API
             open_cash_pnl = 0
@@ -923,7 +1096,15 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 realized_pnl = round(official_pnl - open_cash_pnl, 2)
             else:
                 realized_pnl = round(closed_pnl, 2)
-            if official_volume and official_volume > 0:
+            # Capital real on-chain
+            usdc_in = None
+            if onchain_info and isinstance(onchain_info, dict):
+                usdc_in = onchain_info.get("usdc_in")
+
+            # Capital estimado — jerarquía: usdc_in > volumen oficial > suma posiciones
+            if usdc_in and usdc_in > 0:
+                estimated_initial = round(usdc_in, 2)
+            elif official_volume and official_volume > 0:
                 estimated_initial = round(official_volume, 2)
             else:
                 total_invested = open_total_bought + closed_total_bought
@@ -947,13 +1128,18 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 except Exception:
                     pass
 
+            # Métricas avanzadas v2
+            adv = _calc_advanced_metrics(closed_positions, positions, total_markets, days_active)
+
             return {
                 "address": addr,
                 "portfolio_value": round(portfolio_value, 2),
                 "estimated_initial_capital": round(estimated_initial, 2),
+                "estimated_initial": round(estimated_initial, 2),
                 "total_pnl": total_pnl,
                 "realized_pnl": realized_pnl,
                 "official_pnl": round(official_pnl, 2) if official_pnl is not None else None,
+                "official_volume": round(official_volume, 2) if official_volume else 0,
                 "roi_pct": roi_pct,
                 "win_rate": win_rate,
                 "wins": wins,
@@ -962,47 +1148,218 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 "total_trades": total_markets,
                 "days_active": days_active,
                 "open_positions_count": open_count,
+                "profit_factor": adv["profit_factor"],
+                "avg_trade_size": adv["avg_trade_size"],
+                "max_drawdown": adv["max_drawdown"],
+                "weighted_win_rate": adv["weighted_win_rate"],
+                "trades_per_week": adv["trades_per_week"],
+                "last_trade_ts": adv["last_trade_ts"],
+                "pnl_7d": round(pnl_7d, 2),
+                "pnl_30d": round(pnl_30d, 2),
+                "vol_7d": round(vol_7d, 2),
+                "vol_30d": round(vol_30d, 2),
+                "usdc_in": usdc_in,
             }
     except Exception as e:
         print(f"[BatchScan] Error scan {addr[:12]}: {e}", flush=True)
         return None
 
 
-def _calc_wallet_score(result: dict) -> int:
-    """Calcular score 1-5 basado en win_rate, PnL, trades, ROI."""
-    score = 0
-    wr = result.get("win_rate", 0)
-    pnl = result.get("total_pnl", 0)
+def _calc_advanced_metrics(closed_positions: list, open_positions: list,
+                           total_trades: int, days_active: int) -> dict:
+    """Calcular profit_factor, avg_trade_size, max_drawdown, weighted_win_rate desde closed-positions."""
+    sum_wins = 0.0
+    sum_losses = 0.0
+    weighted_win_bought = 0.0
+    total_bought = 0.0
+    running_pnl = 0.0
+    peak = 0.0
+    max_dd = 0.0
+
+    sorted_closed = sorted(closed_positions,
+                           key=lambda x: x.get("timestamp", 0) or 0)
+
+    for cp in sorted_closed:
+        try:
+            rpnl = float(cp.get("realizedPnl", 0))
+            tb = float(cp.get("totalBought", 0))
+        except (ValueError, TypeError):
+            continue
+        if rpnl > 0:
+            sum_wins += rpnl
+            weighted_win_bought += tb
+        elif rpnl < 0:
+            sum_losses += abs(rpnl)
+        total_bought += tb
+        running_pnl += rpnl
+        peak = max(peak, running_pnl)
+        dd = peak - running_pnl
+        max_dd = max(max_dd, dd)
+
+    for p in open_positions:
+        try:
+            total_bought += float(p.get("totalBought", 0))
+        except (ValueError, TypeError):
+            pass
+
+    profit_factor = round(sum_wins / max(sum_losses, 0.01), 2)
+    avg_trade_size = round(total_bought / max(total_trades, 1), 2)
+    weighted_wr = round(weighted_win_bought / max(total_bought, 0.01) * 100, 1)
+    weeks_active = max(days_active / 7, 1)
+    trades_per_week = round(total_trades / weeks_active, 2)
+
+    last_trade_ts = None
+    if closed_positions:
+        ts = closed_positions[0].get("timestamp")
+        if ts:
+            try:
+                if isinstance(ts, (int, float)):
+                    last_trade_ts = datetime.fromtimestamp(ts, tz=timezone.utc)
+                else:
+                    last_trade_ts = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            except Exception:
+                pass
+
+    return {
+        "profit_factor": profit_factor,
+        "avg_trade_size": avg_trade_size,
+        "max_drawdown": round(max_dd, 2),
+        "weighted_win_rate": weighted_wr,
+        "trades_per_week": trades_per_week,
+        "last_trade_ts": last_trade_ts,
+    }
+
+
+def _calc_wallet_score_v2(result: dict) -> dict:
+    """Score compuesto 0-100 con componentes desglosados y grade."""
+    pf = result.get("profit_factor", 0)
+    pf_score = min(100, max(0, (pf - 0.5) * 40))
+
+    wwr = result.get("weighted_win_rate", 50)
+    wr_score = min(100, max(0, (wwr - 30) * 1.43))
+
+    pnl_all = result.get("total_pnl", 0)
+    pnl_30d = result.get("pnl_30d", 0)
+    if pnl_all > 0:
+        recent_ratio = pnl_30d / max(pnl_all, 1)
+        cons_score = min(100, max(0, recent_ratio * 200))
+    else:
+        cons_score = max(0, min(100, pnl_30d * 0.1)) if pnl_30d > 0 else 0
+
     trades = result.get("total_trades", 0)
+    exp_score = min(100, trades * 1.0)
+
+    dd = result.get("max_drawdown", 0)
+    pnl_abs = max(abs(pnl_all), 1)
+    dd_ratio = dd / pnl_abs
+    risk_score = max(0, 100 - dd_ratio * 100)
+
     roi = result.get("roi_pct", 0)
+    roi_score = min(100, max(0, roi * 2))
 
-    # Win rate
-    if wr >= 70:
-        score += 2
-    elif wr >= 55:
-        score += 1
+    last_ts = result.get("last_trade_ts")
+    if last_ts:
+        if isinstance(last_ts, str):
+            try:
+                last_ts = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+            except Exception:
+                last_ts = None
+    days_since = 999
+    if last_ts:
+        try:
+            if last_ts.tzinfo is None:
+                last_ts = last_ts.replace(tzinfo=timezone.utc)
+            days_since = max(0, (datetime.now(timezone.utc) - last_ts).days)
+        except Exception:
+            pass
+    activity_score = max(0, 100 - days_since * 3.3)
 
-    # PnL positivo
-    if pnl >= 10000:
-        score += 2
-    elif pnl >= 1000:
-        score += 1
-    elif pnl > 0:
-        score += 0.5
+    total = (
+        pf_score * 0.25 +
+        wr_score * 0.15 +
+        cons_score * 0.15 +
+        exp_score * 0.10 +
+        risk_score * 0.15 +
+        roi_score * 0.15 +
+        activity_score * 0.05
+    )
 
-    # Volumen de trades (experiencia)
-    if trades >= 100:
-        score += 1
-    elif trades >= 20:
-        score += 0.5
+    if trades < 5:
+        total *= 0.3
+    if days_since > 60:
+        total *= 0.5
 
-    # ROI
-    if roi >= 30:
-        score += 1
-    elif roi >= 10:
-        score += 0.5
+    vol = result.get("official_volume", 0) or result.get("estimated_initial", 0)
+    if (vol > 100000 and trades > 50
+            and abs(result.get("total_pnl", 0)) / max(vol, 1) < 0.005):
+        total *= 0.1
 
-    return max(1, min(5, round(score)))
+    score = round(max(0, min(100, total)))
+    grade = _score_to_grade(score)
+
+    return {
+        "score": score,
+        "grade": grade,
+        "components": {
+            "profit_factor": round(pf_score),
+            "win_rate": round(wr_score),
+            "consistency": round(cons_score),
+            "experience": round(exp_score),
+            "risk": round(risk_score),
+            "roi": round(roi_score),
+            "activity": round(activity_score),
+        },
+    }
+
+
+def _score_to_grade(score: float) -> str:
+    if score >= 85: return "S"
+    if score >= 70: return "A"
+    if score >= 55: return "B"
+    if score >= 40: return "C"
+    if score >= 25: return "D"
+    return "F"
+
+
+def _calc_badges(result: dict) -> list:
+    """Calcular badges automáticos para una wallet."""
+    badges = []
+    last_ts = result.get("last_trade_ts")
+    days_since = 999
+    if last_ts:
+        try:
+            if isinstance(last_ts, str):
+                last_ts = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+            if hasattr(last_ts, 'tzinfo') and last_ts.tzinfo is None:
+                last_ts = last_ts.replace(tzinfo=timezone.utc)
+            days_since = max(0, (datetime.now(timezone.utc) - last_ts).days)
+        except Exception:
+            pass
+
+    wwr = result.get("weighted_win_rate", 0)
+    trades = result.get("total_trades", 0)
+    pf = result.get("profit_factor", 0)
+
+    if wwr >= 65 and trades >= 50 and pf >= 2.0 and days_since <= 7:
+        badges.append("elite")
+    if result.get("pnl_7d", 0) > 0 and result.get("pnl_30d", 0) > 0:
+        badges.append("hot")
+
+    vol = result.get("official_volume", 0) or result.get("estimated_initial", 0)
+    if (vol > 100000 and trades > 50
+            and abs(result.get("total_pnl", 0)) / max(vol, 1) < 0.005):
+        badges.append("market_maker")
+    if days_since > 30:
+        badges.append("inactive")
+    resolved = result.get("wins", 0) + result.get("losses", 0)
+    if resolved < 5:
+        badges.append("one_hit")
+    if result.get("portfolio_value", 0) > 100000:
+        badges.append("whale")
+    if result.get("pnl_7d", 0) < 0 and result.get("pnl_30d", 0) < 0:
+        badges.append("cold")
+
+    return badges
 
 
 @router.get("/api/wallets/batch-scan/status")
@@ -1061,7 +1418,11 @@ async def get_batch_scan_results(request: Request, source: str = "",
                                   trades_min: float = None, trades_max: float = None,
                                   capital_min: float = None, capital_max: float = None,
                                   days_min: float = None, days_max: float = None,
-                                  positions_min: float = None, positions_max: float = None):
+                                  positions_min: float = None, positions_max: float = None,
+                                  pf_min: float = None, pf_max: float = None,
+                                  pnl30_min: float = None, pnl30_max: float = None,
+                                  pnl7_min: float = None, pnl7_max: float = None,
+                                  dd_min: float = None, dd_max: float = None):
     """Resultados con filtros avanzados. Todos los filtros son opcionales y acumulativos."""
     db = request.app.state.db
     filters = {}
@@ -1073,7 +1434,11 @@ async def get_batch_scan_results(request: Request, source: str = "",
                      ("trades_min", trades_min), ("trades_max", trades_max),
                      ("capital_min", capital_min), ("capital_max", capital_max),
                      ("days_min", days_min), ("days_max", days_max),
-                     ("positions_min", positions_min), ("positions_max", positions_max)]:
+                     ("positions_min", positions_min), ("positions_max", positions_max),
+                     ("pf_min", pf_min), ("pf_max", pf_max),
+                     ("pnl30_min", pnl30_min), ("pnl30_max", pnl30_max),
+                     ("pnl7_min", pnl7_min), ("pnl7_max", pnl7_max),
+                     ("dd_min", dd_min), ("dd_max", dd_max)]:
         if val is not None:
             filters[key] = val
     data = await db.get_scan_results(source=source, sort_by=sort_by, sort_dir=sort_dir,

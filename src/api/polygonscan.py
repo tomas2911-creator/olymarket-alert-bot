@@ -147,3 +147,51 @@ async def get_wallet_onchain_info(address: str) -> dict:
         logger.warning("polygonscan_error", address=address[:10], error=str(e))
 
     return result
+
+
+async def get_usdc_capital(address: str) -> dict:
+    """Versión ligera: solo USDC in/out + funded_by (2 API calls).
+    Optimizada para batch scan — no consulta txlist ni erc1155."""
+    result = {"usdc_in": None, "usdc_out": None, "funded_by": None}
+    if not config.POLYGONSCAN_API_KEY:
+        return result
+
+    addr_lower = address.lower()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            usdc_in = 0.0
+            usdc_out = 0.0
+            funded_by = None
+
+            for usdc_addr in [USDC_NATIVE, USDC_BRIDGED]:
+                data = await _api_call(client, {
+                    "module": "account", "action": "tokentx",
+                    "address": address, "contractaddress": usdc_addr,
+                    "page": "1", "offset": "200", "sort": "asc",
+                })
+                transfers = data.get("result", [])
+                decimals = USDC_DECIMALS.get(usdc_addr.lower(), 6)
+
+                for tx in transfers:
+                    value_raw = int(tx.get("value", "0") or "0")
+                    value = value_raw / (10 ** decimals)
+                    to_addr = (tx.get("to") or "").lower()
+                    from_addr = (tx.get("from") or "").lower()
+
+                    if to_addr == addr_lower:
+                        usdc_in += value
+                        if funded_by is None and value > 0:
+                            funded_by = tx.get("from", "")
+                    elif from_addr == addr_lower:
+                        usdc_out += value
+
+                await asyncio.sleep(0.22)
+
+            result["usdc_in"] = round(usdc_in, 2) if usdc_in > 0 else None
+            result["usdc_out"] = round(usdc_out, 2) if usdc_out > 0 else None
+            result["funded_by"] = funded_by
+
+    except Exception as e:
+        logger.warning("polygonscan_capital_error", address=address[:10], error=str(e))
+
+    return result
