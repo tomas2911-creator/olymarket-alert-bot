@@ -30,11 +30,23 @@ POLYMARKET_CTF = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
 async def _api_call(client: httpx.AsyncClient, params: dict) -> dict:
     """Llamada genérica a PolygonScan API con manejo de errores."""
     params["apikey"] = config.POLYGONSCAN_API_KEY
-    resp = await client.get(POLYGONSCAN_API, params=params)
-    if resp.status_code == 200:
-        data = resp.json()
-        if data.get("status") == "1" and isinstance(data.get("result"), list):
-            return data
+    try:
+        resp = await client.get(POLYGONSCAN_API, params=params)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("status") == "1" and isinstance(data.get("result"), list):
+                return data
+            else:
+                logger.debug("polygonscan_api_no_data",
+                             status=data.get("status"),
+                             message=data.get("message", ""),
+                             result_type=type(data.get("result")).__name__,
+                             action=params.get("action", ""))
+        else:
+            logger.warning("polygonscan_api_http_error", status_code=resp.status_code,
+                           body=resp.text[:200])
+    except Exception as e:
+        logger.warning("polygonscan_api_exception", error=str(e))
     return {"status": "0", "result": []}
 
 
@@ -188,6 +200,8 @@ async def get_usdc_capital(address: str) -> dict:
             result["usdc_in"] = round(usdc_in, 2) if usdc_in > 0 else None
             result["usdc_out"] = round(usdc_out, 2) if usdc_out > 0 else None
             result["funded_by"] = funded_by
+            logger.info("polygonscan_capital_result", address=address[:10],
+                        usdc_in=result["usdc_in"], usdc_out=result["usdc_out"])
 
     except Exception as e:
         logger.warning("polygonscan_capital_error", address=address[:10], error=str(e))
