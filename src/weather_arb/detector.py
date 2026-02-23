@@ -712,10 +712,6 @@ class WeatherArbDetector:
                     if high < observed_rounded:
                         is_below_exceeded = True
 
-                # ABOVE_IMPOSSIBLE: no apostar NO cuando mercado está >70% YES
-                if is_above_impossible and poly_yes > 0.70:
-                    is_above_impossible = False
-
                 if not is_above_impossible and not is_below_exceeded:
                     continue
 
@@ -727,8 +723,12 @@ class WeatherArbDetector:
 
                 # Calcular profit y EV de comprar NO
                 no_price = 1.0 - poly_yes
-                if no_price < 0.15:
-                    continue  # Mínimo 15¢ — no apostar contra consenso del mercado
+
+                # Filtros de no_price diferenciados por certeza:
+                if is_below_exceeded and no_price < 0.20:
+                    continue  # Certeza matemática pero sin liquidez suficiente
+                if is_above_impossible and no_price < 0.80:
+                    continue  # Mercado no concuerda lo suficiente con nuestra predicción
                 profit_pct = ((1.0 / no_price) - 1.0) * 100
 
                 # Filtro EV: expected ROI = P(win)*profit - P(loss)*100
@@ -937,10 +937,6 @@ class WeatherArbDetector:
                 if is_above_impossible and not declining:
                     is_above_impossible = False
 
-                # ABOVE_IMPOSSIBLE: no apostar NO cuando mercado está >70% YES
-                if is_above_impossible and poly_yes > 0.70:
-                    is_above_impossible = False
-
                 if not is_below_exceeded and not is_above_impossible:
                     continue
 
@@ -954,8 +950,14 @@ class WeatherArbDetector:
 
                 # Calcular profit y EV de comprar NO
                 no_price = 1.0 - poly_yes
-                if no_price < 0.15:
-                    continue  # Mínimo 15¢ — no apostar contra consenso del mercado
+
+                # Filtros de no_price diferenciados por certeza:
+                # BELOW_EXCEEDED = certeza matemática → solo necesita liquidez
+                # ABOVE_IMPOSSIBLE = predicción → necesita que mercado concuerde
+                if is_below_exceeded and no_price < 0.20:
+                    continue  # Certeza matemática pero sin liquidez suficiente
+                if is_above_impossible and no_price < 0.80:
+                    continue  # Mercado no concuerda lo suficiente con nuestra predicción
                 profit_pct = ((1.0 / no_price) - 1.0) * 100
 
                 # Filtro EV: expected ROI = P(win)*profit - P(loss)*100

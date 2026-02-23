@@ -174,6 +174,12 @@ class WeatherPaperTrader:
                 )
                 if trade.resolved:
                     self._resolved_cids.add(cid)
+                else:
+                    # Recalcular unrealized_pnl al cargar para corregir valores stale
+                    # (el código viejo podía calcular PnL con el token equivocado)
+                    if trade.current_odds is not None and trade.entry_odds > 0:
+                        shares = trade.bet_size / trade.entry_odds
+                        trade.unrealized_pnl = round((shares * trade.current_odds) - trade.bet_size, 2)
                 self._trades.append(trade)
                 loaded += 1
             if loaded:
