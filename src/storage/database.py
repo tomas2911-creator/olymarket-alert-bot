@@ -578,6 +578,8 @@ class Database:
                 ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS score_components JSONB DEFAULT '{}';
                 ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS badges TEXT DEFAULT '[]';
                 ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS usdc_in DOUBLE PRECISION;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS first_deposit DOUBLE PRECISION;
+                ALTER TABLE wallet_scan_cache ADD COLUMN IF NOT EXISTS max_single_deposit DOUBLE PRECISION;
                 CREATE INDEX IF NOT EXISTS idx_wscan_pnl30d ON wallet_scan_cache(pnl_30d);
                 CREATE INDEX IF NOT EXISTS idx_wscan_pf ON wallet_scan_cache(profit_factor);
                 CREATE INDEX IF NOT EXISTS idx_wscan_grade ON wallet_scan_cache(grade);
@@ -4106,9 +4108,9 @@ class Database:
                     profit_factor, avg_trade_size, max_drawdown, weighted_win_rate,
                     last_trade_ts, pnl_7d, pnl_30d, vol_7d, vol_30d,
                     trades_per_week, buy_sell_ratio, grade, score_components, badges,
-                    usdc_in, scanned_at)
+                    usdc_in, first_deposit, max_single_deposit, scanned_at)
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
+                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,NOW())
                 ON CONFLICT (address) DO UPDATE SET
                     source = EXCLUDED.source,
                     name = COALESCE(NULLIF(EXCLUDED.name,''), wallet_scan_cache.name),
@@ -4140,6 +4142,8 @@ class Database:
                     score_components = EXCLUDED.score_components,
                     badges = EXCLUDED.badges,
                     usdc_in = EXCLUDED.usdc_in,
+                    first_deposit = EXCLUDED.first_deposit,
+                    max_single_deposit = EXCLUDED.max_single_deposit,
                     scanned_at = NOW()
             """,
                 data.get("address", ""),
@@ -4173,6 +4177,8 @@ class Database:
                 _json.dumps(data.get("score_components", {})),
                 _json.dumps(data.get("badges", [])),
                 data.get("usdc_in"),
+                data.get("first_deposit"),
+                data.get("max_single_deposit"),
             )
 
     async def get_scan_results(self, source: str = "", sort_by: str = "total_pnl",
@@ -4203,6 +4209,8 @@ class Database:
                 ("pnl30_min", "pnl_30d", ">="), ("pnl30_max", "pnl_30d", "<="),
                 ("pnl7_min", "pnl_7d", ">="), ("pnl7_max", "pnl_7d", "<="),
                 ("dd_min", "max_drawdown", ">="), ("dd_max", "max_drawdown", "<="),
+                ("firstdep_min", "first_deposit", ">="), ("firstdep_max", "first_deposit", "<="),
+                ("maxdep_min", "max_single_deposit", ">="), ("maxdep_max", "max_single_deposit", "<="),
             ]
             for key, col, op in range_filters:
                 val = f.get(key)
@@ -4216,7 +4224,7 @@ class Database:
                            "days_active", "open_positions", "realized_pnl",
                            "profit_factor", "pnl_7d", "pnl_30d", "max_drawdown",
                            "weighted_win_rate", "avg_trade_size", "grade",
-                           "usdc_in"}
+                           "usdc_in", "first_deposit", "max_single_deposit"}
             order = sort_by if sort_by in valid_sorts else "total_pnl"
             direction = "ASC" if sort_dir.upper() == "ASC" else "DESC"
 
@@ -4237,19 +4245,21 @@ class Database:
             }
 
     async def get_wallets_missing_onchain(self) -> list[str]:
-        """Obtener addresses de wallets con usdc_in NULL."""
+        """Obtener addresses de wallets con usdc_in, first_deposit o max_single_deposit NULL."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT address FROM wallet_scan_cache WHERE usdc_in IS NULL"
+                "SELECT address FROM wallet_scan_cache WHERE usdc_in IS NULL OR first_deposit IS NULL OR max_single_deposit IS NULL"
             )
             return [r["address"] for r in rows]
 
-    async def update_wallet_usdc_in(self, address: str, usdc_in: float):
-        """Actualizar solo usdc_in para una wallet."""
+    async def update_wallet_onchain_capital(self, address: str, usdc_in: float | None,
+                                              first_deposit: float | None,
+                                              max_single_deposit: float | None):
+        """Actualizar usdc_in, first_deposit y max_single_deposit para una wallet."""
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "UPDATE wallet_scan_cache SET usdc_in = $1 WHERE address = $2",
-                usdc_in, address
+                "UPDATE wallet_scan_cache SET usdc_in = $1, first_deposit = $2, max_single_deposit = $3 WHERE address = $4",
+                usdc_in, first_deposit, max_single_deposit, address
             )
 
     async def clear_scan_results(self):

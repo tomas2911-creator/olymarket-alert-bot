@@ -2859,6 +2859,16 @@
                                 <div class="text-[9px] text-gray-500 mb-1">Capital ⛓️ ($)</div>
                                 <div class="flex gap-1"><input id="bf-cap-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-cap-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
                             </div>
+                            <!-- 1er Depósito -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">1er Depósito ($)</div>
+                                <div class="flex gap-1"><input id="bf-firstdep-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-firstdep-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
+                            <!-- Max Depósito -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Max Depósito ($)</div>
+                                <div class="flex gap-1"><input id="bf-maxdep-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-maxdep-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
                             <!-- Días Activo -->
                             <div class="bg-gray-800/40 rounded p-2">
                                 <div class="text-[9px] text-gray-500 mb-1">Días Activo</div>
@@ -2887,7 +2897,7 @@
                                         <option value="">Todas</option><option value="wallets">Wallets</option><option value="top_wallets">Top</option><option value="whales">Whales</option>
                                     </select>
                                     <select id="bscan-filter-sort" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1 py-0.5 text-[10px] text-gray-300">
-                                        <option value="total_pnl">PnL Total</option><option value="pnl_30d">PnL 30d</option><option value="profit_factor">Profit Factor</option><option value="win_rate">WR</option><option value="roi_pct">ROI</option><option value="score">Score</option><option value="total_trades">Trades</option><option value="portfolio_value">Portfolio</option><option value="usdc_in">Capital</option><option value="max_drawdown">Drawdown</option>
+                                        <option value="total_pnl">PnL Total</option><option value="pnl_30d">PnL 30d</option><option value="profit_factor">Profit Factor</option><option value="win_rate">WR</option><option value="roi_pct">ROI</option><option value="score">Score</option><option value="total_trades">Trades</option><option value="portfolio_value">Portfolio</option><option value="usdc_in">Capital</option><option value="first_deposit">1er Depósito</option><option value="max_single_deposit">Max Depósito</option><option value="max_drawdown">Drawdown</option>
                                     </select>
                                 </div>
                             </div>
@@ -2913,12 +2923,14 @@
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('win_rate')">WR% <span id="bsort-win_rate"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('roi_pct')">ROI <span id="bsort-roi_pct"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('portfolio_value')">Portfolio <span id="bsort-portfolio_value"></span></th>
-                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('usdc_in')">Capital <span id="bsort-usdc_in"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('usdc_in')">Capital ⛓️ <span id="bsort-usdc_in"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('first_deposit')">1er Dep <span id="bsort-first_deposit"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('max_single_deposit')">Max Dep <span id="bsort-max_single_deposit"></span></th>
                                 <th class="px-2 py-1.5 text-center cursor-pointer hover:text-violet-400" onclick="sortBatchBy('score')">Score <span id="bsort-score"></span></th>
                                 <th class="px-2 py-1.5 text-center">🔍</th>
                                 <th class="px-2 py-1.5 text-center">PM</th>
                             </tr></thead>
-                            <tbody id="bscan-ranking-body"><tr><td colspan="12" class="text-center py-4 text-gray-600">Click en un botón para iniciar análisis</td></tr></tbody>
+                            <tbody id="bscan-ranking-body"><tr><td colspan="14" class="text-center py-4 text-gray-600">Click en un botón para iniciar análisis</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -6986,7 +6998,7 @@ function sortBatchBy(col){
     else{_bscanSortCol=col;_bscanSortDir='DESC';}
     const dd=document.getElementById('bscan-filter-sort');
     if(dd){dd.value=col;}
-    ['source','total_trades','win_rate','total_pnl','pnl_30d','profit_factor','roi_pct','portfolio_value','usdc_in','score'].forEach(c=>{
+    ['source','total_trades','win_rate','total_pnl','pnl_30d','profit_factor','roi_pct','portfolio_value','usdc_in','first_deposit','max_single_deposit','score'].forEach(c=>{
         const el=document.getElementById('bsort-'+c);
         if(el)el.textContent=c===col?(_bscanSortDir==='DESC'?'▼':'▲'):'';
     });
@@ -7110,6 +7122,8 @@ function _getBscanFilterParams(){
         ['bf-score-min','score_min'],['bf-score-max','score_max'],
         ['bf-trades-min','trades_min'],['bf-trades-max','trades_max'],
         ['bf-cap-min','capital_min'],['bf-cap-max','capital_max'],
+        ['bf-firstdep-min','first_deposit_min'],['bf-firstdep-max','first_deposit_max'],
+        ['bf-maxdep-min','max_single_deposit_min'],['bf-maxdep-max','max_single_deposit_max'],
         ['bf-days-min','days_min'],['bf-days-max','days_max'],
         ['bf-pos-min','positions_min'],['bf-pos-max','positions_max'],
         ['bf-pf-min','pf_min'],['bf-pf-max','pf_max'],
@@ -7125,7 +7139,8 @@ function applyBatchFilters(){_bscanPage=0;loadBatchResults();}
 function clearBatchFilters(){
     ['bf-pnl-min','bf-pnl-max','bf-port-min','bf-port-max','bf-roi-min','bf-roi-max',
      'bf-wr-min','bf-wr-max','bf-score-min','bf-score-max','bf-trades-min','bf-trades-max',
-     'bf-cap-min','bf-cap-max','bf-days-min','bf-days-max','bf-pos-min','bf-pos-max',
+     'bf-cap-min','bf-cap-max','bf-firstdep-min','bf-firstdep-max','bf-maxdep-min','bf-maxdep-max',
+     'bf-days-min','bf-days-max','bf-pos-min','bf-pos-max',
      'bf-pf-min','bf-pf-max','bf-pnl30-min','bf-pnl30-max'].forEach(id=>{
         const el=document.getElementById(id);if(el)el.value='';
     });
@@ -7208,7 +7223,7 @@ async function clearBatchCache(){
             document.getElementById('bscan-summary').classList.add('hidden');
             document.getElementById('bscan-filters').classList.add('hidden');
             document.getElementById('bscan-table-wrap').classList.add('hidden');
-            document.getElementById('bscan-ranking-body').innerHTML='<tr><td colspan="10" class="text-center py-4 text-gray-600">Sin resultados. Ejecuta un análisis batch primero.</td></tr>';
+            document.getElementById('bscan-ranking-body').innerHTML='<tr><td colspan="14" class="text-center py-4 text-gray-600">Sin resultados. Ejecuta un análisis batch primero.</td></tr>';
         }
     }catch(e){console.error('clearBatchCache error',e);}
 }
@@ -7231,7 +7246,7 @@ function renderBatchResults(results){
         avgPnlEl.className='text-sm font-bold '+(avgPnl>=0?'text-green-400':'text-red-400');
         document.getElementById('bscan-top-count').textContent=results.filter(r=>(r.score||0)>=70).length;
     }
-    ['total_pnl','pnl_30d','profit_factor','win_rate','roi_pct','portfolio_value','usdc_in','score'].forEach(c=>{
+    ['total_pnl','pnl_30d','profit_factor','win_rate','roi_pct','portfolio_value','usdc_in','first_deposit','max_single_deposit','score'].forEach(c=>{
         const el=document.getElementById('bsort-'+c);
         if(el)el.textContent=c===_bscanSortCol?(_bscanSortDir==='DESC'?'▼':'▲'):'';
     });
@@ -7240,7 +7255,7 @@ function renderBatchResults(results){
 function _renderBatchTable(results){
     const body=document.getElementById('bscan-ranking-body');
     const n=results.length;
-    if(n===0){body.innerHTML='<tr><td colspan="12" class="text-center py-4 text-gray-600">Sin resultados con estos filtros.</td></tr>';return;}
+    if(n===0){body.innerHTML='<tr><td colspan="14" class="text-center py-4 text-gray-600">Sin resultados con estos filtros.</td></tr>';return;}
     const badgeMap={elite:'🏆',hot:'📈',market_maker:'⚠️',inactive:'💀',one_hit:'🎰',whale:'🐋',cold:'📉'};
     const gradeColors={S:'bg-purple-600/60 text-purple-200',A:'bg-green-600/60 text-green-200',B:'bg-blue-600/60 text-blue-200',C:'bg-yellow-600/60 text-yellow-200',D:'bg-orange-600/60 text-orange-200',F:'bg-red-600/60 text-red-200'};
     const offset=_bscanPage*_bscanPageSize;
@@ -7269,6 +7284,8 @@ function _renderBatchTable(results){
             <td class="px-2 py-1.5 text-right font-mono ${roiC}">${(r.roi_pct||0)>=0?'+':''}${(r.roi_pct||0).toFixed(1)}%</td>
             <td class="px-2 py-1.5 text-right font-mono text-gray-300">$${fmt(Math.round(r.portfolio_value||0))}</td>
             <td class="px-2 py-1.5 text-right font-mono ${r.usdc_in?'text-violet-300':'text-gray-500'}">${r.usdc_in?'⛓️$'+fmt(Math.round(r.usdc_in)):(r.estimated_initial?'$'+fmt(Math.round(r.estimated_initial)):'-')}</td>
+            <td class="px-2 py-1.5 text-right font-mono ${r.first_deposit?'text-cyan-300':'text-gray-500'}">${r.first_deposit?'$'+fmt(Math.round(r.first_deposit)):'-'}</td>
+            <td class="px-2 py-1.5 text-right font-mono ${r.max_single_deposit?'text-amber-300':'text-gray-500'}">${r.max_single_deposit?'$'+fmt(Math.round(r.max_single_deposit)):'-'}</td>
             <td class="px-2 py-1.5 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${gc}">${grade} ${score}</span></td>
             <td class="px-2 py-1.5 text-center"><button onclick="event.stopPropagation();scanWalletFromAddr('${r.address}')" class="text-violet-400 hover:text-violet-300 text-[10px]">🔍</button></td>
             <td class="px-2 py-1.5 text-center"><a href="https://polymarket.com/profile/${r.address}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-blue-400 hover:text-blue-300 text-[10px]" title="Ver en Polymarket">🌐</a></td>

@@ -887,6 +887,8 @@ async def _run_batch_scan(db, addresses: list[dict], source: str, job_id: int):
                         "score_components": score_data["components"],
                         "badges": badges,
                         "usdc_in": result.get("usdc_in"),
+                        "first_deposit": result.get("first_deposit"),
+                        "max_single_deposit": result.get("max_single_deposit"),
                     })
                 else:
                     async with _lock:
@@ -1098,8 +1100,12 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 realized_pnl = round(closed_pnl, 2)
             # Capital real on-chain
             usdc_in = None
+            first_deposit = None
+            max_single_deposit = None
             if onchain_info and isinstance(onchain_info, dict):
                 usdc_in = onchain_info.get("usdc_in")
+                first_deposit = onchain_info.get("first_deposit")
+                max_single_deposit = onchain_info.get("max_single_deposit")
 
             # Capital estimado — jerarquía: usdc_in > volumen oficial > suma posiciones
             if usdc_in and usdc_in > 0:
@@ -1159,6 +1165,8 @@ async def _scan_wallet_for_batch(addr: str) -> dict | None:
                 "vol_7d": round(vol_7d, 2),
                 "vol_30d": round(vol_30d, 2),
                 "usdc_in": usdc_in,
+                "first_deposit": first_deposit,
+                "max_single_deposit": max_single_deposit,
             }
     except Exception as e:
         print(f"[BatchScan] Error scan {addr[:12]}: {e}", flush=True)
@@ -1417,6 +1425,8 @@ async def get_batch_scan_results(request: Request, source: str = "",
                                   score_min: float = None, score_max: float = None,
                                   trades_min: float = None, trades_max: float = None,
                                   capital_min: float = None, capital_max: float = None,
+                                  first_deposit_min: float = None, first_deposit_max: float = None,
+                                  max_single_deposit_min: float = None, max_single_deposit_max: float = None,
                                   days_min: float = None, days_max: float = None,
                                   positions_min: float = None, positions_max: float = None,
                                   pf_min: float = None, pf_max: float = None,
@@ -1433,6 +1443,8 @@ async def get_batch_scan_results(request: Request, source: str = "",
                      ("score_min", score_min), ("score_max", score_max),
                      ("trades_min", trades_min), ("trades_max", trades_max),
                      ("capital_min", capital_min), ("capital_max", capital_max),
+                     ("firstdep_min", first_deposit_min), ("firstdep_max", first_deposit_max),
+                     ("maxdep_min", max_single_deposit_min), ("maxdep_max", max_single_deposit_max),
                      ("days_min", days_min), ("days_max", days_max),
                      ("positions_min", positions_min), ("positions_max", positions_max),
                      ("pf_min", pf_min), ("pf_max", pf_max),
@@ -1493,8 +1505,13 @@ async def start_onchain_rescan(request: Request):
             for addr in addresses:
                 try:
                     result = await get_usdc_capital(addr)
-                    if result and result.get("usdc_in"):
-                        await db.update_wallet_usdc_in(addr, result["usdc_in"])
+                    if result and (result.get("usdc_in") or result.get("first_deposit") or result.get("max_single_deposit")):
+                        await db.update_wallet_onchain_capital(
+                            addr,
+                            result.get("usdc_in"),
+                            result.get("first_deposit"),
+                            result.get("max_single_deposit"),
+                        )
                 except Exception:
                     _onchain_rescan_progress["errors"] += 1
                 _onchain_rescan_progress["done"] += 1

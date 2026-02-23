@@ -67,6 +67,7 @@ async def get_wallet_onchain_info(address: str) -> dict:
     result = {
         "first_tx": None, "funded_by": None, "age_days": None,
         "tx_count": None, "usdc_in": None, "usdc_out": None,
+        "first_deposit": None, "max_single_deposit": None,
         "erc1155_transfers": None,
     }
     api_key = config.POLYGONSCAN_API_KEY
@@ -104,6 +105,8 @@ async def get_wallet_onchain_info(address: str) -> dict:
             usdc_in = 0.0
             usdc_out = 0.0
             funded_by = None
+            first_deposit = None
+            max_single_deposit = 0.0
 
             for usdc_addr in [USDC_NATIVE, USDC_BRIDGED]:
                 data2 = await _api_call(client, {
@@ -124,6 +127,10 @@ async def get_wallet_onchain_info(address: str) -> dict:
                     if to_addr == addr_lower:
                         # USDC entrante
                         usdc_in += value
+                        if value > max_single_deposit:
+                            max_single_deposit = value
+                        if first_deposit is None and value > 0:
+                            first_deposit = value
                         # Primer envío de USDC = funded_by
                         if funded_by is None and value > 0:
                             funded_by = tx.get("from", "")
@@ -136,6 +143,8 @@ async def get_wallet_onchain_info(address: str) -> dict:
             result["usdc_in"] = round(usdc_in, 2) if usdc_in > 0 else None
             result["usdc_out"] = round(usdc_out, 2) if usdc_out > 0 else None
             result["funded_by"] = funded_by
+            result["first_deposit"] = round(first_deposit, 2) if first_deposit else None
+            result["max_single_deposit"] = round(max_single_deposit, 2) if max_single_deposit > 0 else None
 
             # ═══════════════════════════════════════════════════════
             # 3) ERC1155 TRANSFERS → posiciones Polymarket (shares)
@@ -164,7 +173,8 @@ async def get_wallet_onchain_info(address: str) -> dict:
 async def get_usdc_capital(address: str) -> dict:
     """Versión ligera: solo USDC in/out + funded_by (2 API calls).
     Optimizada para batch scan — no consulta txlist ni erc1155."""
-    result = {"usdc_in": None, "usdc_out": None, "funded_by": None}
+    result = {"usdc_in": None, "usdc_out": None, "funded_by": None,
+              "first_deposit": None, "max_single_deposit": None}
     if not config.POLYGONSCAN_API_KEY:
         return result
 
@@ -174,6 +184,8 @@ async def get_usdc_capital(address: str) -> dict:
             usdc_in = 0.0
             usdc_out = 0.0
             funded_by = None
+            first_deposit = None
+            max_single_deposit = 0.0
 
             for usdc_addr in [USDC_NATIVE, USDC_BRIDGED]:
                 data = await _api_call(client, {
@@ -192,6 +204,10 @@ async def get_usdc_capital(address: str) -> dict:
 
                     if to_addr == addr_lower:
                         usdc_in += value
+                        if value > max_single_deposit:
+                            max_single_deposit = value
+                        if first_deposit is None and value > 0:
+                            first_deposit = value
                         if funded_by is None and value > 0:
                             funded_by = tx.get("from", "")
                     elif from_addr == addr_lower:
@@ -202,6 +218,8 @@ async def get_usdc_capital(address: str) -> dict:
             result["usdc_in"] = round(usdc_in, 2) if usdc_in > 0 else None
             result["usdc_out"] = round(usdc_out, 2) if usdc_out > 0 else None
             result["funded_by"] = funded_by
+            result["first_deposit"] = round(first_deposit, 2) if first_deposit else None
+            result["max_single_deposit"] = round(max_single_deposit, 2) if max_single_deposit > 0 else None
             logger.info("polygonscan_capital_result", address=address[:10],
                         usdc_in=result["usdc_in"], usdc_out=result["usdc_out"])
 
