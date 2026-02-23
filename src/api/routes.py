@@ -1469,6 +1469,49 @@ async def clear_batch_scan_cache(request: Request):
     return {"status": "ok", "message": "Cache de wallets limpiado"}
 
 
+# ── On-Chain Re-scan (solo usdc_in para wallets con NULL) ──
+
+_onchain_rescan_running = False
+_onchain_rescan_progress = {"total": 0, "done": 0, "errors": 0, "running": False}
+
+@router.post("/api/wallets/batch-scan/onchain-rescan")
+async def start_onchain_rescan(request: Request):
+    """Re-scan on-chain USDC capital solo para wallets con usdc_in NULL."""
+    global _onchain_rescan_running
+    if _onchain_rescan_running:
+        return {"status": "already_running", "progress": _onchain_rescan_progress}
+    db = request.app.state.db
+    addresses = await db.get_wallets_missing_onchain()
+    if not addresses:
+        return {"status": "ok", "message": "Todas las wallets ya tienen usdc_in", "total": 0}
+    _onchain_rescan_running = True
+    _onchain_rescan_progress.update({"total": len(addresses), "done": 0, "errors": 0, "running": True})
+
+    async def _run():
+        global _onchain_rescan_running
+        try:
+            for addr in addresses:
+                try:
+                    result = await get_usdc_capital(addr)
+                    if result and result.get("usdc_in"):
+                        await db.update_wallet_usdc_in(addr, result["usdc_in"])
+                except Exception:
+                    _onchain_rescan_progress["errors"] += 1
+                _onchain_rescan_progress["done"] += 1
+        finally:
+            _onchain_rescan_running = False
+            _onchain_rescan_progress["running"] = False
+
+    import asyncio
+    asyncio.create_task(_run())
+    return {"status": "started", "total": len(addresses)}
+
+@router.get("/api/wallets/batch-scan/onchain-rescan/status")
+async def get_onchain_rescan_status(request: Request):
+    """Estado del re-scan on-chain."""
+    return _onchain_rescan_progress
+
+
 # ── Polymarket Data Proxies ──────────────────────────────────────────
 
 @router.get("/api/polymarket/leaderboard")

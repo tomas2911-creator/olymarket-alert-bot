@@ -4236,6 +4236,22 @@ class Database:
                 "filtered": filtered_row or 0,
             }
 
+    async def get_wallets_missing_onchain(self) -> list[str]:
+        """Obtener addresses de wallets con usdc_in NULL."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT address FROM wallet_scan_cache WHERE usdc_in IS NULL"
+            )
+            return [r["address"] for r in rows]
+
+    async def update_wallet_usdc_in(self, address: str, usdc_in: float):
+        """Actualizar solo usdc_in para una wallet."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE wallet_scan_cache SET usdc_in = $1 WHERE address = $2",
+                usdc_in, address
+            )
+
     async def clear_scan_results(self):
         """Limpiar todos los resultados cacheados del batch scan."""
         async with self._pool.acquire() as conn:

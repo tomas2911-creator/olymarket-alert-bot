@@ -2790,6 +2790,7 @@
                         <button onclick="startBatchScan('flagged')" id="bscan-btn-flagged" class="px-4 py-2 bg-orange-600/40 hover:bg-orange-600/60 text-orange-200 rounded-lg text-xs font-semibold transition">🚩 Flaggeadas</button>
                         <button onclick="startBatchScan('whales')" id="bscan-btn-whales" class="px-4 py-2 bg-cyan-600/40 hover:bg-cyan-600/60 text-cyan-200 rounded-lg text-xs font-semibold transition">🐋 Whale Trades</button>
                         <button onclick="loadBatchResults()" class="px-3 py-2 bg-gray-700/40 hover:bg-gray-700/60 text-gray-300 rounded-lg text-xs transition">🔄 Ver Resultados</button>
+                        <button onclick="startOnchainRescan()" id="bscan-btn-onchain" class="px-3 py-2 bg-blue-600/40 hover:bg-blue-600/60 text-blue-200 rounded-lg text-xs font-semibold transition">⛓️ Re-scan Capital</button>
                         <button onclick="clearBatchCache()" class="px-3 py-2 bg-red-900/40 hover:bg-red-900/60 text-red-300 rounded-lg text-xs transition">🗑️ Limpiar</button>
                     </div>
                     <!-- Progress -->
@@ -7157,6 +7158,46 @@ async function loadBatchResults(){
             if(pageInfo)pageInfo.textContent=`Pág ${_bscanPage+1}`;
         }
     }catch(e){console.error('loadBatchResults error',e);}
+}
+async function startOnchainRescan(){
+    const btn=document.getElementById('bscan-btn-onchain');
+    btn.disabled=true;btn.textContent='⛓️ Escaneando...';
+    const prog=document.getElementById('bscan-progress');
+    prog.classList.remove('hidden');
+    document.getElementById('bscan-progress-text').textContent='Re-scan on-chain capital...';
+    document.getElementById('bscan-cancel-btn').classList.add('hidden');
+    try{
+        const r=await apiFetch('/api/wallets/batch-scan/onchain-rescan',{method:'POST'});
+        if(!r||r.total===0){
+            btn.disabled=false;btn.textContent='⛓️ Re-scan Capital';
+            prog.classList.add('hidden');
+            alert(r?.message||'Todas las wallets ya tienen capital on-chain');
+            return;
+        }
+        const total=r.total;
+        const poll=setInterval(async()=>{
+            try{
+                const s=await fetchJson('/api/wallets/batch-scan/onchain-rescan/status');
+                const done=s.done||0;
+                const pct=total>0?Math.round(done/total*100):0;
+                document.getElementById('bscan-progress-count').textContent=`${done}/${total}`;
+                document.getElementById('bscan-progress-bar').style.width=pct+'%';
+                document.getElementById('bscan-progress-text').textContent=`⛓️ On-chain: ${done}/${total} (${s.errors||0} errores)`;
+                if(!s.running){
+                    clearInterval(poll);
+                    btn.disabled=false;btn.textContent='⛓️ Re-scan Capital';
+                    document.getElementById('bscan-progress-text').textContent=`⛓️ Completado: ${done} wallets actualizadas (${s.errors||0} errores)`;
+                    document.getElementById('bscan-cancel-btn').classList.remove('hidden');
+                    setTimeout(()=>prog.classList.add('hidden'),5000);
+                    loadBatchResults();
+                }
+            }catch(e){console.error('onchain poll error',e);}
+        },2000);
+    }catch(e){
+        console.error('startOnchainRescan error',e);
+        btn.disabled=false;btn.textContent='⛓️ Re-scan Capital';
+        prog.classList.add('hidden');
+    }
 }
 async function clearBatchCache(){
     if(!confirm('¿Limpiar todos los resultados de wallets analizadas?'))return;
