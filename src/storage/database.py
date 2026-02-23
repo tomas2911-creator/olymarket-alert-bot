@@ -4196,7 +4196,7 @@ class Database:
                 ("wr_min", "win_rate", ">="), ("wr_max", "win_rate", "<="),
                 ("score_min", "score", ">="), ("score_max", "score", "<="),
                 ("trades_min", "total_trades", ">="), ("trades_max", "total_trades", "<="),
-                ("capital_min", "estimated_initial", ">="), ("capital_max", "estimated_initial", "<="),
+                ("capital_min", "usdc_in", ">="), ("capital_max", "usdc_in", "<="),
                 ("days_min", "days_active", ">="), ("days_max", "days_active", "<="),
                 ("positions_min", "open_positions", ">="), ("positions_max", "open_positions", "<="),
                 ("pf_min", "profit_factor", ">="), ("pf_max", "profit_factor", "<="),
