@@ -37,10 +37,10 @@ async def _api_call(client: httpx.AsyncClient, params: dict) -> dict:
             if data.get("status") == "1" and isinstance(data.get("result"), list):
                 return data
             else:
-                logger.debug("polygonscan_api_no_data",
+                logger.warning("polygonscan_api_no_data",
                              status=data.get("status"),
                              message=data.get("message", ""),
-                             result_type=type(data.get("result")).__name__,
+                             result=str(data.get("result", ""))[:120],
                              action=params.get("action", ""))
         else:
             logger.warning("polygonscan_api_http_error", status_code=resp.status_code,
