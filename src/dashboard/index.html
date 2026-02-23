@@ -2886,7 +2886,7 @@
                                         <option value="">Todas</option><option value="wallets">Wallets</option><option value="top_wallets">Top</option><option value="whales">Whales</option>
                                     </select>
                                     <select id="bscan-filter-sort" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1 py-0.5 text-[10px] text-gray-300">
-                                        <option value="total_pnl">PnL Total</option><option value="pnl_30d">PnL 30d</option><option value="profit_factor">Profit Factor</option><option value="win_rate">WR</option><option value="roi_pct">ROI</option><option value="score">Score</option><option value="total_trades">Trades</option><option value="portfolio_value">Portfolio</option><option value="max_drawdown">Drawdown</option><option value="estimated_initial">Capital</option>
+                                        <option value="total_pnl">PnL Total</option><option value="pnl_30d">PnL 30d</option><option value="profit_factor">Profit Factor</option><option value="win_rate">WR</option><option value="roi_pct">ROI</option><option value="score">Score</option><option value="total_trades">Trades</option><option value="portfolio_value">Portfolio</option><option value="usdc_in">Capital</option><option value="max_drawdown">Drawdown</option>
                                     </select>
                                 </div>
                             </div>
@@ -6982,6 +6982,8 @@ let _bscanFiltered=0;
 function sortBatchBy(col){
     if(_bscanSortCol===col){_bscanSortDir=_bscanSortDir==='DESC'?'ASC':'DESC';}
     else{_bscanSortCol=col;_bscanSortDir='DESC';}
+    const dd=document.getElementById('bscan-filter-sort');
+    if(dd){dd.value=col;}
     ['source','total_trades','win_rate','total_pnl','pnl_30d','profit_factor','roi_pct','portfolio_value','usdc_in','score'].forEach(c=>{
         const el=document.getElementById('bsort-'+c);
         if(el)el.textContent=c===col?(_bscanSortDir==='DESC'?'▼':'▲'):'';
@@ -7187,7 +7189,7 @@ function renderBatchResults(results){
         avgPnlEl.className='text-sm font-bold '+(avgPnl>=0?'text-green-400':'text-red-400');
         document.getElementById('bscan-top-count').textContent=results.filter(r=>(r.score||0)>=70).length;
     }
-    ['total_pnl','pnl_30d','profit_factor','win_rate','roi_pct','portfolio_value','score'].forEach(c=>{
+    ['total_pnl','pnl_30d','profit_factor','win_rate','roi_pct','portfolio_value','usdc_in','score'].forEach(c=>{
         const el=document.getElementById('bsort-'+c);
         if(el)el.textContent=c===_bscanSortCol?(_bscanSortDir==='DESC'?'▼':'▲'):'';
     });

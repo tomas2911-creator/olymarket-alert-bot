@@ -4227,7 +4227,7 @@ class Database:
                 f"SELECT COUNT(*) FROM wallet_scan_cache {where}", *params
             )
             rows = await conn.fetch(
-                f"SELECT * FROM wallet_scan_cache {where} ORDER BY {order} {direction} LIMIT ${idx} OFFSET ${idx+1}",
+                f"SELECT * FROM wallet_scan_cache {where} ORDER BY {order} {direction} NULLS LAST LIMIT ${idx} OFFSET ${idx+1}",
                 *params, min(limit, 5000), offset
             )
             return {
