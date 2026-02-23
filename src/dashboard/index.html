@@ -2912,7 +2912,7 @@
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('win_rate')">WR% <span id="bsort-win_rate"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('roi_pct')">ROI <span id="bsort-roi_pct"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('portfolio_value')">Portfolio <span id="bsort-portfolio_value"></span></th>
-                                <th class="px-2 py-1.5 text-right">Capital</th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('usdc_in')">Capital <span id="bsort-usdc_in"></span></th>
                                 <th class="px-2 py-1.5 text-center cursor-pointer hover:text-violet-400" onclick="sortBatchBy('score')">Score <span id="bsort-score"></span></th>
                                 <th class="px-2 py-1.5 text-center">🔍</th>
                             </tr></thead>
@@ -6982,7 +6982,7 @@ let _bscanFiltered=0;
 function sortBatchBy(col){
     if(_bscanSortCol===col){_bscanSortDir=_bscanSortDir==='DESC'?'ASC':'DESC';}
     else{_bscanSortCol=col;_bscanSortDir='DESC';}
-    ['source','total_trades','win_rate','total_pnl','roi_pct','portfolio_value','score'].forEach(c=>{
+    ['source','total_trades','win_rate','total_pnl','pnl_30d','profit_factor','roi_pct','portfolio_value','usdc_in','score'].forEach(c=>{
         const el=document.getElementById('bsort-'+c);
         if(el)el.textContent=c===col?(_bscanSortDir==='DESC'?'▼':'▲'):'';
     });

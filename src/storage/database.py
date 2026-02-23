@@ -4215,7 +4215,8 @@ class Database:
                            "portfolio_value", "score", "estimated_initial",
                            "days_active", "open_positions", "realized_pnl",
                            "profit_factor", "pnl_7d", "pnl_30d", "max_drawdown",
-                           "weighted_win_rate", "avg_trade_size", "grade"}
+                           "weighted_win_rate", "avg_trade_size", "grade",
+                           "usdc_in"}
             order = sort_by if sort_by in valid_sorts else "total_pnl"
             direction = "ASC" if sort_dir.upper() == "ASC" else "DESC"
 
