@@ -920,12 +920,20 @@ class AlertAutoTrader:
         return success, order_id, error_msg
 
     async def _execute_single_order(self, trade_info: dict, token_id: str, price: float, bet_size: float) -> dict:
-        """Ejecutar una sola orden BUY."""
+        """Ejecutar una sola orden BUY con 3 capas de protección:
+        1) FOK al best ask (fill inmediato)
+        2) GTC al best ask con polling (50s)
+        3) GTC con precio agresivo (+3%) con polling (50s)
+        """
         cid = trade_info["condition_id"]
         outcome = trade_info["buy_outcome"]
-        # Obtener best ask del orderbook para cruzar el spread correctamente
+        from py_clob_client.clob_types import OrderArgs
+        loop = asyncio.get_running_loop()
+
+        # ── Obtener best ask del orderbook ──
         bump = self._config.get("buy_price_bump", 0.02)
-        order_price = round(min(price + bump, 0.99), 2)
+        base_price = round(min(price + bump, 0.99), 2)
+        best_ask = base_price
         try:
             import httpx
             async with httpx.AsyncClient(timeout=5) as client:
@@ -934,29 +942,53 @@ class AlertAutoTrader:
                     book = resp.json()
                     asks = book.get("asks", [])
                     if asks:
-                        best_ask = float(asks[0].get("price", 0))
-                        if best_ask > 0:
-                            # Usar best_ask directamente (igualar el ask para fill inmediato)
-                            order_price = round(min(best_ask, 0.99), 2)
-                            if order_price != round(min(price + bump, 0.99), 2):
+                        ob_ask = float(asks[0].get("price", 0))
+                        if ob_ask > 0:
+                            best_ask = round(min(ob_ask, 0.99), 2)
+                            if best_ask != base_price:
                                 print(f"[AlertTrader] 📊 Spread ajuste: mid={price:.2f} → ask={best_ask:.2f} "
-                                      f"(bump habría sido {round(min(price + bump, 0.99), 2)})", flush=True)
+                                      f"(bump habría sido {base_price})", flush=True)
         except Exception as e:
             print(f"[AlertTrader] ⚠️ Orderbook fetch para spread: {e}", flush=True)
+
+        order_price = best_ask
         shares, actual_usdc = self._calc_shares(bet_size, order_price)
         if shares <= 0:
             return {"success": False, "error": f"No se pudo calcular shares para price={order_price} bet={bet_size}"}
 
-        # Log si el mínimo de shares forzó un gasto mayor
         if actual_usdc > bet_size * 1.05:
             print(f"[AlertTrader] ⚠️ MIN_SHARES ajuste: bet=${bet_size:.2f} → real=${actual_usdc:.2f} "
                   f"({shares} shares × ${order_price})", flush=True)
 
-        from py_clob_client.clob_types import OrderArgs
-        order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
-        print(f"[AlertTrader] Order: price={order_price} shares={shares} usdc=${actual_usdc:.2f} type=GTC", flush=True)
+        # ── Intento 1: FOK al best ask (fill inmediato) ──
+        print(f"[AlertTrader] 🔄 BUY Intento 1/3: FOK @ {order_price} ({shares} shares, ${actual_usdc:.2f})", flush=True)
+        fok_result = await self._try_buy_fok(token_id, shares, order_price, loop)
 
-        success, order_id, error_msg = await self._post_and_poll_order(order_args, token_id)
+        success = fok_result["filled"]
+        order_id = fok_result.get("order_id", "")
+        error_msg = ""
+
+        # ── Intento 2: GTC al best ask con polling ──
+        if not success:
+            print(f"[AlertTrader] 🔄 BUY Intento 2/3: GTC @ {order_price} con polling", flush=True)
+            order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
+            success, order_id, error_msg = await self._post_and_poll_order(order_args, token_id, max_polls=10)
+
+        # ── Intento 3: GTC con precio agresivo (+3%) ──
+        if not success:
+            aggressive_price = round(min(best_ask * 1.03, 0.99), 2)
+            if aggressive_price <= best_ask:
+                aggressive_price = min(round(best_ask + 0.01, 2), 0.99)
+            shares3, actual_usdc3 = self._calc_shares(bet_size, aggressive_price)
+            if shares3 > 0:
+                print(f"[AlertTrader] 🔄 BUY Intento 3/3: GTC agresivo @ {aggressive_price} "
+                      f"({shares3} shares, ${actual_usdc3:.2f})", flush=True)
+                order_args3 = OrderArgs(price=aggressive_price, size=shares3, side="BUY", token_id=token_id)
+                success, order_id, error_msg = await self._post_and_poll_order(order_args3, token_id, max_polls=10)
+                if success:
+                    order_price = aggressive_price
+                    shares = shares3
+                    actual_usdc = actual_usdc3
 
         trade_record = {
             "condition_id": cid,
@@ -995,8 +1027,49 @@ class AlertAutoTrader:
             return {"success": True, "order_id": order_id, "trade": trade_record,
                     "actual_usdc": actual_usdc}
         else:
-            print(f"[AlertTrader] ❌ Orden rechazada: {error_msg}", flush=True)
+            print(f"[AlertTrader] ❌ BUY RECHAZADO tras 3 intentos: {error_msg}", flush=True)
             return {"success": False, "error": error_msg}
+
+    async def _try_buy_fok(self, token_id: str, shares: float, price: float, loop) -> dict:
+        """Intentar compra FOK. Retorna {filled: bool, order_id: str}.
+        Solo considera 'filled' si status es matched/filled, NO si solo success=true."""
+        try:
+            from py_clob_client.clob_types import OrderArgs, OrderType
+            order_args = OrderArgs(price=price, size=shares, side="BUY", token_id=token_id)
+            signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
+            resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.FOK)
+
+            resp_data = resp if isinstance(resp, dict) else (
+                resp.__dict__ if hasattr(resp, '__dict__') else {"raw": str(resp)})
+
+            status = str(resp_data.get("status", "")).lower()
+            order_id = resp_data.get("orderID", resp_data.get("order_id", "")) or ""
+
+            filled = status in ("matched", "filled")
+
+            if not filled and order_id:
+                try:
+                    order_info = await loop.run_in_executor(None, self._client.get_order, order_id)
+                    check_status = ""
+                    if isinstance(order_info, dict):
+                        check_status = order_info.get("status", "").lower()
+                    elif hasattr(order_info, "status"):
+                        check_status = getattr(order_info, "status", "").lower()
+                    if check_status in ("matched", "filled"):
+                        filled = True
+                        print(f"[BUY] 📋 Double-check: orden {order_id[:12]} realmente matched", flush=True)
+                except Exception:
+                    pass
+
+            if not filled:
+                err = resp_data.get("errorMsg", resp_data.get("error", status or "no fill"))
+                print(f"[BUY] ⚠️ FOK @ {price:.2f}: no llenado (status={status}, err={err})", flush=True)
+
+            return {"filled": filled, "order_id": order_id}
+
+        except Exception as e:
+            print(f"[BUY] ⚠️ FOK @ {price:.2f} error: {e}", flush=True)
+            return {"filled": False, "order_id": ""}
 
     async def _execute_dca(self, trade_info: dict, token_id: str, price: float, total_bet: float) -> dict:
         """v10: DCA — dividir la orden en múltiples partes con intervalos.
@@ -1016,6 +1089,8 @@ class AlertAutoTrader:
 
         print(f"[AlertTrader] 🔄 DCA: {splits} órdenes de ${split_size:.2f} cada {interval}s", flush=True)
 
+        loop = asyncio.get_running_loop()
+
         for i in range(splits):
             if i > 0:
                 await asyncio.sleep(interval)
@@ -1029,18 +1104,39 @@ class AlertAutoTrader:
                         break
                     price = current_price
 
+            # Obtener best ask del orderbook para cada split
             bump = self._config.get("buy_price_bump", 0.02)
             order_price = round(min(price + bump, 0.99), 2)
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=5) as hc:
+                    ob_resp = await hc.get(f"{CLOB_HOST}/book", params={"token_id": token_id})
+                    if ob_resp.status_code == 200:
+                        asks = ob_resp.json().get("asks", [])
+                        if asks:
+                            ob_ask = float(asks[0].get("price", 0))
+                            if ob_ask > 0:
+                                order_price = round(min(ob_ask, 0.99), 2)
+            except Exception:
+                pass
+
             shares, split_actual_usdc = self._calc_shares(split_size, order_price)
             if shares <= 0:
                 continue
 
             from py_clob_client.clob_types import OrderArgs
-            order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
             print(f"[AlertTrader]   DCA [{i+1}/{splits}]: {shares} shares @ {order_price} (${split_actual_usdc:.2f})", flush=True)
 
-            success, order_id, error_msg = await self._post_and_poll_order(order_args, token_id)
-            if success:
+            # FOK primero, luego GTC fallback
+            fok_result = await self._try_buy_fok(token_id, shares, order_price, loop)
+            split_success = fok_result["filled"]
+            order_id = fok_result.get("order_id", "")
+
+            if not split_success:
+                order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
+                split_success, order_id, _ = await self._post_and_poll_order(order_args, token_id, max_polls=10)
+
+            if split_success:
                 total_shares += shares
                 total_cost += split_actual_usdc
                 order_ids.append(order_id)
