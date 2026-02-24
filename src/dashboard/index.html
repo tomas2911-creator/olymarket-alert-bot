@@ -7155,6 +7155,10 @@ function renderWAISummary(){
 function sortWAI(col){
     if(_waiSortCol===col)_waiSortDir=_waiSortDir==='DESC'?'ASC':'DESC';
     else{_waiSortCol=col;_waiSortDir='DESC';}
+    ['copiability_score','win_rate','profit_factor','total_pnl','roi_pct'].forEach(c=>{
+        const el=document.getElementById('wai-sort-'+{copiability_score:'score',win_rate:'wr',profit_factor:'pf',total_pnl:'pnl',roi_pct:'roi'}[c]);
+        if(el)el.textContent=c===col?(_waiSortDir==='DESC'?'▼':'▲'):'';
+    });
     renderWAITable();
 }
 
