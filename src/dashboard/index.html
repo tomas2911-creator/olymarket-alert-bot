@@ -7723,8 +7723,9 @@ async function loadCopyTrading(){
             const pc=pnl>=0?'text-green-400':'text-red-400';
             const resolved=t.resolved;
             const result=t.result||'';
-            const stLabel=resolved?(result==='win'?'✅ WIN':'❌ LOSS'):(t.status==='filled'?'🔵 ABIERTO':'⚪ '+t.status);
-            const stC=resolved?(result==='win'?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'):'bg-cyan-900/40 text-cyan-400';
+            const isWin=result==='win'||(resolved&&pnl>0);
+            const stLabel=resolved?(isWin?'✅ WIN':'❌ LOSS'):(t.status==='filled'?'🔵 ABIERTO':'⚪ '+t.status);
+            const stC=resolved?(isWin?'bg-green-900/40 text-green-400':'bg-red-900/40 text-red-400'):'bg-cyan-900/40 text-cyan-400';
             return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
                 <td class="p-2 text-gray-400">${ts}</td>
                 <td class="p-2 text-emerald-400">${name}</td>

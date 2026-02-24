@@ -855,8 +855,9 @@ class AlertAutoTrader:
         actual_usdc = float((d_shares * d_price).quantize(Decimal('0.01')))
         return float(d_shares), actual_usdc
 
-    async def _post_and_poll_order(self, order_args, token_id: str) -> tuple:
-        """Postear orden GTC y hacer polling. Retorna (success, order_id, error_msg)."""
+    async def _post_and_poll_order(self, order_args, token_id: str, max_polls: int = 10) -> tuple:
+        """Postear orden GTC y hacer polling. Retorna (success, order_id, error_msg).
+        max_polls: cantidad de polls (cada 5s). Default 10 = 50s timeout."""
         from py_clob_client.clob_types import OrderType
         loop = asyncio.get_running_loop()
         signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
@@ -884,9 +885,9 @@ class AlertAutoTrader:
 
         # GTC 'live': polling para verificar fill
         if success and resp_status.lower() == "live" and order_id:
-            print(f"[AlertTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill...", flush=True)
+            print(f"[AlertTrader] ⏳ Orden GTC en orderbook (status=live), esperando fill ({max_polls}×5s)...", flush=True)
             filled = False
-            for attempt in range(6):  # 6 × 5s = 30s máximo
+            for attempt in range(max_polls):
                 await asyncio.sleep(5)
                 try:
                     order_info = await loop.run_in_executor(None, self._client.get_order, order_id)
@@ -895,7 +896,7 @@ class AlertAutoTrader:
                         current_status = order_info.get("status", "")
                     elif hasattr(order_info, "status"):
                         current_status = getattr(order_info, "status", "")
-                    print(f"[AlertTrader]   polling {attempt+1}/6: status={current_status}", flush=True)
+                    print(f"[AlertTrader]   polling {attempt+1}/{max_polls}: status={current_status}", flush=True)
                     if current_status.lower() == "matched":
                         filled = True
                         break
@@ -922,9 +923,26 @@ class AlertAutoTrader:
         """Ejecutar una sola orden BUY."""
         cid = trade_info["condition_id"]
         outcome = trade_info["buy_outcome"]
-        # Bump precio para cruzar el spread (midpoint → ask side)
+        # Obtener best ask del orderbook para cruzar el spread correctamente
         bump = self._config.get("buy_price_bump", 0.02)
         order_price = round(min(price + bump, 0.99), 2)
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(f"{CLOB_HOST}/book", params={"token_id": token_id})
+                if resp.status_code == 200:
+                    book = resp.json()
+                    asks = book.get("asks", [])
+                    if asks:
+                        best_ask = float(asks[0].get("price", 0))
+                        if best_ask > 0:
+                            # Usar best_ask directamente (igualar el ask para fill inmediato)
+                            order_price = round(min(best_ask, 0.99), 2)
+                            if order_price != round(min(price + bump, 0.99), 2):
+                                print(f"[AlertTrader] 📊 Spread ajuste: mid={price:.2f} → ask={best_ask:.2f} "
+                                      f"(bump habría sido {round(min(price + bump, 0.99), 2)})", flush=True)
+        except Exception as e:
+            print(f"[AlertTrader] ⚠️ Orderbook fetch para spread: {e}", flush=True)
         shares, actual_usdc = self._calc_shares(bet_size, order_price)
         if shares <= 0:
             return {"success": False, "error": f"No se pudo calcular shares para price={order_price} bet={bet_size}"}
@@ -953,7 +971,7 @@ class AlertAutoTrader:
             "triggers": trade_info["triggers"],
             "side": "BUY",
             "outcome": outcome,
-            "price": price,
+            "price": order_price,
             "size_usd": actual_usdc,
             "shares": shares,
             "token_id": token_id,
@@ -971,7 +989,7 @@ class AlertAutoTrader:
             self._trades_today.append(trade_record)
             self._open_positions[cid] = trade_record
             print(f"[AlertTrader] ✅ COPY-TRADE: {outcome} en {trade_info['market_slug'][:40]} "
-                  f"${actual_usdc:.2f} @ {price:.2f} (score={trade_info['alert_score']} "
+                  f"${actual_usdc:.2f} @ {order_price:.2f} (score={trade_info['alert_score']} "
                   f"insider=${trade_info['insider_size']:.0f}) order={order_id}",
                   flush=True)
             return {"success": True, "order_id": order_id, "trade": trade_record,
