@@ -3137,6 +3137,7 @@
                         <p class="text-[10px] text-gray-500">Copia automáticamente trades de wallets ⭐ watchlisted. Ejecuta órdenes reales en Polymarket.</p>
                     </div>
                     <div class="flex gap-2 flex-wrap">
+                        <button onclick="rescanFavorites()" id="ct-rescan-btn" class="px-3 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-400 rounded text-xs" title="Re-escanear wallets favoritas para actualizar Tr/d, CapInsider y datos">🔍 Re-scan Favoritos</button>
                         <button onclick="syncCapInsider(false)" class="px-3 py-1 bg-violet-600/30 hover:bg-violet-600/50 text-violet-400 rounded text-xs" title="Copiar portfolio del Batch Scan al CapInsider (solo wallets con CapInsider=0)">📊 Sync CapInsider</button>
                         <button onclick="syncCapInsider(true)" class="px-3 py-1 bg-blue-600/30 hover:bg-blue-600/50 text-blue-400 rounded text-xs" title="Forzar actualización de CapInsider de TODAS las wallets con datos del Batch Scan">🔄 Force Sync</button>
                         <button onclick="clearAllFavorites()" class="px-3 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded text-xs" title="Quitar todas las wallets favoritas">🗑️ Limpiar Favoritos</button>
@@ -7791,6 +7792,49 @@ async function clearAllCopyTrades(){
         await fetch('/api/copy-trading/clear-trades',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
         loadCopyTrading();
     }catch(e){console.error('clearAllCopyTrades error',e);}
+}
+
+async function rescanFavorites(){
+    const btn=document.getElementById('ct-rescan-btn');
+    btn.disabled=true;btn.textContent='⏳ Escaneando...';
+    try{
+        const res=await fetch('/api/copy-trading/rescan-favorites',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await res.json();
+        if(data.status==='already_running'){
+            btn.textContent='⏳ Scan en curso...';
+            _pollRescan(data.job_id);
+            return;
+        }
+        if(data.status==='empty'){
+            alert('No hay wallets favoritas para escanear');
+            btn.disabled=false;btn.textContent='🔍 Re-scan Favoritos';
+            return;
+        }
+        if(data.status==='started'){
+            _pollRescan(data.job_id);
+        }
+    }catch(e){
+        console.error('rescanFavorites error',e);
+        btn.disabled=false;btn.textContent='🔍 Re-scan Favoritos';
+    }
+}
+function _pollRescan(jobId){
+    const btn=document.getElementById('ct-rescan-btn');
+    const iv=setInterval(async()=>{
+        try{
+            const res=await fetch('/api/wallets/batch-scan/status',{headers:{'Authorization':'Bearer '+_authToken}});
+            const d=await res.json();
+            if(d.status==='running'||d.status==='pending'){
+                btn.textContent=`⏳ ${d.scanned||0}/${d.total||'?'}`;
+            }else{
+                clearInterval(iv);
+                btn.disabled=false;btn.textContent='🔍 Re-scan Favoritos';
+                // Auto-sync CapInsider después del scan
+                await fetch('/api/copy-trading/force-sync-cap-insider',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+                loadCopyTrading();
+            }
+        }catch(e){clearInterval(iv);btn.disabled=false;btn.textContent='🔍 Re-scan Favoritos';}
+    },3000);
 }
 
 async function syncCapInsider(force){

@@ -1746,6 +1746,33 @@ async def force_sync_cap_insider(request: Request):
     return {"ok": True, "updated": count}
 
 
+@router.post("/api/copy-trading/rescan-favorites")
+async def rescan_favorites(request: Request):
+    """Re-escanear todas las wallets favoritas (watchlisted) para actualizar datos del scan cache."""
+    db = request.app.state.db
+
+    # Verificar si hay job activo
+    active = await db.get_active_scan_job()
+    if active:
+        return {"status": "already_running", "scanned": active.get("scanned", 0),
+                "total": active.get("total", 0), "job_id": active.get("id")}
+
+    # Obtener wallets watchlisted con nombre
+    async with db._pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT address, COALESCE(name, pseudonym, '') as name FROM wallets WHERE is_watchlisted = TRUE"
+        )
+    addresses = [{"address": r["address"], "name": r["name"]} for r in rows]
+
+    if not addresses:
+        return {"status": "empty", "total": 0, "message": "No hay wallets favoritas"}
+
+    job_id = await db.create_scan_job("favorites", len(addresses))
+    asyncio.create_task(_run_batch_scan(db, addresses, "favorites", job_id))
+
+    return {"status": "started", "source": "favorites", "total": len(addresses), "job_id": job_id}
+
+
 # ── v11: AI Analysis ────────────────────────────────────────────────
 
 @router.get("/api/ai/analyses")
