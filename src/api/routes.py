@@ -1432,7 +1432,8 @@ async def get_batch_scan_results(request: Request, source: str = "",
                                   pf_min: float = None, pf_max: float = None,
                                   pnl30_min: float = None, pnl30_max: float = None,
                                   pnl7_min: float = None, pnl7_max: float = None,
-                                  dd_min: float = None, dd_max: float = None):
+                                  dd_min: float = None, dd_max: float = None,
+                                  x_min: float = None, x_max: float = None):
     """Resultados con filtros avanzados. Todos los filtros son opcionales y acumulativos."""
     db = request.app.state.db
     filters = {}
@@ -1450,7 +1451,8 @@ async def get_batch_scan_results(request: Request, source: str = "",
                      ("pf_min", pf_min), ("pf_max", pf_max),
                      ("pnl30_min", pnl30_min), ("pnl30_max", pnl30_max),
                      ("pnl7_min", pnl7_min), ("pnl7_max", pnl7_max),
-                     ("dd_min", dd_min), ("dd_max", dd_max)]:
+                     ("dd_min", dd_min), ("dd_max", dd_max),
+                     ("x_min", x_min), ("x_max", x_max)]:
         if val is not None:
             filters[key] = val
     data = await db.get_scan_results(source=source, sort_by=sort_by, sort_dir=sort_dir,
@@ -1695,6 +1697,34 @@ async def get_copy_stats(request: Request):
     db = request.app.state.db
     uid = await get_user_id(request)
     return await db.get_real_copy_trading_stats(user_id=uid)
+
+
+@router.post("/api/copy-trading/clear-favorites")
+async def clear_all_favorites(request: Request):
+    """Quitar todas las wallets del watchlist/favoritas."""
+    db = request.app.state.db
+    count = await db.clear_all_watchlisted()
+    # Limpiar watchlist en memoria del bot
+    bot = getattr(request.app.state, "bot", None)
+    if bot and hasattr(bot, "_watchlist"):
+        bot._watchlist.clear()
+    return {"ok": True, "cleared": count}
+
+
+@router.post("/api/copy-trading/clear-trades")
+async def clear_all_trades(request: Request):
+    """Eliminar todos los copy trades."""
+    db = request.app.state.db
+    count = await db.clear_all_copy_trades()
+    return {"ok": True, "cleared": count}
+
+
+@router.get("/api/copy-trading/watchlisted-addresses")
+async def get_watchlisted_addresses(request: Request):
+    """Obtener set de addresses watchlisted para marcar estrellas en batch scan."""
+    db = request.app.state.db
+    addrs = await db.get_watchlisted_wallets()
+    return {"addresses": list(addrs)}
 
 
 # ── v11: AI Analysis ────────────────────────────────────────────────

@@ -1519,13 +1519,19 @@ class Database:
             return []
 
     async def toggle_wallet_watchlist(self, address: str) -> bool:
-        """Toggle watchlist status de una wallet. Marca como manual para que no se borre."""
+        """Toggle watchlist status de una wallet. Marca como manual para que no se borre.
+        Si la wallet no existe en la tabla wallets, la crea automáticamente."""
         try:
             addr = address.lower()
             async with self._pool.acquire() as conn:
                 row = await conn.fetchrow("SELECT is_watchlisted FROM wallets WHERE address = $1", addr)
                 if not row:
-                    return False
+                    # Wallet no existe → crearla y marcar como watchlisted
+                    await conn.execute(
+                        "INSERT INTO wallets (address, is_watchlisted, manually_watchlisted) VALUES ($1, TRUE, TRUE) ON CONFLICT (address) DO UPDATE SET is_watchlisted = TRUE, manually_watchlisted = TRUE",
+                        addr,
+                    )
+                    return True
                 new_status = not bool(row["is_watchlisted"])
                 await conn.execute(
                     "UPDATE wallets SET is_watchlisted = $1, manually_watchlisted = $1 WHERE address = $2",
@@ -3210,6 +3216,38 @@ class Database:
         except Exception as e:
             print(f"[DB] reset_wallet_budget error: {e}", flush=True)
 
+    async def clear_all_watchlisted(self) -> int:
+        """Quitar todas las wallets del watchlist (favoritas). Retorna cantidad afectada."""
+        try:
+            async with self._pool.acquire() as conn:
+                result = await conn.execute(
+                    "UPDATE wallets SET is_watchlisted = FALSE, manually_watchlisted = FALSE, ct_enabled = FALSE WHERE is_watchlisted = TRUE"
+                )
+                count = int(result.split()[-1]) if result else 0
+                return count
+        except Exception as e:
+            print(f"[DB] clear_all_watchlisted error: {e}", flush=True)
+            return 0
+
+    async def clear_all_copy_trades(self) -> int:
+        """Eliminar todos los copy trades (reales en alert_autotrades + legacy en copy_trades). Retorna cantidad eliminada."""
+        try:
+            total = 0
+            async with self._pool.acquire() as conn:
+                # Trades reales copiados
+                r1 = await conn.execute("DELETE FROM alert_autotrades WHERE is_copy_trade = TRUE")
+                total += int(r1.split()[-1]) if r1 else 0
+                # Legacy copy_trades table
+                try:
+                    r2 = await conn.execute("DELETE FROM copy_trades")
+                    total += int(r2.split()[-1]) if r2 else 0
+                except Exception:
+                    pass
+                return total
+        except Exception as e:
+            print(f"[DB] clear_all_copy_trades error: {e}", flush=True)
+            return 0
+
     async def get_watchlisted_wallets(self) -> set[str]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
@@ -4212,6 +4250,18 @@ class Database:
                 ("firstdep_min", "first_deposit", ">="), ("firstdep_max", "first_deposit", "<="),
                 ("maxdep_min", "max_single_deposit", ">="), ("maxdep_max", "max_single_deposit", "<="),
             ]
+            # Computed expression filters (multiplier_x)
+            x_expr = "CASE WHEN usdc_in > 0 THEN portfolio_value / usdc_in ELSE 0 END"
+            x_min = f.get("x_min")
+            if x_min is not None:
+                where += f" AND {x_expr} >= ${idx}"
+                params.append(float(x_min))
+                idx += 1
+            x_max = f.get("x_max")
+            if x_max is not None:
+                where += f" AND {x_expr} <= ${idx}"
+                params.append(float(x_max))
+                idx += 1
             for key, col, op in range_filters:
                 val = f.get(key)
                 if val is not None:
@@ -4225,7 +4275,16 @@ class Database:
                            "profit_factor", "pnl_7d", "pnl_30d", "max_drawdown",
                            "weighted_win_rate", "avg_trade_size", "grade",
                            "usdc_in", "first_deposit", "max_single_deposit"}
-            order = sort_by if sort_by in valid_sorts else "total_pnl"
+            # Computed sort expressions (not real columns)
+            computed_sorts = {
+                "multiplier_x": "CASE WHEN usdc_in > 0 THEN portfolio_value / usdc_in ELSE 0 END",
+            }
+            if sort_by in computed_sorts:
+                order = computed_sorts[sort_by]
+            elif sort_by in valid_sorts:
+                order = sort_by
+            else:
+                order = "total_pnl"
             direction = "ASC" if sort_dir.upper() == "ASC" else "DESC"
 
             # Total sin filtro
@@ -4235,7 +4294,7 @@ class Database:
                 f"SELECT COUNT(*) FROM wallet_scan_cache {where}", *params
             )
             rows = await conn.fetch(
-                f"SELECT * FROM wallet_scan_cache {where} ORDER BY {order} {direction} NULLS LAST LIMIT ${idx} OFFSET ${idx+1}",
+                f"SELECT *, CASE WHEN usdc_in > 0 THEN ROUND((portfolio_value / usdc_in)::numeric, 2) ELSE NULL END AS multiplier_x FROM wallet_scan_cache {where} ORDER BY {order} {direction} NULLS LAST LIMIT ${idx} OFFSET ${idx+1}",
                 *params, min(limit, 5000), offset
             )
             return {

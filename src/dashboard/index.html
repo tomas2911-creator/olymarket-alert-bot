@@ -2869,6 +2869,11 @@
                                 <div class="text-[9px] text-gray-500 mb-1">Max Depósito ($)</div>
                                 <div class="flex gap-1"><input id="bf-maxdep-min" type="number" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-maxdep-max" type="number" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
                             </div>
+                            <!-- Multiplicador X -->
+                            <div class="bg-gray-800/40 rounded p-2">
+                                <div class="text-[9px] text-gray-500 mb-1">Multiplicador (X)</div>
+                                <div class="flex gap-1"><input id="bf-x-min" type="number" step="0.1" placeholder="Min" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"><input id="bf-x-max" type="number" step="0.1" placeholder="Max" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300"></div>
+                            </div>
                             <!-- Días Activo -->
                             <div class="bg-gray-800/40 rounded p-2">
                                 <div class="text-[9px] text-gray-500 mb-1">Días Activo</div>
@@ -2897,7 +2902,7 @@
                                         <option value="">Todas</option><option value="wallets">Wallets</option><option value="top_wallets">Top</option><option value="whales">Whales</option>
                                     </select>
                                     <select id="bscan-filter-sort" class="w-full bg-gray-900/60 border border-gray-700 rounded px-1 py-0.5 text-[10px] text-gray-300">
-                                        <option value="total_pnl">PnL Total</option><option value="pnl_30d">PnL 30d</option><option value="profit_factor">Profit Factor</option><option value="win_rate">WR</option><option value="roi_pct">ROI</option><option value="score">Score</option><option value="total_trades">Trades</option><option value="portfolio_value">Portfolio</option><option value="usdc_in">Capital</option><option value="first_deposit">1er Depósito</option><option value="max_single_deposit">Max Depósito</option><option value="max_drawdown">Drawdown</option>
+                                        <option value="total_pnl">PnL Total</option><option value="pnl_30d">PnL 30d</option><option value="profit_factor">Profit Factor</option><option value="win_rate">WR</option><option value="roi_pct">ROI</option><option value="score">Score</option><option value="total_trades">Trades</option><option value="portfolio_value">Portfolio</option><option value="usdc_in">Capital</option><option value="first_deposit">1er Depósito</option><option value="max_single_deposit">Max Depósito</option><option value="multiplier_x">Multiplicador X</option><option value="max_drawdown">Drawdown</option>
                                     </select>
                                 </div>
                             </div>
@@ -2926,11 +2931,13 @@
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('usdc_in')">Capital ⛓️ <span id="bsort-usdc_in"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('first_deposit')">1er Dep <span id="bsort-first_deposit"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('max_single_deposit')">Max Dep <span id="bsort-max_single_deposit"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-violet-400" onclick="sortBatchBy('multiplier_x')">X <span id="bsort-multiplier_x"></span></th>
                                 <th class="px-2 py-1.5 text-center cursor-pointer hover:text-violet-400" onclick="sortBatchBy('score')">Score <span id="bsort-score"></span></th>
                                 <th class="px-2 py-1.5 text-center">🔍</th>
                                 <th class="px-2 py-1.5 text-center">PM</th>
+                                <th class="px-2 py-1.5 text-center">⭐</th>
                             </tr></thead>
-                            <tbody id="bscan-ranking-body"><tr><td colspan="14" class="text-center py-4 text-gray-600">Click en un botón para iniciar análisis</td></tr></tbody>
+                            <tbody id="bscan-ranking-body"><tr><td colspan="16" class="text-center py-4 text-gray-600">Click en un botón para iniciar análisis</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -3129,7 +3136,11 @@
                         <h3 class="text-sm font-semibold text-emerald-400 uppercase tracking-wider">🤖 Copy Trading Automático</h3>
                         <p class="text-[10px] text-gray-500">Copia automáticamente trades de wallets ⭐ watchlisted. Ejecuta órdenes reales en Polymarket.</p>
                     </div>
-                    <button onclick="loadCopyTrading()" class="px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400 rounded text-xs">Actualizar</button>
+                    <div class="flex gap-2">
+                        <button onclick="clearAllFavorites()" class="px-3 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded text-xs" title="Quitar todas las wallets favoritas">🗑️ Limpiar Favoritos</button>
+                        <button onclick="clearAllCopyTrades()" class="px-3 py-1 bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 rounded text-xs" title="Eliminar todos los trades copiados">🗑️ Limpiar Trades</button>
+                        <button onclick="loadCopyTrading()" class="px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400 rounded text-xs">Actualizar</button>
+                    </div>
                 </div>
                 <!-- Config Copy Trade -->
                 <div class="bg-gray-800/40 rounded-lg p-3 mb-4 border border-emerald-900/30">
@@ -6992,13 +7003,33 @@ let _bscanPage=0;
 const _bscanPageSize=5000;
 let _bscanTotal=0;
 let _bscanFiltered=0;
+let _batchFavorites=new Set();
+
+async function loadBatchFavorites(){
+    try{
+        const res=await fetch('/api/copy-trading/watchlisted-addresses',{headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await res.json();
+        _batchFavorites=new Set((data.addresses||[]).map(a=>a.toLowerCase()));
+    }catch(e){console.error('loadBatchFavorites error',e);}
+}
+
+async function toggleBatchFavorite(addr){
+    try{
+        const res=await fetch('/api/wallet-tracker/watchlist/'+addr,{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await res.json();
+        const addrLow=addr.toLowerCase();
+        if(data.is_watchlisted){_batchFavorites.add(addrLow);}else{_batchFavorites.delete(addrLow);}
+        const el=document.getElementById('bfav-'+addr);
+        if(el)el.textContent=data.is_watchlisted?'⭐':'☆';
+    }catch(e){console.error('toggleBatchFavorite error',e);}
+}
 
 function sortBatchBy(col){
     if(_bscanSortCol===col){_bscanSortDir=_bscanSortDir==='DESC'?'ASC':'DESC';}
     else{_bscanSortCol=col;_bscanSortDir='DESC';}
     const dd=document.getElementById('bscan-filter-sort');
     if(dd){dd.value=col;}
-    ['source','total_trades','win_rate','total_pnl','pnl_30d','profit_factor','roi_pct','portfolio_value','usdc_in','first_deposit','max_single_deposit','score'].forEach(c=>{
+    ['source','total_trades','win_rate','total_pnl','pnl_30d','profit_factor','roi_pct','portfolio_value','usdc_in','first_deposit','max_single_deposit','multiplier_x','score'].forEach(c=>{
         const el=document.getElementById('bsort-'+c);
         if(el)el.textContent=c===col?(_bscanSortDir==='DESC'?'▼':'▲'):'';
     });
@@ -7124,6 +7155,7 @@ function _getBscanFilterParams(){
         ['bf-cap-min','capital_min'],['bf-cap-max','capital_max'],
         ['bf-firstdep-min','first_deposit_min'],['bf-firstdep-max','first_deposit_max'],
         ['bf-maxdep-min','max_single_deposit_min'],['bf-maxdep-max','max_single_deposit_max'],
+        ['bf-x-min','x_min'],['bf-x-max','x_max'],
         ['bf-days-min','days_min'],['bf-days-max','days_max'],
         ['bf-pos-min','positions_min'],['bf-pos-max','positions_max'],
         ['bf-pf-min','pf_min'],['bf-pf-max','pf_max'],
@@ -7139,7 +7171,7 @@ function applyBatchFilters(){_bscanPage=0;loadBatchResults();}
 function clearBatchFilters(){
     ['bf-pnl-min','bf-pnl-max','bf-port-min','bf-port-max','bf-roi-min','bf-roi-max',
      'bf-wr-min','bf-wr-max','bf-score-min','bf-score-max','bf-trades-min','bf-trades-max',
-     'bf-cap-min','bf-cap-max','bf-firstdep-min','bf-firstdep-max','bf-maxdep-min','bf-maxdep-max',
+     'bf-cap-min','bf-cap-max','bf-firstdep-min','bf-firstdep-max','bf-maxdep-min','bf-maxdep-max','bf-x-min','bf-x-max',
      'bf-days-min','bf-days-max','bf-pos-min','bf-pos-max',
      'bf-pf-min','bf-pf-max','bf-pnl30-min','bf-pnl30-max'].forEach(id=>{
         const el=document.getElementById(id);if(el)el.value='';
@@ -7152,6 +7184,7 @@ function bscanNextPage(){_bscanPage++;loadBatchResults();}
 function bscanPrevPage(){if(_bscanPage>0){_bscanPage--;loadBatchResults();}}
 async function loadBatchResults(){
     try{
+        if(_batchFavorites.size===0)await loadBatchFavorites();
         const qs=_getBscanFilterParams();
         const r=await fetchJson(`/api/wallets/batch-scan/results?${qs}`);
         if(r){
@@ -7255,7 +7288,7 @@ function renderBatchResults(results){
 function _renderBatchTable(results){
     const body=document.getElementById('bscan-ranking-body');
     const n=results.length;
-    if(n===0){body.innerHTML='<tr><td colspan="14" class="text-center py-4 text-gray-600">Sin resultados con estos filtros.</td></tr>';return;}
+    if(n===0){body.innerHTML='<tr><td colspan="16" class="text-center py-4 text-gray-600">Sin resultados con estos filtros.</td></tr>';return;}
     const badgeMap={elite:'🏆',hot:'📈',market_maker:'⚠️',inactive:'💀',one_hit:'🎰',whale:'🐋',cold:'📉'};
     const gradeColors={S:'bg-purple-600/60 text-purple-200',A:'bg-green-600/60 text-green-200',B:'bg-blue-600/60 text-blue-200',C:'bg-yellow-600/60 text-yellow-200',D:'bg-orange-600/60 text-orange-200',F:'bg-red-600/60 text-red-200'};
     const offset=_bscanPage*_bscanPageSize;
@@ -7286,9 +7319,11 @@ function _renderBatchTable(results){
             <td class="px-2 py-1.5 text-right font-mono ${r.usdc_in?'text-violet-300':'text-gray-500'}">${r.usdc_in?'⛓️$'+fmt(Math.round(r.usdc_in)):(r.estimated_initial?'$'+fmt(Math.round(r.estimated_initial)):'-')}</td>
             <td class="px-2 py-1.5 text-right font-mono ${r.first_deposit?'text-cyan-300':'text-gray-500'}">${r.first_deposit?'$'+fmt(Math.round(r.first_deposit)):'-'}</td>
             <td class="px-2 py-1.5 text-right font-mono ${r.max_single_deposit?'text-amber-300':'text-gray-500'}">${r.max_single_deposit?'$'+fmt(Math.round(r.max_single_deposit)):'-'}</td>
+            <td class="px-2 py-1.5 text-right font-mono ${r.multiplier_x&&r.multiplier_x>=2?'text-green-400':r.multiplier_x?'text-yellow-300':'text-gray-500'}">${r.multiplier_x?r.multiplier_x.toFixed(1)+'x':'-'}</td>
             <td class="px-2 py-1.5 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${gc}">${grade} ${score}</span></td>
             <td class="px-2 py-1.5 text-center"><button onclick="event.stopPropagation();scanWalletFromAddr('${r.address}')" class="text-violet-400 hover:text-violet-300 text-[10px]">🔍</button></td>
             <td class="px-2 py-1.5 text-center"><a href="https://polymarket.com/profile/${r.address}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-blue-400 hover:text-blue-300 text-[10px]" title="Ver en Polymarket">🌐</a></td>
+            <td class="px-2 py-1.5 text-center"><button onclick="event.stopPropagation();toggleBatchFavorite('${r.address}')" class="text-lg hover:scale-110 transition-transform" id="bfav-${r.address}">${_batchFavorites.has(r.address.toLowerCase())?'⭐':'☆'}</button></td>
         </tr>`;
     }).join('');
 }
@@ -7730,8 +7765,26 @@ async function removeFromCopyWatchlist(addr,btn){
     try{
         btn.textContent='...';btn.disabled=true;
         await fetch('/api/wallet-tracker/watchlist/'+addr,{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        _batchFavorites.delete(addr.toLowerCase());
         loadCopyTrading();
     }catch(e){console.error('removeFromCopyWatchlist error',e);btn.textContent='❌';btn.disabled=false;}
+}
+
+async function clearAllFavorites(){
+    if(!confirm('¿Quitar TODAS las wallets favoritas del watchlist? Esto desactivará el copy trading para todas.'))return;
+    try{
+        await fetch('/api/copy-trading/clear-favorites',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        _batchFavorites.clear();
+        loadCopyTrading();
+    }catch(e){console.error('clearAllFavorites error',e);}
+}
+
+async function clearAllCopyTrades(){
+    if(!confirm('¿Eliminar TODOS los trades copiados? Esta acción no se puede deshacer.'))return;
+    try{
+        await fetch('/api/copy-trading/clear-trades',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        loadCopyTrading();
+    }catch(e){console.error('clearAllCopyTrades error',e);}
 }
 
 // ── v11: News ──
