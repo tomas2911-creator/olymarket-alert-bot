@@ -3005,9 +3005,10 @@
                                 <th class="px-2 py-1.5 text-center">Categorías</th>
                                 <th class="px-2 py-1.5 text-center">Patrones</th>
                                 <th class="px-2 py-1.5 text-left" style="min-width:200px">Opinión AI</th>
+                                <th class="px-2 py-1.5 text-center">PM</th>
                                 <th class="px-2 py-1.5 text-center">Acción</th>
                             </tr></thead>
-                            <tbody id="wai-body"><tr><td colspan="12" class="text-center py-4 text-gray-600">Usa los filtros y click "Analizar" para comenzar</td></tr></tbody>
+                            <tbody id="wai-body"><tr><td colspan="13" class="text-center py-4 text-gray-600">Usa los filtros y click "Analizar" para comenzar</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -7208,6 +7209,7 @@ function renderWAITable(){
             <td class="px-2 py-1.5 text-center">${catBadges||'—'}</td>
             <td class="px-2 py-1.5 text-center">${patBadges||'—'}</td>
             <td class="px-2 py-1.5 text-gray-400 text-[10px]" title="${(w.opinion||'').replace(/"/g,'&quot;')}">${opinion||'—'}</td>
+            <td class="px-2 py-1.5 text-center"><a href="https://polymarket.com/profile/${addr}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 text-[10px]" title="Ver en Polymarket">🌐</a></td>
             <td class="px-2 py-1.5 text-center"><button onclick="addAIWalletToCopy('${addr}')" class="px-2 py-0.5 bg-emerald-600/40 hover:bg-emerald-600/60 text-emerald-300 rounded text-[10px]" title="Agregar al Copy Trading">⭐ Copiar</button></td>
         </tr>`;
     }).join('');
