@@ -3136,7 +3136,9 @@
                         <h3 class="text-sm font-semibold text-emerald-400 uppercase tracking-wider">🤖 Copy Trading Automático</h3>
                         <p class="text-[10px] text-gray-500">Copia automáticamente trades de wallets ⭐ watchlisted. Ejecuta órdenes reales en Polymarket.</p>
                     </div>
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 flex-wrap">
+                        <button onclick="syncCapInsider(false)" class="px-3 py-1 bg-violet-600/30 hover:bg-violet-600/50 text-violet-400 rounded text-xs" title="Copiar portfolio del Batch Scan al CapInsider (solo wallets con CapInsider=0)">📊 Sync CapInsider</button>
+                        <button onclick="syncCapInsider(true)" class="px-3 py-1 bg-blue-600/30 hover:bg-blue-600/50 text-blue-400 rounded text-xs" title="Forzar actualización de CapInsider de TODAS las wallets con datos del Batch Scan">🔄 Force Sync</button>
                         <button onclick="clearAllFavorites()" class="px-3 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded text-xs" title="Quitar todas las wallets favoritas">🗑️ Limpiar Favoritos</button>
                         <button onclick="clearAllCopyTrades()" class="px-3 py-1 bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 rounded text-xs" title="Eliminar todos los trades copiados">🗑️ Limpiar Trades</button>
                         <button onclick="loadCopyTrading()" class="px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400 rounded text-xs">Actualizar</button>
@@ -7785,6 +7787,18 @@ async function clearAllCopyTrades(){
         await fetch('/api/copy-trading/clear-trades',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
         loadCopyTrading();
     }catch(e){console.error('clearAllCopyTrades error',e);}
+}
+
+async function syncCapInsider(force){
+    const msg=force?'¿Forzar actualización de CapInsider para TODAS las wallets favoritas con datos del Batch Scan? (sobreescribe valores manuales)':'¿Sincronizar CapInsider desde Batch Scan para wallets con CapInsider=0?';
+    if(!confirm(msg))return;
+    try{
+        const url=force?'/api/copy-trading/force-sync-cap-insider':'/api/copy-trading/sync-cap-insider';
+        const res=await fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await res.json();
+        alert(`✅ ${data.updated||0} wallets actualizadas`);
+        loadCopyTrading();
+    }catch(e){console.error('syncCapInsider error',e);}
 }
 
 // ── v11: News ──

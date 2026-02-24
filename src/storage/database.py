@@ -1520,23 +1520,52 @@ class Database:
 
     async def toggle_wallet_watchlist(self, address: str) -> bool:
         """Toggle watchlist status de una wallet. Marca como manual para que no se borre.
-        Si la wallet no existe en la tabla wallets, la crea automáticamente."""
+        Si la wallet no existe en la tabla wallets, la crea automáticamente.
+        Al activar watchlist, auto-copia portfolio_value de wallet_scan_cache a ct_insider_capital."""
         try:
             addr = address.lower()
             async with self._pool.acquire() as conn:
                 row = await conn.fetchrow("SELECT is_watchlisted FROM wallets WHERE address = $1", addr)
                 if not row:
                     # Wallet no existe → crearla y marcar como watchlisted
+                    # Intentar copiar portfolio_value del scan cache
+                    scan_row = await conn.fetchrow(
+                        "SELECT portfolio_value FROM wallet_scan_cache WHERE LOWER(address) = $1", addr)
+                    cap = float(scan_row["portfolio_value"]) if scan_row and scan_row["portfolio_value"] else 0
                     await conn.execute(
-                        "INSERT INTO wallets (address, is_watchlisted, manually_watchlisted) VALUES ($1, TRUE, TRUE) ON CONFLICT (address) DO UPDATE SET is_watchlisted = TRUE, manually_watchlisted = TRUE",
-                        addr,
+                        "INSERT INTO wallets (address, is_watchlisted, manually_watchlisted, ct_insider_capital) "
+                        "VALUES ($1, TRUE, TRUE, $2) "
+                        "ON CONFLICT (address) DO UPDATE SET is_watchlisted = TRUE, manually_watchlisted = TRUE, "
+                        "ct_insider_capital = CASE WHEN COALESCE(wallets.ct_insider_capital, 0) = 0 THEN $2 ELSE wallets.ct_insider_capital END",
+                        addr, cap,
                     )
+                    if cap > 0:
+                        print(f"[DB] Watchlist + auto CapInsider=${cap:.0f} para {addr[:10]}", flush=True)
                     return True
                 new_status = not bool(row["is_watchlisted"])
-                await conn.execute(
-                    "UPDATE wallets SET is_watchlisted = $1, manually_watchlisted = $1 WHERE address = $2",
-                    new_status, addr,
-                )
+                if new_status:
+                    # Activando watchlist → auto-copiar portfolio si ct_insider_capital es 0
+                    scan_row = await conn.fetchrow(
+                        "SELECT portfolio_value FROM wallet_scan_cache WHERE LOWER(address) = $1", addr)
+                    cap = float(scan_row["portfolio_value"]) if scan_row and scan_row["portfolio_value"] else 0
+                    if cap > 0:
+                        await conn.execute(
+                            "UPDATE wallets SET is_watchlisted = TRUE, manually_watchlisted = TRUE, "
+                            "ct_insider_capital = CASE WHEN COALESCE(ct_insider_capital, 0) = 0 THEN $2 ELSE ct_insider_capital END "
+                            "WHERE address = $1",
+                            addr, cap,
+                        )
+                        print(f"[DB] Watchlist ON + auto CapInsider=${cap:.0f} para {addr[:10]}", flush=True)
+                    else:
+                        await conn.execute(
+                            "UPDATE wallets SET is_watchlisted = TRUE, manually_watchlisted = TRUE WHERE address = $1",
+                            addr,
+                        )
+                else:
+                    await conn.execute(
+                        "UPDATE wallets SET is_watchlisted = $1, manually_watchlisted = $1 WHERE address = $2",
+                        new_status, addr,
+                    )
                 return new_status
         except Exception as e:
             print(f"[DB] toggle_wallet_watchlist error: {e}", flush=True)
@@ -3215,6 +3244,50 @@ class Database:
                     "UPDATE wallets SET ct_budget_used = 0 WHERE address = $1", addr)
         except Exception as e:
             print(f"[DB] reset_wallet_budget error: {e}", flush=True)
+
+    async def sync_watchlisted_cap_insider(self) -> int:
+        """Sincronizar ct_insider_capital de todas las wallets watchlisted
+        con portfolio_value de wallet_scan_cache. Solo actualiza las que tienen cap=0.
+        Retorna cantidad actualizada."""
+        try:
+            async with self._pool.acquire() as conn:
+                result = await conn.execute("""
+                    UPDATE wallets w
+                    SET ct_insider_capital = sc.portfolio_value
+                    FROM wallet_scan_cache sc
+                    WHERE LOWER(w.address) = LOWER(sc.address)
+                      AND w.is_watchlisted = TRUE
+                      AND sc.portfolio_value > 0
+                      AND COALESCE(w.ct_insider_capital, 0) = 0
+                """)
+                count = int(result.split()[-1]) if result else 0
+                if count > 0:
+                    print(f"[DB] Sync CapInsider: {count} wallets actualizadas", flush=True)
+                return count
+        except Exception as e:
+            print(f"[DB] sync_watchlisted_cap_insider error: {e}", flush=True)
+            return 0
+
+    async def force_sync_all_cap_insider(self) -> int:
+        """Forzar sincronización de ct_insider_capital para TODAS las wallets watchlisted,
+        incluso las que ya tienen un valor. Retorna cantidad actualizada."""
+        try:
+            async with self._pool.acquire() as conn:
+                result = await conn.execute("""
+                    UPDATE wallets w
+                    SET ct_insider_capital = sc.portfolio_value
+                    FROM wallet_scan_cache sc
+                    WHERE LOWER(w.address) = LOWER(sc.address)
+                      AND w.is_watchlisted = TRUE
+                      AND sc.portfolio_value > 0
+                """)
+                count = int(result.split()[-1]) if result else 0
+                if count > 0:
+                    print(f"[DB] Force Sync CapInsider: {count} wallets actualizadas", flush=True)
+                return count
+        except Exception as e:
+            print(f"[DB] force_sync_all_cap_insider error: {e}", flush=True)
+            return 0
 
     async def clear_all_watchlisted(self) -> int:
         """Quitar todas las wallets del watchlist (favoritas). Retorna cantidad afectada."""

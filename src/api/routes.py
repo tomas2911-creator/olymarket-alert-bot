@@ -1727,6 +1727,22 @@ async def get_watchlisted_addresses(request: Request):
     return {"addresses": list(addrs)}
 
 
+@router.post("/api/copy-trading/sync-cap-insider")
+async def sync_cap_insider(request: Request):
+    """Sincronizar ct_insider_capital desde wallet_scan_cache para wallets con cap=0."""
+    db = request.app.state.db
+    count = await db.sync_watchlisted_cap_insider()
+    return {"ok": True, "updated": count}
+
+
+@router.post("/api/copy-trading/force-sync-cap-insider")
+async def force_sync_cap_insider(request: Request):
+    """Forzar sincronización de ct_insider_capital para TODAS las wallets watchlisted."""
+    db = request.app.state.db
+    count = await db.force_sync_all_cap_insider()
+    return {"ok": True, "updated": count}
+
+
 # ── v11: AI Analysis ────────────────────────────────────────────────
 
 @router.get("/api/ai/analyses")
