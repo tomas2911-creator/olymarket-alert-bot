@@ -3145,6 +3145,14 @@
                         <button onclick="loadCopyTrading()" class="px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400 rounded text-xs">Actualizar</button>
                     </div>
                 </div>
+                <!-- Add Wallet Manually -->
+                <div class="bg-gray-800/40 rounded-lg p-3 mb-4 border border-cyan-900/30">
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="ct-add-wallet-input" placeholder="0x... dirección de wallet" class="flex-1 bg-gray-900/60 border border-gray-700/50 rounded px-3 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500/50">
+                        <button onclick="addWalletToCopyTrading()" id="ct-add-wallet-btn" class="px-4 py-1.5 bg-cyan-600/40 hover:bg-cyan-600/60 text-cyan-400 rounded text-xs font-medium whitespace-nowrap">➕ Agregar Wallet</button>
+                    </div>
+                    <div id="ct-add-wallet-status" class="text-[10px] text-gray-500 mt-1 hidden"></div>
+                </div>
                 <!-- Config Copy Trade -->
                 <div class="bg-gray-800/40 rounded-lg p-3 mb-4 border border-emerald-900/30">
                     <div class="flex items-center justify-between mb-2">
@@ -7776,6 +7784,39 @@ async function removeFromCopyWatchlist(addr,btn){
         _batchFavorites.delete(addr.toLowerCase());
         loadCopyTrading();
     }catch(e){console.error('removeFromCopyWatchlist error',e);btn.textContent='❌';btn.disabled=false;}
+}
+
+async function addWalletToCopyTrading(){
+    const input=document.getElementById('ct-add-wallet-input');
+    const btn=document.getElementById('ct-add-wallet-btn');
+    const status=document.getElementById('ct-add-wallet-status');
+    const addr=input.value.trim();
+    if(!addr||addr.length!==42||!addr.startsWith('0x')){
+        status.className='text-[10px] text-red-400 mt-1';status.textContent='Dirección inválida. Debe ser 0x... (42 caracteres)';status.classList.remove('hidden');return;
+    }
+    btn.disabled=true;btn.textContent='⏳ Escaneando...';
+    status.className='text-[10px] text-cyan-400 mt-1';status.textContent='Analizando wallet en Polymarket... (5-15 seg)';status.classList.remove('hidden');
+    try{
+        const res=await fetch('/api/copy-trading/add-wallet',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+_authToken},body:JSON.stringify({address:addr})});
+        const data=await res.json();
+        if(data.ok){
+            if(data.status==='already_exists'){
+                status.className='text-[10px] text-yellow-400 mt-1';status.textContent='Esta wallet ya está en favoritos.';
+            }else{
+                const w=data.wallet||{};
+                status.className='text-[10px] text-green-400 mt-1';
+                status.textContent=`✅ Agregada! Score=${w.score||0} | PnL=$${(w.total_pnl||0).toFixed(0)} | WR=${(w.win_rate||0).toFixed(0)}% | Trades=${w.total_trades||0}`;
+                input.value='';
+                loadCopyTrading();
+            }
+        }else{
+            status.className='text-[10px] text-red-400 mt-1';status.textContent=data.error||'Error desconocido';
+        }
+    }catch(e){
+        status.className='text-[10px] text-red-400 mt-1';status.textContent='Error de conexión: '+e.message;
+    }finally{
+        btn.disabled=false;btn.textContent='➕ Agregar Wallet';
+    }
 }
 
 async function clearAllFavorites(){

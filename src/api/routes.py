@@ -1773,6 +1773,94 @@ async def rescan_favorites(request: Request):
     return {"status": "started", "source": "favorites", "total": len(addresses), "job_id": job_id}
 
 
+@router.post("/api/copy-trading/add-wallet")
+async def add_wallet_to_copy_trading(request: Request):
+    """Agregar una wallet manualmente al copy trading. Escanea y guarda."""
+    db = request.app.state.db
+    body = await request.json()
+    address = (body.get("address") or "").strip().lower()
+
+    # Validar dirección
+    if not address or len(address) != 42 or not address.startswith("0x"):
+        return JSONResponse({"error": "Dirección inválida. Debe ser 0x... (42 caracteres)"}, status_code=400)
+
+    # Verificar si ya está watchlisted
+    already = await db.is_wallet_watchlisted(address)
+    if already:
+        return {"ok": True, "status": "already_exists", "message": "Esta wallet ya está en favoritos"}
+
+    # Escanear wallet con APIs de Polymarket
+    try:
+        result = await _scan_wallet_for_batch(address)
+        if not result:
+            return JSONResponse({"error": "No se pudo obtener datos de esta wallet. Verifica la dirección."}, status_code=404)
+
+        score_data = _calc_wallet_score_v2(result)
+        badges = _calc_badges(result)
+
+        # Guardar en wallet_scan_cache
+        await db.save_scan_result({
+            "address": address,
+            "source": "manual",
+            "name": body.get("name", ""),
+            "profile_image": "",
+            "portfolio_value": result.get("portfolio_value", 0),
+            "estimated_initial": result.get("estimated_initial", 0),
+            "total_pnl": result.get("total_pnl", 0),
+            "realized_pnl": result.get("realized_pnl", 0),
+            "roi_pct": result.get("roi_pct", 0),
+            "win_rate": result.get("win_rate", 0),
+            "wins": result.get("wins", 0),
+            "losses": result.get("losses", 0),
+            "total_trades": result.get("total_trades", 0),
+            "days_active": result.get("days_active", 0),
+            "open_positions": result.get("open_positions_count", 0),
+            "score": score_data["score"],
+            "profit_factor": result.get("profit_factor", 0),
+            "avg_trade_size": result.get("avg_trade_size", 0),
+            "max_drawdown": result.get("max_drawdown", 0),
+            "weighted_win_rate": result.get("weighted_win_rate", 0),
+            "last_trade_ts": result.get("last_trade_ts"),
+            "pnl_7d": result.get("pnl_7d", 0),
+            "pnl_30d": result.get("pnl_30d", 0),
+            "vol_7d": result.get("vol_7d", 0),
+            "vol_30d": result.get("vol_30d", 0),
+            "trades_per_week": result.get("trades_per_week", 0),
+            "buy_sell_ratio": 0,
+            "grade": score_data["grade"],
+            "score_components": score_data["components"],
+            "badges": badges,
+            "usdc_in": result.get("usdc_in"),
+            "first_deposit": result.get("first_deposit"),
+            "max_single_deposit": result.get("max_single_deposit"),
+        })
+
+        # Marcar como favorita manualmente
+        await db.toggle_wallet_watchlist(address)
+
+        # Actualizar watchlist en memoria del bot
+        bot = getattr(request.app.state, "bot", None)
+        if bot and hasattr(bot, "_watchlist"):
+            bot._watchlist.add(address)
+
+        return {
+            "ok": True,
+            "status": "added",
+            "wallet": {
+                "address": address,
+                "score": score_data["score"],
+                "grade": score_data["grade"],
+                "total_pnl": result.get("total_pnl", 0),
+                "win_rate": result.get("win_rate", 0),
+                "total_trades": result.get("total_trades", 0),
+                "portfolio_value": result.get("portfolio_value", 0),
+            }
+        }
+    except Exception as e:
+        print(f"[CopyTrading] Error adding wallet {address[:12]}: {e}", flush=True)
+        return JSONResponse({"error": f"Error escaneando wallet: {str(e)}"}, status_code=500)
+
+
 # ── v11: AI Analysis ────────────────────────────────────────────────
 
 @router.get("/api/ai/analyses")
