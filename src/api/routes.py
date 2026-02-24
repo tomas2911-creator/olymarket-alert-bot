@@ -1213,8 +1213,11 @@ def _calc_advanced_metrics(closed_positions: list, open_positions: list,
     profit_factor = round(sum_wins / max(sum_losses, 0.01), 2)
     avg_trade_size = round(total_bought / max(total_trades, 1), 2)
     weighted_wr = round(weighted_win_bought / max(total_bought, 0.01) * 100, 1)
+    # trades_per_week: usar sample_count (posiciones realmente analizadas) en vez de
+    # total_trades (all-time desde /traded), porque days_active solo cubre la ventana del sample
+    sample_count = len(closed_positions) + len(open_positions)
     weeks_active = max(days_active / 7, 1)
-    trades_per_week = round(total_trades / weeks_active, 2)
+    trades_per_week = round(sample_count / weeks_active, 2)
 
     last_trade_ts = None
     if closed_positions:
