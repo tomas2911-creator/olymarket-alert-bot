@@ -1861,6 +1861,141 @@ async def add_wallet_to_copy_trading(request: Request):
         return JSONResponse({"error": f"Error escaneando wallet: {str(e)}"}, status_code=500)
 
 
+# ── Wallet AI Analysis ──────────────────────────────────────────────
+
+# Estado global del análisis en curso
+_wai_status = {"running": False, "current": 0, "total": 0, "current_wallet": "", "results": []}
+
+
+@router.get("/api/wallet-ai/results")
+async def get_wallet_ai_results(request: Request, min_score: int = 0, limit: int = 200):
+    """Obtener todos los análisis AI de wallets guardados."""
+    db = request.app.state.db
+    data = await db.get_wallet_ai_analyses(min_score=min_score, limit=limit)
+    return {"results": data, "total": len(data)}
+
+
+@router.get("/api/wallet-ai/results/{address}")
+async def get_wallet_ai_result(request: Request, address: str):
+    """Obtener análisis AI de una wallet específica."""
+    db = request.app.state.db
+    data = await db.get_wallet_ai_analysis(address)
+    if not data:
+        return JSONResponse({"error": "No se encontró análisis para esta wallet"}, status_code=404)
+    return data
+
+
+@router.get("/api/wallet-ai/status")
+async def get_wallet_ai_status(request: Request):
+    """Estado del análisis AI en curso."""
+    return _wai_status
+
+
+@router.post("/api/wallet-ai/run")
+async def run_wallet_ai_analysis(request: Request):
+    """Lanzar análisis AI de wallets seleccionadas.
+    Body JSON: { "addresses": [...] } o { "filter": { "min_wr": 60 } }
+    """
+    global _wai_status
+    if _wai_status["running"]:
+        return JSONResponse({"error": "Análisis ya en curso"}, status_code=409)
+
+    db = request.app.state.db
+    body = await request.json()
+    addresses = body.get("addresses", [])
+
+    # Si no se pasan addresses, usar filtro del scan cache
+    if not addresses:
+        filters = body.get("filter", {})
+        min_wr = float(filters.get("min_wr", 60))
+        min_trades = int(filters.get("min_trades", 10))
+        min_pf = float(filters.get("min_pf", 0))
+        try:
+            async with db._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT address FROM wallet_scan_cache
+                    WHERE win_rate >= $1 AND total_trades >= $2
+                      AND profit_factor >= $3
+                    ORDER BY win_rate DESC, total_pnl DESC
+                    LIMIT 200
+                """, min_wr, min_trades, min_pf)
+                addresses = [r["address"] for r in rows]
+        except Exception as e:
+            return JSONResponse({"error": f"Error consultando DB: {e}"}, status_code=500)
+
+    if not addresses:
+        return {"error": "No hay wallets para analizar", "total": 0}
+
+    _wai_status = {"running": True, "current": 0, "total": len(addresses),
+                   "current_wallet": "", "results": []}
+
+    # Lanzar en background
+    asyncio.create_task(_run_wallet_ai_batch(db, addresses))
+
+    return {"ok": True, "total": len(addresses), "message": f"Analizando {len(addresses)} wallets..."}
+
+
+async def _run_wallet_ai_batch(db, addresses: list[str]):
+    """Background task para análisis batch."""
+    global _wai_status
+    from src.analysis.wallet_ai_analyzer import run_batch_analysis
+
+    async def progress_cb(current, total, addr):
+        _wai_status["current"] = current
+        _wai_status["current_wallet"] = addr[:12] + "..."
+
+    try:
+        results = await run_batch_analysis(db, addresses, progress_callback=progress_cb)
+        _wai_status["results"] = [
+            {"address": r["address"], "trader_type": r["trader_type"],
+             "copiability_score": r["copiability_score"]}
+            for r in results
+        ]
+        _wai_status["current"] = len(addresses)
+        print(f"[WalletAI] Batch completado: {len(results)}/{len(addresses)} wallets analizadas", flush=True)
+    except Exception as e:
+        print(f"[WalletAI] Batch error: {e}", flush=True)
+    finally:
+        _wai_status["running"] = False
+
+
+@router.post("/api/wallet-ai/clear")
+async def clear_wallet_ai(request: Request):
+    """Borrar todos los análisis AI."""
+    db = request.app.state.db
+    deleted = await db.delete_wallet_ai_analyses()
+    return {"ok": True, "deleted": deleted}
+
+
+@router.post("/api/wallet-ai/add-to-copytrade/{address}")
+async def add_ai_wallet_to_copytrade(request: Request, address: str):
+    """Agregar wallet analizada al copy trading."""
+    db = request.app.state.db
+    address = address.lower().strip()
+
+    # Verificar que tiene análisis
+    analysis = await db.get_wallet_ai_analysis(address)
+    if not analysis:
+        return JSONResponse({"error": "Wallet no analizada"}, status_code=404)
+
+    # Agregar a watchlist (toggle on)
+    is_watchlisted = await db.is_wallet_watchlisted(address)
+    if not is_watchlisted:
+        await db.toggle_wallet_watchlist(address)
+
+    # Actualizar watchlist en memoria del bot
+    bot = getattr(request.app.state, "bot", None)
+    if bot and hasattr(bot, "_watchlist"):
+        bot._watchlist.add(address)
+
+    return {
+        "ok": True,
+        "address": address,
+        "trader_type": analysis.get("trader_type"),
+        "copiability_score": analysis.get("copiability_score"),
+    }
+
+
 # ── v11: AI Analysis ────────────────────────────────────────────────
 
 @router.get("/api/ai/analyses")

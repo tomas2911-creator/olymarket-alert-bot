@@ -713,6 +713,27 @@ class Database:
                 );
                 CREATE INDEX IF NOT EXISTS idx_spikes_created ON price_spikes(created_at);
                 CREATE INDEX IF NOT EXISTS idx_spikes_market ON price_spikes(market_id);
+
+                CREATE TABLE IF NOT EXISTS wallet_ai_analysis (
+                    id                  SERIAL PRIMARY KEY,
+                    address             TEXT UNIQUE NOT NULL,
+                    trader_type         TEXT DEFAULT 'unknown',
+                    copiability_score   INTEGER DEFAULT 0,
+                    patterns            JSONB DEFAULT '{}',
+                    categories          JSONB DEFAULT '{}',
+                    opinion             TEXT DEFAULT '',
+                    win_rate            DOUBLE PRECISION DEFAULT 0,
+                    profit_factor       DOUBLE PRECISION DEFAULT 0,
+                    avg_trade_size      DOUBLE PRECISION DEFAULT 0,
+                    trades_analyzed     INTEGER DEFAULT 0,
+                    total_pnl           DOUBLE PRECISION DEFAULT 0,
+                    roi_pct             DOUBLE PRECISION DEFAULT 0,
+                    portfolio_value     DOUBLE PRECISION DEFAULT 0,
+                    analyzed_at         TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_wai_score ON wallet_ai_analysis(copiability_score);
+                CREATE INDEX IF NOT EXISTS idx_wai_type ON wallet_ai_analysis(trader_type);
+                CREATE INDEX IF NOT EXISTS idx_wai_analyzed ON wallet_ai_analysis(analyzed_at);
             """)
 
             # Migración multi-tenant: agregar user_id a todas las tablas per-user
@@ -4914,6 +4935,102 @@ class Database:
                 return int(result.split(" ")[-1]) if result else 0
         except Exception as e:
             print(f"[DB] clear_weather_paper_trades error: {e}", flush=True)
+            return 0
+
+
+    # ── Wallet AI Analysis ─────────────────────────────────────────────
+
+    async def save_wallet_ai_analysis(self, data: dict):
+        """Guardar o actualizar análisis AI de una wallet."""
+        try:
+            import json as _json
+            async with self._pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO wallet_ai_analysis
+                        (address, trader_type, copiability_score, patterns, categories,
+                         opinion, win_rate, profit_factor, avg_trade_size, trades_analyzed,
+                         total_pnl, roi_pct, portfolio_value, analyzed_at)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+                    ON CONFLICT (address) DO UPDATE SET
+                        trader_type = $2, copiability_score = $3, patterns = $4,
+                        categories = $5, opinion = $6, win_rate = $7, profit_factor = $8,
+                        avg_trade_size = $9, trades_analyzed = $10, total_pnl = $11,
+                        roi_pct = $12, portfolio_value = $13, analyzed_at = NOW()
+                """,
+                    data["address"].lower(),
+                    data.get("trader_type", "unknown"),
+                    int(data.get("copiability_score", 0)),
+                    _json.dumps(data.get("patterns", {})),
+                    _json.dumps(data.get("categories", {})),
+                    data.get("opinion", ""),
+                    float(data.get("win_rate", 0)),
+                    float(data.get("profit_factor", 0)),
+                    float(data.get("avg_trade_size", 0)),
+                    int(data.get("trades_analyzed", 0)),
+                    float(data.get("total_pnl", 0)),
+                    float(data.get("roi_pct", 0)),
+                    float(data.get("portfolio_value", 0)),
+                )
+        except Exception as e:
+            print(f"[DB] save_wallet_ai_analysis error: {e}", flush=True)
+
+    async def get_wallet_ai_analyses(self, min_score: int = 0, limit: int = 200) -> list[dict]:
+        """Obtener todos los análisis AI guardados."""
+        try:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT * FROM wallet_ai_analysis
+                    WHERE copiability_score >= $1
+                    ORDER BY copiability_score DESC, win_rate DESC
+                    LIMIT $2
+                """, min_score, limit)
+                result = []
+                for r in rows:
+                    d = _serialize_row(r)
+                    import json as _json
+                    if isinstance(d.get("patterns"), str):
+                        try: d["patterns"] = _json.loads(d["patterns"])
+                        except Exception: pass
+                    if isinstance(d.get("categories"), str):
+                        try: d["categories"] = _json.loads(d["categories"])
+                        except Exception: pass
+                    result.append(d)
+                return result
+        except Exception as e:
+            print(f"[DB] get_wallet_ai_analyses error: {e}", flush=True)
+            return []
+
+    async def get_wallet_ai_analysis(self, address: str) -> dict | None:
+        """Obtener análisis AI de una wallet específica."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT * FROM wallet_ai_analysis WHERE address = $1",
+                    address.lower()
+                )
+                if not row:
+                    return None
+                d = _serialize_row(row)
+                import json as _json
+                if isinstance(d.get("patterns"), str):
+                    try: d["patterns"] = _json.loads(d["patterns"])
+                    except Exception: pass
+                if isinstance(d.get("categories"), str):
+                    try: d["categories"] = _json.loads(d["categories"])
+                    except Exception: pass
+                return d
+        except Exception as e:
+            print(f"[DB] get_wallet_ai_analysis error: {e}", flush=True)
+            return None
+
+    async def delete_wallet_ai_analyses(self) -> int:
+        """Borrar todos los análisis AI."""
+        try:
+            async with self._pool.acquire() as conn:
+                result = await conn.execute("DELETE FROM wallet_ai_analysis")
+                return int(result.split(" ")[-1]) if result else 0
+        except Exception as e:
+            print(f"[DB] delete_wallet_ai_analyses error: {e}", flush=True)
             return 0
 
 

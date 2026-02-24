@@ -2941,6 +2941,76 @@
                         </table>
                     </div>
                 </div>
+                <!-- ═══ AI Wallet Analysis ═══ -->
+                <div class="bg-gray-800/30 border border-cyan-900/30 rounded-lg p-4 mb-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <h4 class="text-xs font-semibold text-cyan-400 uppercase tracking-wider">🧠 AI Wallet Analysis</h4>
+                            <p class="text-[10px] text-gray-500">Analiza wallets escaneadas para identificar las mejores para copy trading</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="loadWalletAIResults()" class="px-3 py-1.5 bg-gray-700/50 hover:bg-gray-700/70 text-gray-300 rounded text-xs transition">🔄 Ver Resultados</button>
+                            <button onclick="clearWalletAI()" class="px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-300 rounded text-xs transition">🗑️ Limpiar</button>
+                        </div>
+                    </div>
+                    <!-- Selector: analizar desde scan cache -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                        <div class="bg-gray-900/40 rounded p-2">
+                            <div class="text-[9px] text-gray-500 mb-1">Min Win Rate %</div>
+                            <input id="wai-min-wr" type="number" value="60" min="0" max="100" class="w-full bg-gray-800/60 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300">
+                        </div>
+                        <div class="bg-gray-900/40 rounded p-2">
+                            <div class="text-[9px] text-gray-500 mb-1">Min Trades</div>
+                            <input id="wai-min-trades" type="number" value="10" min="1" class="w-full bg-gray-800/60 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300">
+                        </div>
+                        <div class="bg-gray-900/40 rounded p-2">
+                            <div class="text-[9px] text-gray-500 mb-1">Min Profit Factor</div>
+                            <input id="wai-min-pf" type="number" value="0" min="0" step="0.1" class="w-full bg-gray-800/60 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300">
+                        </div>
+                        <div class="flex items-end gap-2 p-2">
+                            <button onclick="runWalletAIFromFilters()" id="wai-run-btn" class="flex-1 px-4 py-1.5 bg-cyan-600/50 hover:bg-cyan-600/70 text-cyan-200 rounded text-xs font-semibold transition">🧠 Analizar Filtradas</button>
+                            <button onclick="runWalletAISelected()" id="wai-run-sel-btn" class="flex-1 px-4 py-1.5 bg-violet-600/50 hover:bg-violet-600/70 text-violet-200 rounded text-xs font-semibold transition">📋 Analizar Seleccionadas</button>
+                        </div>
+                    </div>
+                    <!-- Progress -->
+                    <div id="wai-progress" class="hidden mb-3">
+                        <div class="flex items-center justify-between text-xs text-gray-400 mb-1">
+                            <span id="wai-progress-text">Analizando wallets con AI...</span>
+                            <span id="wai-progress-count">0/0</span>
+                        </div>
+                        <div class="w-full bg-gray-700/50 rounded-full h-2">
+                            <div id="wai-progress-bar" class="bg-cyan-500 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <!-- Summary Cards -->
+                    <div id="wai-summary" class="hidden grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Analizadas</div><div class="text-sm font-bold text-cyan-400" id="wai-total">0</div></div>
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Score 8+</div><div class="text-sm font-bold text-green-400" id="wai-top">0</div></div>
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Direccionales</div><div class="text-sm font-bold text-blue-400" id="wai-directional">0</div></div>
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Scalpers</div><div class="text-sm font-bold text-red-400" id="wai-scalpers">0</div></div>
+                        <div class="bg-gray-800/50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Holders</div><div class="text-sm font-bold text-yellow-400" id="wai-holders">0</div></div>
+                    </div>
+                    <!-- Results Table -->
+                    <div id="wai-table-wrap" class="hidden overflow-x-auto" style="max-height:60vh;overflow-y:auto">
+                        <table class="w-full text-xs">
+                            <thead class="sticky top-0 bg-dark-800"><tr class="text-gray-500 uppercase border-b border-gray-700/50">
+                                <th class="px-2 py-1.5 text-center">#</th>
+                                <th class="px-2 py-1.5 text-left">Wallet</th>
+                                <th class="px-2 py-1.5 text-center cursor-pointer hover:text-cyan-400" onclick="sortWAI('copiability_score')">Score <span id="wai-sort-score"></span></th>
+                                <th class="px-2 py-1.5 text-center">Tipo</th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-cyan-400" onclick="sortWAI('win_rate')">WR% <span id="wai-sort-wr"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-cyan-400" onclick="sortWAI('profit_factor')">PF <span id="wai-sort-pf"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-cyan-400" onclick="sortWAI('total_pnl')">PnL <span id="wai-sort-pnl"></span></th>
+                                <th class="px-2 py-1.5 text-right cursor-pointer hover:text-cyan-400" onclick="sortWAI('roi_pct')">ROI <span id="wai-sort-roi"></span></th>
+                                <th class="px-2 py-1.5 text-center">Categorías</th>
+                                <th class="px-2 py-1.5 text-center">Patrones</th>
+                                <th class="px-2 py-1.5 text-left" style="min-width:200px">Opinión AI</th>
+                                <th class="px-2 py-1.5 text-center">Acción</th>
+                            </tr></thead>
+                            <tbody id="wai-body"><tr><td colspan="12" class="text-center py-4 text-gray-600">Usa los filtros y click "Analizar" para comenzar</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
                 <!-- Resultado -->
                 <div id="wscan-result" class="hidden">
                     <!-- Score + Badges header -->
@@ -7005,6 +7075,157 @@ function renderWalletScan(d){
         }).join('');
     }else{actBody.innerHTML='<tr><td colspan="6" class="text-center text-gray-600 p-4">Sin actividad reciente</td></tr>';}
     document.getElementById('wscan-result').classList.remove('hidden');
+}
+
+// ── AI Wallet Analysis ──
+let _waiData=[];
+let _waiSortCol='copiability_score';
+let _waiSortDir='DESC';
+let _waiPollTimer=null;
+
+async function runWalletAIFromFilters(){
+    const minWr=parseFloat(document.getElementById('wai-min-wr').value)||60;
+    const minTrades=parseInt(document.getElementById('wai-min-trades').value)||10;
+    const minPf=parseFloat(document.getElementById('wai-min-pf').value)||0;
+    const btn=document.getElementById('wai-run-btn');
+    btn.disabled=true;btn.textContent='⏳ Iniciando...';
+    try{
+        const resp=await fetch('/api/wallet-ai/run',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+_authToken},body:JSON.stringify({filter:{min_wr:minWr,min_trades:minTrades,min_pf:minPf}})});
+        const data=await resp.json();
+        if(data.error){alert(data.error);btn.disabled=false;btn.textContent='🧠 Analizar Filtradas';return;}
+        document.getElementById('wai-progress').classList.remove('hidden');
+        _waiPollTimer=setInterval(pollWalletAIStatus,2000);
+    }catch(e){console.error(e);alert('Error lanzando análisis');}
+    finally{btn.disabled=false;btn.textContent='🧠 Analizar Filtradas';}
+}
+
+async function runWalletAISelected(){
+    // Usar wallets seleccionadas del batch scan (las que están visibles y filtradas)
+    if(!_bscanData||!_bscanData.length){alert('Primero carga los resultados del Batch Scan');return;}
+    const addresses=_bscanData.map(w=>w.address);
+    if(!addresses.length){alert('No hay wallets filtradas');return;}
+    const btn=document.getElementById('wai-run-sel-btn');
+    btn.disabled=true;btn.textContent='⏳ Iniciando...';
+    try{
+        const resp=await fetch('/api/wallet-ai/run',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+_authToken},body:JSON.stringify({addresses})});
+        const data=await resp.json();
+        if(data.error){alert(data.error);btn.disabled=false;btn.textContent='📋 Analizar Seleccionadas';return;}
+        document.getElementById('wai-progress').classList.remove('hidden');
+        _waiPollTimer=setInterval(pollWalletAIStatus,2000);
+    }catch(e){console.error(e);alert('Error lanzando análisis');}
+    finally{btn.disabled=false;btn.textContent='📋 Analizar Seleccionadas';}
+}
+
+async function pollWalletAIStatus(){
+    try{
+        const resp=await fetch('/api/wallet-ai/status',{headers:{'Authorization':'Bearer '+_authToken}});
+        const s=await resp.json();
+        const pct=s.total>0?Math.round(s.current/s.total*100):0;
+        document.getElementById('wai-progress-bar').style.width=pct+'%';
+        document.getElementById('wai-progress-count').textContent=s.current+'/'+s.total;
+        document.getElementById('wai-progress-text').textContent=s.running?'Analizando: '+s.current_wallet:'Completado';
+        if(!s.running){
+            clearInterval(_waiPollTimer);_waiPollTimer=null;
+            setTimeout(()=>{document.getElementById('wai-progress').classList.add('hidden');},2000);
+            loadWalletAIResults();
+        }
+    }catch(e){console.error(e);}
+}
+
+async function loadWalletAIResults(){
+    try{
+        const resp=await fetch('/api/wallet-ai/results',{headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await resp.json();
+        _waiData=data.results||[];
+        renderWAITable();
+        renderWAISummary();
+    }catch(e){console.error('loadWalletAIResults error',e);}
+}
+
+function renderWAISummary(){
+    if(!_waiData.length){document.getElementById('wai-summary').classList.add('hidden');return;}
+    document.getElementById('wai-summary').classList.remove('hidden');
+    document.getElementById('wai-total').textContent=_waiData.length;
+    document.getElementById('wai-top').textContent=_waiData.filter(w=>w.copiability_score>=8).length;
+    document.getElementById('wai-directional').textContent=_waiData.filter(w=>w.trader_type==='directional').length;
+    document.getElementById('wai-scalpers').textContent=_waiData.filter(w=>w.trader_type==='scalper').length;
+    document.getElementById('wai-holders').textContent=_waiData.filter(w=>w.trader_type==='holder').length;
+}
+
+function sortWAI(col){
+    if(_waiSortCol===col)_waiSortDir=_waiSortDir==='DESC'?'ASC':'DESC';
+    else{_waiSortCol=col;_waiSortDir='DESC';}
+    renderWAITable();
+}
+
+function renderWAITable(){
+    if(!_waiData.length){document.getElementById('wai-table-wrap').classList.add('hidden');return;}
+    document.getElementById('wai-table-wrap').classList.remove('hidden');
+    // Sort
+    const sorted=[..._waiData].sort((a,b)=>{
+        let va=a[_waiSortCol]||0,vb=b[_waiSortCol]||0;
+        return _waiSortDir==='DESC'?vb-va:va-vb;
+    });
+    const typeColors={directional:'text-blue-400 bg-blue-900/30',holder:'text-yellow-400 bg-yellow-900/30',scalper:'text-red-400 bg-red-900/30',live_bettor:'text-orange-400 bg-orange-900/30',bot:'text-gray-400 bg-gray-700/30',mixed:'text-purple-400 bg-purple-900/30',unknown:'text-gray-500 bg-gray-800/30'};
+    const typeLabels={directional:'Direccional',holder:'Holder',scalper:'Scalper',live_bettor:'Live Bettor',bot:'Bot',mixed:'Mixto',unknown:'?'};
+    const body=document.getElementById('wai-body');
+    body.innerHTML=sorted.map((w,i)=>{
+        const sc=w.copiability_score||0;
+        const scColor=sc>=8?'text-green-400 bg-green-900/40':sc>=6?'text-cyan-400 bg-cyan-900/40':sc>=4?'text-yellow-400 bg-yellow-900/40':'text-red-400 bg-red-900/40';
+        const tc=typeColors[w.trader_type]||typeColors.unknown;
+        const tl=typeLabels[w.trader_type]||w.trader_type;
+        const pnlC=(w.total_pnl||0)>=0?'text-green-400':'text-red-400';
+        const roiC=(w.roi_pct||0)>=0?'text-green-400':'text-red-400';
+        // Categories badges
+        const cats=w.categories||{};
+        const catBadges=Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>{
+            const catIcons={esports:'🎮',sports:'⚽',politics:'🏛️',crypto:'₿',weather:'🌤️',other:'📊'};
+            return`<span class="px-1 py-0.5 rounded bg-gray-800/50 text-[9px] text-gray-400">${catIcons[k]||'📊'}${v}</span>`;
+        }).join(' ');
+        // Pattern badges
+        const p=w.patterns||{};
+        let patBadges='';
+        if(p.holds_to_resolution)patBadges+='<span class="px-1 py-0.5 rounded bg-green-900/30 text-green-400 text-[9px]">HOLD</span> ';
+        if(p.trades_both_sides)patBadges+='<span class="px-1 py-0.5 rounded bg-red-900/30 text-red-400 text-[9px]">2SIDES</span> ';
+        if(p.fragments_orders)patBadges+='<span class="px-1 py-0.5 rounded bg-orange-900/30 text-orange-400 text-[9px]">FRAG</span> ';
+        if(p.prefers_underdogs)patBadges+='<span class="px-1 py-0.5 rounded bg-purple-900/30 text-purple-400 text-[9px]">UNDOG</span> ';
+        if(p.prefers_favorites)patBadges+='<span class="px-1 py-0.5 rounded bg-blue-900/30 text-blue-400 text-[9px]">FAV</span> ';
+        const opinion=(w.opinion||'').slice(0,120)+(w.opinion&&w.opinion.length>120?'...':'');
+        const addr=w.address||'';
+        return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
+            <td class="px-2 py-1.5 text-center text-gray-500">${i+1}</td>
+            <td class="px-2 py-1.5"><span class="text-cyan-400 font-mono text-[10px] cursor-pointer" onclick="runWalletScan('${addr}')" title="${addr}">${addr.slice(0,6)}...${addr.slice(-4)}</span></td>
+            <td class="px-2 py-1.5 text-center"><span class="px-2 py-0.5 rounded font-bold text-xs ${scColor}">${sc}/10</span></td>
+            <td class="px-2 py-1.5 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-semibold ${tc}">${tl}</span></td>
+            <td class="px-2 py-1.5 text-right font-mono">${(w.win_rate||0).toFixed(0)}%</td>
+            <td class="px-2 py-1.5 text-right font-mono">${(w.profit_factor||0).toFixed(2)}</td>
+            <td class="px-2 py-1.5 text-right font-mono font-bold ${pnlC}">$${(w.total_pnl||0).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+            <td class="px-2 py-1.5 text-right font-mono ${roiC}">${(w.roi_pct||0).toFixed(0)}%</td>
+            <td class="px-2 py-1.5 text-center">${catBadges||'—'}</td>
+            <td class="px-2 py-1.5 text-center">${patBadges||'—'}</td>
+            <td class="px-2 py-1.5 text-gray-400 text-[10px]" title="${(w.opinion||'').replace(/"/g,'&quot;')}">${opinion||'—'}</td>
+            <td class="px-2 py-1.5 text-center"><button onclick="addAIWalletToCopy('${addr}')" class="px-2 py-0.5 bg-emerald-600/40 hover:bg-emerald-600/60 text-emerald-300 rounded text-[10px]" title="Agregar al Copy Trading">⭐ Copiar</button></td>
+        </tr>`;
+    }).join('');
+}
+
+async function addAIWalletToCopy(addr){
+    try{
+        const resp=await fetch('/api/wallet-ai/add-to-copytrade/'+addr,{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await resp.json();
+        if(data.ok)alert('Wallet agregada al Copy Trading (score='+data.copiability_score+'/10)');
+        else alert(data.error||'Error');
+    }catch(e){console.error(e);alert('Error agregando wallet');}
+}
+
+async function clearWalletAI(){
+    if(!confirm('Eliminar todos los análisis AI de wallets?'))return;
+    try{
+        await fetch('/api/wallet-ai/clear',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        _waiData=[];renderWAITable();renderWAISummary();
+        document.getElementById('wai-table-wrap').classList.add('hidden');
+        document.getElementById('wai-summary').classList.add('hidden');
+    }catch(e){console.error(e);}
 }
 
 // ── Batch Wallet Scan (Job persistente) ──
