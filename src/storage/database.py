@@ -3157,11 +3157,11 @@ class Database:
                            COALESCE(sc.trades_per_week, 0) as trades_per_week,
                            COALESCE(sc.total_trades, 0) as scan_total_trades,
                            COALESCE(sc.days_active, 0) as scan_days_active,
-                           ROUND(CASE
+                           ROUND((CASE
                                WHEN COALESCE(sc.days_active, 0) > 0
                                THEN sc.total_trades::numeric / sc.days_active
-                               ELSE COALESCE(sc.trades_per_week, 0) / 7.0
-                           END, 1) as trades_per_day
+                               ELSE COALESCE(sc.trades_per_week, 0)::numeric / 7
+                           END), 1) as trades_per_day
                     FROM wallets w
                     LEFT JOIN wallet_scan_cache sc ON LOWER(w.address) = LOWER(sc.address)
                     WHERE w.is_watchlisted = TRUE
