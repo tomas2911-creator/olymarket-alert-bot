@@ -1706,6 +1706,9 @@ class AlertAutoTrader:
                                       flush=True)
                             else:
                                 await self.db.resolve_alert_autotrade(cid, action, round(pnl, 2))
+                                # Refund budget on TP/SL/Trailing close
+                                if trade.get("is_copy_trade") and trade.get("wallet_address"):
+                                    await self.db.refund_wallet_budget(trade["wallet_address"], trade.get("size_usd", 0))
                                 del self._open_positions[cid]
                                 self._trailing_highs.pop(cid, None)
                                 self._partial_sold.discard(cid)
@@ -1788,6 +1791,9 @@ class AlertAutoTrader:
                 if sell_result.get("success"):
                     pnl = round(shares * current_price - shares * entry_price, 2)
                     await self.db.resolve_alert_autotrade(cid, "auto_exit_sell", pnl)
+                    # Refund budget on auto-exit
+                    if existing_position.get("is_copy_trade") and existing_position.get("wallet_address"):
+                        await self.db.refund_wallet_budget(existing_position["wallet_address"], existing_position.get("size_usd", 0))
                     del self._open_positions[cid]
                     self._trailing_highs.pop(cid, None)
                     self._partial_sold.discard(cid)
@@ -1870,20 +1876,29 @@ class AlertAutoTrader:
                             continue
 
                         tokens = data.get("tokens", [])
+                        winning_token_id = None
                         winning_outcome = None
                         for token in tokens:
                             if token.get("winner") is True:
+                                winning_token_id = token.get("token_id", "")
                                 winning_outcome = token.get("outcome", "")
                                 break
                             if float(token.get("price", 0)) >= 0.95:
+                                winning_token_id = token.get("token_id", "")
                                 winning_outcome = token.get("outcome", "")
                                 break
 
-                        if not winning_outcome:
+                        if not winning_outcome and not winning_token_id:
                             continue
 
+                        # Determinar si ganamos: comparar por token_id (robusto para multi-outcome)
+                        # luego fallback a comparación de outcome string
+                        our_token_id = trade.get("token_id", "")
                         our_outcome = trade.get("outcome", "")
-                        won = our_outcome.lower() == winning_outcome.lower()
+                        if our_token_id and winning_token_id:
+                            won = our_token_id == winning_token_id
+                        else:
+                            won = our_outcome.lower() == winning_outcome.lower()
 
                         size_usd = trade.get("size_usd", 0)
                         shares = trade.get("shares", 0)
@@ -1901,6 +1916,11 @@ class AlertAutoTrader:
                             result = "loss"
 
                         await self.db.resolve_alert_autotrade(cid, result, round(pnl, 2))
+
+                        # Refund budget: liberar el capital usado para que pueda seguir operando
+                        if trade.get("is_copy_trade") and trade.get("wallet_address"):
+                            await self.db.refund_wallet_budget(trade["wallet_address"], size_usd)
+
                         del self._open_positions[cid]
                         resolved += 1
 

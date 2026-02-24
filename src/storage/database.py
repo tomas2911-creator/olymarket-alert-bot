@@ -3115,20 +3115,18 @@ class Database:
     # ── Watchlist ─────────────────────────────────────────────────────
 
     async def update_watchlist(self, threshold: float = 50, min_resolved: int = 3):
-        """Auto-actualizar watchlist basado en smart money score.
-        NO toca wallets marcadas manualmente (manually_watchlisted = TRUE)."""
+        """Auto-actualizar watchlist interno para whale scanning.
+        Solo actualiza el set en memoria (_watchlist) para detectar smart wallets.
+        NO modifica is_watchlisted en DB — favoritos son solo manuales."""
         async with self._pool.acquire() as conn:
-            # Quitar del watchlist SOLO las automáticas (no las manuales)
-            await conn.execute(
-                "UPDATE wallets SET is_watchlisted = FALSE WHERE is_watchlisted = TRUE AND manually_watchlisted = FALSE"
-            )
-            # Agregar las que califican por score
-            result = await conn.execute("""
-                UPDATE wallets SET is_watchlisted = TRUE
+            # Obtener wallets que califican por score (para whale scanner interno)
+            rows = await conn.fetch("""
+                SELECT address FROM wallets
                 WHERE smart_money_score >= $1
                   AND (win_count + loss_count) >= $2
             """, threshold, min_resolved)
-            return result
+            # Retornar direcciones calificadas (el caller las usa para _watchlist en memoria)
+            return {r["address"] for r in rows}
 
     async def get_watchlisted_wallets_detail(self) -> list[dict]:
         """Obtener wallets watchlisted con detalle y config copy trade."""
@@ -3239,6 +3237,20 @@ class Database:
                 """, addr, amount)
         except Exception as e:
             print(f"[DB] update_wallet_budget_used error: {e}", flush=True)
+
+    async def refund_wallet_budget(self, address: str, amount: float):
+        """Devolver dinero al presupuesto de copy trade cuando un trade se resuelve.
+        Reduce ct_budget_used para que el capital vuelva a estar disponible."""
+        try:
+            addr = address.lower()
+            async with self._pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE wallets SET ct_budget_used = GREATEST(COALESCE(ct_budget_used, 0) - $2, 0)
+                    WHERE address = $1
+                """, addr, amount)
+                print(f"[DB] Budget refund ${amount:.2f} para {addr[:10]}", flush=True)
+        except Exception as e:
+            print(f"[DB] refund_wallet_budget error: {e}", flush=True)
 
     async def reset_wallet_budget(self, address: str):
         """Resetear el presupuesto usado de copy trade de una wallet."""

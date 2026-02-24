@@ -739,13 +739,17 @@ class PolymarketAlertBot:
                 # Cada 30 ciclos (~30 min): resoluciones + watchlist
                 if cycle % 30 == 0:
                     await self.check_resolutions()
-                    await self.db.update_watchlist(
+                    # Watchlist interno (whale scanner) = smart wallets por score
+                    smart_wallets = await self.db.update_watchlist(
                         threshold=config.SMART_MONEY_THRESHOLD,
                         min_resolved=config.COPY_TRADE_MIN_RESOLVED,
                     )
-                    self._watchlist = await self.db.get_watchlisted_wallets()
+                    # Combinar: smart wallets + favoritos manuales del usuario
+                    manual_favs = await self.db.get_watchlisted_wallets()
+                    self._watchlist = smart_wallets | manual_favs
                     if self._watchlist:
-                        print(f"Watchlist actualizado: {len(self._watchlist)} wallets", flush=True)
+                        print(f"Watchlist actualizado: {len(self._watchlist)} wallets "
+                              f"({len(smart_wallets)} smart + {len(manual_favs)} favs)", flush=True)
 
                 # Cada 15 ciclos (~15 min): on-chain check (20 wallets por batch)
                 if cycle % 15 == 0:
