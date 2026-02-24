@@ -1829,7 +1829,11 @@ class AlertAutoTrader:
             print(f"[CopyTrade] Error auto-exit: {e}", flush=True)
 
     async def _sell_position(self, trade: dict, sell_price: float) -> dict:
-        """Vender una posición abierta (SELL en CLOB con slippage para asegurar fill)."""
+        """Vender una posición abierta con 3 capas de protección:
+        1) FOK al best bid del orderbook
+        2) FOK con slippage agresivo (-5%)
+        3) GTC con polling (50s)
+        Solo retorna success=True si se verifica el fill real."""
         try:
             token_id = trade.get("token_id", "")
             shares = trade.get("shares", 0)
@@ -1837,37 +1841,102 @@ class AlertAutoTrader:
                 return {"success": False, "error": "Sin token_id o shares"}
 
             from py_clob_client.clob_types import OrderArgs, OrderType
-
-            # Slippage negativo para asegurar que el SELL se ejecute
-            actual_sell_price = max(round(sell_price - 0.02, 2), 0.01)
-
-            order_args = OrderArgs(
-                price=actual_sell_price,
-                size=shares,
-                side="SELL",
-                token_id=token_id,
-            )
-
             loop = asyncio.get_running_loop()
+
+            # ── Obtener best bid del orderbook ──
+            best_bid = sell_price
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.get(f"{CLOB_HOST}/book", params={"token_id": token_id})
+                    if resp.status_code == 200:
+                        book = resp.json()
+                        bids = book.get("bids", [])
+                        if bids:
+                            ob_bid = float(bids[0].get("price", 0))
+                            if ob_bid > 0:
+                                best_bid = ob_bid
+                                print(f"[SELL] 📊 Best bid del orderbook: {best_bid:.2f} (mid={sell_price:.2f})", flush=True)
+            except Exception as e:
+                print(f"[SELL] ⚠️ Orderbook fetch: {e}", flush=True)
+
+            # ── Intento 1: FOK al best bid ──
+            price1 = max(round(best_bid, 2), 0.01)
+            print(f"[SELL] 🔄 Intento 1/3: FOK @ {price1:.2f} ({shares} shares)", flush=True)
+            result1 = await self._try_sell_fok(token_id, shares, price1, loop)
+            if result1["filled"]:
+                print(f"[SELL] ✅ FOK llenado @ {price1:.2f}", flush=True)
+                return {"success": True, "order_id": result1.get("order_id", "")}
+
+            # ── Intento 2: FOK con slippage agresivo (-5% del bid) ──
+            price2 = max(round(best_bid * 0.95, 2), 0.01)
+            print(f"[SELL] 🔄 Intento 2/3: FOK con slippage @ {price2:.2f}", flush=True)
+            result2 = await self._try_sell_fok(token_id, shares, price2, loop)
+            if result2["filled"]:
+                print(f"[SELL] ✅ FOK+slippage llenado @ {price2:.2f}", flush=True)
+                return {"success": True, "order_id": result2.get("order_id", "")}
+
+            # ── Intento 3: GTC con polling (reutilizar _post_and_poll_order) ──
+            price3 = max(round(best_bid * 0.92, 2), 0.01)
+            print(f"[SELL] 🔄 Intento 3/3: GTC @ {price3:.2f} con polling", flush=True)
+            order_args = OrderArgs(price=price3, size=shares, side="SELL", token_id=token_id)
+            success, order_id, error_msg = await self._post_and_poll_order(order_args, token_id, max_polls=10)
+            if success:
+                print(f"[SELL] ✅ GTC llenado @ {price3:.2f}", flush=True)
+                return {"success": True, "order_id": order_id}
+
+            # ── TODOS FALLARON — NO marcar como vendido ──
+            print(f"[SELL] ❌ TODOS los intentos fallaron para {token_id[:16]}... "
+                  f"({shares} shares) — posición SIGUE ABIERTA", flush=True)
+            return {"success": False, "error": f"3 intentos de venta fallaron (bid={best_bid:.2f})"}
+
+        except Exception as e:
+            print(f"[SELL] ❌ Error crítico vendiendo posición: {e}", flush=True)
+            return {"success": False, "error": str(e)}
+
+    async def _try_sell_fok(self, token_id: str, shares: float, price: float, loop) -> dict:
+        """Intentar venta FOK. Retorna {filled: bool, order_id: str}.
+        Solo considera 'filled' si status es matched/filled, NO si solo success=true."""
+        try:
+            from py_clob_client.clob_types import OrderArgs, OrderType
+            order_args = OrderArgs(price=price, size=shares, side="SELL", token_id=token_id)
             signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
             resp = await loop.run_in_executor(None, self._client.post_order, signed_order, OrderType.FOK)
 
-            # Verificar que la orden SELL se ejecutó
-            resp_data = resp if isinstance(resp, dict) else resp.__dict__ if hasattr(resp, '__dict__') else {"raw": str(resp)}
-            sell_filled = resp_data.get("success", False) or \
-                          str(resp_data.get("status", "")).lower() == "matched"
+            resp_data = resp if isinstance(resp, dict) else (
+                resp.__dict__ if hasattr(resp, '__dict__') else {"raw": str(resp)})
 
-            if not sell_filled:
-                error_msg = resp_data.get("errorMsg", resp_data.get("error", str(resp)[:200]))
-                print(f"[AlertTrader] ⚠️ SELL FOK no ejecutado: {error_msg} — posición sigue abierta", flush=True)
-                return {"success": False, "error": error_msg}
-
+            status = str(resp_data.get("status", "")).lower()
             order_id = resp_data.get("orderID", resp_data.get("order_id", "")) or ""
-            return {"success": True, "order_id": order_id}
+
+            # FOK: SOLO matched/filled cuenta como éxito real
+            # "success" solo significa que el CLOB aceptó la orden, NO que se llenó
+            filled = status in ("matched", "filled")
+
+            if not filled and order_id:
+                # Double-check: consultar estado de la orden por si el status no vino bien
+                try:
+                    order_info = await loop.run_in_executor(None, self._client.get_order, order_id)
+                    check_status = ""
+                    if isinstance(order_info, dict):
+                        check_status = order_info.get("status", "").lower()
+                    elif hasattr(order_info, "status"):
+                        check_status = getattr(order_info, "status", "").lower()
+                    if check_status in ("matched", "filled"):
+                        filled = True
+                        print(f"[SELL] 📋 Double-check: orden {order_id[:12]} realmente matched", flush=True)
+                except Exception:
+                    pass
+
+            if not filled:
+                err = resp_data.get("errorMsg", resp_data.get("error", status or "no fill"))
+                print(f"[SELL] ⚠️ FOK @ {price:.2f}: no llenado (status={status}, err={err})", flush=True)
+
+            return {"filled": filled, "order_id": order_id}
 
         except Exception as e:
-            print(f"[AlertTrader] Error vendiendo posición: {e}", flush=True)
-            return {"success": False, "error": str(e)}
+            print(f"[SELL] ⚠️ FOK @ {price:.2f} error: {e}", flush=True)
+            return {"filled": False, "order_id": ""}
 
     # ── Resolución de trades ─────────────────────────────────────────
 
