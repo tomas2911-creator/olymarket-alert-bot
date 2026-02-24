@@ -3201,9 +3201,11 @@
                             <th class="text-right p-2">Budget</th><th class="text-right p-2">Usado</th>
                             <th class="text-right p-2">CapInsider</th>
                             <th class="text-right p-2">MinTrigger</th><th class="text-right p-2">MaxMkt</th>
+                            <th class="text-center p-2" title="Promedio de trades por día del insider">Tr/d</th>
+                            <th class="text-center p-2" title="Budget diario recomendado (Trades/día × Monto)">BudgetRec</th>
                             <th class="text-center p-2">💾</th>
                         </tr></thead>
-                        <tbody id="ct-targets-body"><tr><td colspan="14" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr></tbody>
+                        <tbody id="ct-targets-body"><tr><td colspan="16" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr></tbody>
                     </table></div>
                 </div>
                 <!-- Copy Trades -->
@@ -7665,7 +7667,7 @@ async function loadCopyTrading(){
         wrEl.className='text-lg font-bold '+(wr>=50?'text-green-400':'text-red-400');
         // Targets table
         const tBody=document.getElementById('ct-targets-body');
-        if(!targets.length){tBody.innerHTML='<tr><td colspan="14" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr>';}
+        if(!targets.length){tBody.innerHTML='<tr><td colspan="16" class="text-center text-gray-600 p-4">Sin wallets watchlisted. Marca con ⭐ en la pestaña Wallets.</td></tr>';}
         else{tBody.innerHTML=targets.map(t=>{
             const addr=t.wallet_address;
             const name=t.display_name||addr.slice(0,10)+'...';
@@ -7698,6 +7700,8 @@ async function loadCopyTrading(){
                 <td class="p-2 text-right"><input type="number" id="ctic-${id}" value="${t.ct_insider_capital||0}" min="0" step="50" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right" title="Capital estimado del insider ($)"></td>
                 <td class="p-2 text-right"><input type="number" id="ctmt-${id}" value="${t.ct_min_trigger||0}" min="0" step="10" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
                 <td class="p-2 text-right"><input type="number" id="ctmm-${id}" value="${t.ct_max_per_market||0}" min="0" step="5" class="w-14 bg-gray-900/80 border border-gray-700/50 rounded px-1 py-0.5 text-[10px] text-gray-300 text-right"></td>
+                <td class="p-2 text-center font-mono ${(t.trades_per_day||0)>=10?'text-orange-400':(t.trades_per_day||0)>=3?'text-yellow-400':'text-gray-400'}" title="${t.scan_total_trades||0} trades en ${t.scan_days_active||0} días">${(t.trades_per_day||0)>0?(t.trades_per_day||0).toFixed(1):'-'}</td>
+                <td class="p-2 text-center font-mono text-cyan-400" title="Trades/día × Monto fijo">${(()=>{const tpd=t.trades_per_day||0;const m=mode==='fixed'?(t.ct_fixed_amount||5):(t.ct_max_bet||50);return tpd>0?'$'+(tpd*m).toFixed(0):'-';})()}</td>
                 <td class="p-2 text-center whitespace-nowrap">
                     <button onclick="saveWalletCopyConfig('${addr}','${id}',this)" class="text-emerald-400 hover:text-emerald-300 text-xs" title="Guardar config">💾</button>
                     ${bud>0?'<button onclick="resetWalletBudget(\''+addr+'\')" class="text-yellow-400 hover:text-yellow-300 text-xs ml-1" title="Reset budget">🔄</button>':''}

@@ -3153,8 +3153,17 @@ class Database:
                            COALESCE(w.ct_max_bet, 50) as ct_max_bet,
                            COALESCE(w.ct_max_per_market, 0) as ct_max_per_market,
                            COALESCE(w.ct_min_trigger, 0) as ct_min_trigger,
-                           COALESCE(w.ct_insider_capital, 0) as ct_insider_capital
+                           COALESCE(w.ct_insider_capital, 0) as ct_insider_capital,
+                           COALESCE(sc.trades_per_week, 0) as trades_per_week,
+                           COALESCE(sc.total_trades, 0) as scan_total_trades,
+                           COALESCE(sc.days_active, 0) as scan_days_active,
+                           ROUND(CASE
+                               WHEN COALESCE(sc.days_active, 0) > 0
+                               THEN sc.total_trades::numeric / sc.days_active
+                               ELSE COALESCE(sc.trades_per_week, 0) / 7.0
+                           END, 1) as trades_per_day
                     FROM wallets w
+                    LEFT JOIN wallet_scan_cache sc ON LOWER(w.address) = LOWER(sc.address)
                     WHERE w.is_watchlisted = TRUE
                     ORDER BY w.smart_money_score DESC NULLS LAST
                 """)
