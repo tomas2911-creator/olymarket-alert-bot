@@ -7995,7 +7995,7 @@ async function loadCopyTrading(){
             return`<tr class="border-b border-gray-800/30 hover:bg-gray-800/20">
                 <td class="p-2 text-gray-400">${ts}</td>
                 <td class="p-2 text-emerald-400">${name}</td>
-                <td class="p-2 text-gray-300" title="${(t.market_question||'').replace(/"/g,'&quot;')}">${q}</td>
+                <td class="p-2"><a href="${polyLink(t.market_slug)}" target="_blank" class="text-gray-300 hover:text-purple-400 transition" title="${(t.market_question||'').replace(/"/g,'&quot;')}">${q}</a></td>
                 <td class="p-2 text-center ${oc}">${outcome}</td>
                 <td class="p-2 text-right font-mono text-gray-400">$${(t.insider_size||0).toLocaleString()}</td>
                 <td class="p-2 text-right font-mono text-white">$${(t.size_usd||0).toFixed(2)}</td>
