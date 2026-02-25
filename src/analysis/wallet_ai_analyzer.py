@@ -8,6 +8,8 @@ Analiza los últimos trades de una wallet y determina:
 - Opinión AI textual con recomendación
 """
 
+from __future__ import annotations
+
 import asyncio
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -80,11 +82,13 @@ def _classify_trader_type(trades: list[dict]) -> str:
     """Clasificar el tipo de trader basándose en patrones de trading.
 
     Tipos:
-    - DIRECTIONAL: compra un lado y mantiene hasta resolución
+    - DIRECTIONAL: compra un lado y mantiene hasta resolución con sizing consistente
     - SCALPER: compra/vende rápido el mismo mercado por spread
+    - SPREAD_SCALPER: compra/vende "No" a precios >0.95 por spread mínimo
     - LIVE_BETTOR: opera durante eventos en vivo, cambia de lado
     - BOT: alta frecuencia, tamaños uniformes
-    - HOLDER: solo compras, nunca vende (espera resolución)
+    - HOLDER: solo compras, nunca vende (espera resolución) con sizing razonable
+    - LOTTERY_BETTOR: muchos mercados, micro-apuestas ($1-10), precios bajos
     """
     if not trades:
         return "unknown"
@@ -103,10 +107,10 @@ def _classify_trader_type(trades: list[dict]) -> str:
     sell_count = len(sells)
 
     # Métricas por mercado
-    markets_with_both_sides = 0  # Mercados donde opera ambos outcomes
-    markets_with_buy_sell = 0    # Mercados donde compra Y vende
-    rapid_turnaround_count = 0   # Mercados con buy→sell en < 30min
-    fragment_count = 0           # Mercados con >3 trades del mismo lado
+    markets_with_both_sides = 0
+    markets_with_buy_sell = 0
+    rapid_turnaround_count = 0
+    fragment_count = 0
 
     for cid, mkt_trades in markets.items():
         sides = set(t.get("side") for t in mkt_trades)
@@ -117,16 +121,14 @@ def _classify_trader_type(trades: list[dict]) -> str:
 
         if "BUY" in sides and "SELL" in sides:
             markets_with_buy_sell += 1
-            # Verificar turnaround rápido
             buy_ts = [_parse_ts(t.get("timestamp")) for t in mkt_trades if t.get("side") == "BUY"]
             sell_ts = [_parse_ts(t.get("timestamp")) for t in mkt_trades if t.get("side") == "SELL"]
             if buy_ts and sell_ts:
                 min_buy = min(buy_ts)
                 min_sell = min(sell_ts)
-                if abs(min_sell - min_buy) < 1800:  # 30 minutos
+                if abs(min_sell - min_buy) < 1800:
                     rapid_turnaround_count += 1
 
-        # Fragmentación: muchos trades del mismo lado en el mismo mercado
         side_counts = defaultdict(int)
         for t in mkt_trades:
             side_counts[t.get("side", "")] += 1
@@ -143,10 +145,26 @@ def _classify_trader_type(trades: list[dict]) -> str:
         size_std = _std_dev(sizes)
         size_mean = sum(sizes) / len(sizes)
         size_cv = size_std / size_mean if size_mean > 0 else 0
+        max_size = max(sizes)
+        sizing_ratio = max_size / size_mean if size_mean > 0 else 0
+        sorted_sizes = sorted(sizes)
+        size_median = sorted_sizes[len(sorted_sizes) // 2]
     else:
         size_cv = 0
+        size_mean = 0
+        max_size = 0
+        sizing_ratio = 0
+        size_median = 0
 
-    # Timestamps: intervalo entre trades
+    # Precios de entrada
+    buy_prices = [float(t.get("price", 0)) for t in buys if 0 < float(t.get("price", 0)) < 1]
+    avg_buy_price = sum(buy_prices) / len(buy_prices) if buy_prices else 0
+
+    # Precios de venta
+    sell_prices = [float(t.get("price", 0)) for t in sells if 0 < float(t.get("price", 0)) < 1]
+    avg_sell_price = sum(sell_prices) / len(sell_prices) if sell_prices else 0
+
+    # Timestamps
     timestamps = sorted(_parse_ts(t.get("timestamp")) for t in trades if _parse_ts(t.get("timestamp")) > 0)
     if len(timestamps) > 1:
         intervals = [timestamps[i+1] - timestamps[i] for i in range(len(timestamps)-1)]
@@ -156,30 +174,49 @@ def _classify_trader_type(trades: list[dict]) -> str:
         avg_interval = 0
         trades_per_hour = 0
 
-    # ── Clasificación ──
+    # Unique markets ratio
+    umr = total_markets / max(total_trades, 1)
+
+    # ── Clasificación (orden importa: de más específico a más genérico) ──
 
     # BOT: alta frecuencia + tamaños uniformes
     if trades_per_hour > 10 and size_cv < 0.3 and total_trades > 20:
         return "bot"
 
+    # SPREAD_SCALPER: compra/vende "No" (o cualquier outcome) a precios muy altos >0.93
+    # Indicador: muchas ventas a >0.95, compras también a >0.93, spread mínimo
+    if sell_count > 5 and avg_sell_price > 0.93 and avg_buy_price > 0.90:
+        if fragment_count > 0 or sell_count > buy_count * 2:
+            return "spread_scalper"
+
     # SCALPER: compra/vende rápido el mismo mercado
     if rapid_turnaround_count > 0 and rapid_turnaround_count >= total_markets * 0.3:
         return "scalper"
 
-    # LIVE_BETTOR: opera ambos lados del mismo mercado con cambios de lado
+    # LOTTERY_BETTOR: micro-apuestas dispersas en muchos mercados
+    # Usar MEDIANA para evitar que un outlier enmascare micro-trades
+    if (size_median > 0 and size_median < 10 and umr > 0.7
+            and (sell_count == 0 or sell_count / max(buy_count, 1) < 0.1)):
+        return "lottery_bettor"
+
+    # LOTTERY_BETTOR variante: mediana tiny + sizing muy inconsistente
+    if size_median > 0 and size_median < 15 and sizing_ratio > 20 and umr > 0.5:
+        return "lottery_bettor"
+
+    # LIVE_BETTOR: opera ambos lados del mismo mercado
     if markets_with_both_sides > 0 and markets_with_both_sides >= total_markets * 0.3:
         return "live_bettor"
 
     # HOLDER: casi solo compras, no vende
     if sell_count == 0 or (sell_count / max(buy_count, 1)) < 0.1:
+        # Distinguir holder legítimo de holder con sizing ridículo
         return "holder"
 
-    # DIRECTIONAL: compra un lado, vende al resolver (sell a 0.99+)
+    # DIRECTIONAL: compra un lado, vende al resolver (sell a 0.95+)
     high_price_sells = sum(1 for t in sells if float(t.get("price", 0)) >= 0.95)
     if high_price_sells >= sell_count * 0.5:
         return "directional"
 
-    # Si compra y vende pero no es scalper ni live bettor
     if markets_with_buy_sell > 0 and markets_with_buy_sell < total_markets * 0.3:
         return "directional"
 
@@ -207,6 +244,8 @@ def _analyze_patterns(trades: list[dict]) -> dict:
     avg_size = sum(sizes) / len(sizes) if sizes else 0
     max_size = max(sizes) if sizes else 0
     total_volume = sum(sizes)
+    sorted_sizes = sorted(sizes)
+    median_size = sorted_sizes[len(sorted_sizes) // 2] if sizes else 0
 
     # Precios de entrada (solo BUY)
     buy_prices = [float(t.get("price", 0)) for t in buys if 0 < float(t.get("price", 0)) < 1]
@@ -249,6 +288,23 @@ def _analyze_patterns(trades: list[dict]) -> dict:
     else:
         hold_label = "< 1 min" if avg_hold_sec == 0 else f"{avg_hold_sec:.0f} seg"
 
+    # Sizing inconsistency: max vs avg ratio
+    sizing_ratio = round(max_size / avg_size, 1) if avg_size > 0 else 0
+    sizing_inconsistent = sizing_ratio > 10
+
+    # Extreme underdog: avg entry < 0.30
+    extreme_underdog = avg_entry_price < 0.30 if buy_prices else False
+
+    # Scatter pattern: many unique markets + tiny MEDIAN size
+    scatter_pattern = (total_markets / max(total_trades, 1) > 0.7
+                       and median_size < 10 and total_markets > 10)
+
+    # Spread scalping: buy and sell same outcome at >0.93
+    sell_prices_list = [float(t.get("price", 0)) for t in sells if 0 < float(t.get("price", 0)) < 1]
+    avg_sell_price = sum(sell_prices_list) / len(sell_prices_list) if sell_prices_list else 0
+    spread_scalping = (avg_entry_price > 0.90 and avg_sell_price > 0.93
+                       and len(sells) > 5)
+
     return {
         "total_trades": total_trades,
         "total_markets": total_markets,
@@ -256,11 +312,14 @@ def _analyze_patterns(trades: list[dict]) -> dict:
         "buy_count": len(buys),
         "sell_count": len(sells),
         "avg_trade_size_usd": round(avg_size, 2),
+        "median_trade_size_usd": round(median_size, 2),
         "max_trade_size_usd": round(max_size, 2),
         "total_volume_usd": round(total_volume, 2),
         "avg_entry_price": round(avg_entry_price, 3),
+        "avg_sell_price": round(avg_sell_price, 3),
         "prefers_underdogs": avg_entry_price < 0.40 if buy_prices else False,
         "prefers_favorites": avg_entry_price > 0.65 if buy_prices else False,
+        "extreme_underdog": extreme_underdog,
         "avg_hold_time_sec": round(avg_hold_sec),
         "avg_hold_time_label": hold_label,
         "holds_to_resolution": resolution_sells > len(sells) * 0.5 if sells else True,
@@ -269,6 +328,10 @@ def _analyze_patterns(trades: list[dict]) -> dict:
         "markets_both_sides_count": markets_both_sides,
         "fragments_orders": max_trades_per_market > 5,
         "max_trades_per_market": max_trades_per_market,
+        "sizing_ratio": sizing_ratio,
+        "sizing_inconsistent": sizing_inconsistent,
+        "scatter_pattern": scatter_pattern,
+        "spread_scalping": spread_scalping,
     }
 
 
@@ -279,7 +342,9 @@ _TYPE_MAX_SCORE = {
     "mixed": 7,
     "live_bettor": 5,
     "scalper": 4,
+    "spread_scalper": 3,
     "bot": 3,
+    "lottery_bettor": 3,
     "unknown": 6,
 }
 
@@ -295,7 +360,9 @@ def _calculate_copiability(trader_type: str, patterns: dict, scan_data: dict) ->
         "mixed": 1,
         "live_bettor": -3,
         "scalper": -4,
+        "spread_scalper": -5,
         "bot": -6,
+        "lottery_bettor": -5,
         "unknown": 0,
     }
     score += type_scores.get(trader_type, 0)
@@ -328,24 +395,44 @@ def _calculate_copiability(trader_type: str, patterns: dict, scan_data: dict) ->
     else:
         score -= 1
 
-    # Mercados únicos (no repetir el mismo una y otra vez)
+    # Mercados únicos — CUIDADO: ratio muy alto + sizing bajo = scatter/lottery
     umr = patterns.get("unique_markets_ratio", 0)
-    if umr >= 0.6:
+    avg_size = patterns.get("avg_trade_size_usd", 0)
+    if umr >= 0.6 and avg_size >= 20:
         score += 1
     elif umr < 0.3:
         score -= 1
 
     # Hold time muy bajo = scalping
     hold = patterns.get("avg_hold_time_sec", 0)
-    if 0 < hold < 600:  # < 10 min
+    if 0 < hold < 600:
         score -= 1
 
-    # Capital promedio muy bajo = no copiable
-    avg_size = patterns.get("avg_trade_size_usd", 0)
-    if 0 < avg_size < 5:
+    # Capital muy bajo = no copiable (usar mediana para evitar outliers)
+    med_size = patterns.get("median_trade_size_usd", avg_size)
+    cap = med_size if med_size > 0 else avg_size
+    if 0 < cap < 5:
+        score -= 3
+    elif 0 < cap < 10:
         score -= 2
-    elif 0 < avg_size < 20:
+    elif 0 < cap < 20:
         score -= 1
+
+    # Sizing inconsistente (max trade >> avg trade)
+    if patterns.get("sizing_inconsistent", False):
+        score -= 2
+
+    # Scatter pattern (muchos mercados únicos con micro-apuestas)
+    if patterns.get("scatter_pattern", False):
+        score -= 2
+
+    # Extreme underdogs (avg entry < 0.30)
+    if patterns.get("extreme_underdog", False):
+        score -= 1
+
+    # Spread scalping detectado
+    if patterns.get("spread_scalping", False):
+        score -= 2
 
     # ROI positivo
     roi = scan_data.get("roi_pct", 0)
@@ -363,20 +450,20 @@ def _calculate_copiability(trader_type: str, patterns: dict, scan_data: dict) ->
 
 def _generate_opinion(trader_type: str, patterns: dict, copiability: int,
                       scan_data: dict) -> str:
-    """Generar opinión AI textual sobre la wallet."""
-    # Tipo
+    """Generar opinión AI textual con red flags específicas."""
     type_labels = {
         "directional": "Trader direccional",
         "holder": "Holder (compra y espera resolución)",
         "scalper": "Scalper (compra/vende rápido por spread)",
+        "spread_scalper": "Spread Scalper (captura spread en precios altos >0.93)",
         "live_bettor": "Apostador en vivo (opera durante eventos)",
         "bot": "Bot automatizado (alta frecuencia)",
+        "lottery_bettor": "Apostador lotería (micro-apuestas dispersas)",
         "mixed": "Trader mixto (sin patrón claro)",
         "unknown": "Tipo desconocido (pocos datos)",
     }
     tipo = type_labels.get(trader_type, "Trader")
 
-    # Categoría principal
     cats = scan_data.get("_categories", {})
     if cats:
         main_cat = max(cats, key=cats.get)
@@ -389,56 +476,102 @@ def _generate_opinion(trader_type: str, patterns: dict, copiability: int,
     pf = scan_data.get("profit_factor", 0)
     roi = scan_data.get("roi_pct", 0)
     avg_size = patterns.get("avg_trade_size_usd", 0)
+    median_size = patterns.get("median_trade_size_usd", 0)
+    max_size = patterns.get("max_trade_size_usd", 0)
     hold_label = patterns.get("avg_hold_time_label", "desconocido")
+    total_mkts = patterns.get("total_markets", 0)
+    total_trades = patterns.get("total_trades", 0)
+    umr = patterns.get("unique_markets_ratio", 0)
 
-    lines = [f"{tipo} especializado en {cat_label} con {wr:.0f}% win rate."]
+    lines = [f"{tipo} en {cat_label} | WR: {wr:.0f}% | PF: {pf:.2f} | ROI: {roi:.0f}%."]
 
-    # Patrón principal
-    if patterns.get("holds_to_resolution"):
-        lines.append(f"Mantiene posiciones hasta resolución (hold promedio: {hold_label}).")
-    elif patterns.get("avg_hold_time_sec", 0) > 0:
-        lines.append(f"Hold promedio: {hold_label}.")
+    # ── Datos clave ──
+    size_label = f"${median_size:,.0f}" if median_size != avg_size else f"${avg_size:,.0f}"
+    lines.append(f"{total_trades} trades en {total_mkts} mercados. Capital mediana: {size_label}/trade (avg ${avg_size:,.0f}, max ${max_size:,.0f}).")
 
-    if patterns.get("prefers_underdogs"):
-        lines.append(f"Prefiere underdogs (precio entrada promedio: {patterns.get('avg_entry_price', 0):.2f}).")
-    elif patterns.get("prefers_favorites"):
-        lines.append(f"Prefiere favoritos (precio entrada promedio: {patterns.get('avg_entry_price', 0):.2f}).")
+    if patterns.get("avg_hold_time_sec", 0) > 0 or patterns.get("holds_to_resolution"):
+        lines.append(f"Hold: {hold_label}.")
 
+    # ── RED FLAGS ──
+    red_flags = []
+
+    # Tipo no copiable
+    if trader_type == "bot":
+        red_flags.append("🛑 BOT de alta frecuencia — timing imposible de replicar")
+    elif trader_type == "spread_scalper":
+        avg_sp = patterns.get("avg_sell_price", 0)
+        avg_ep = patterns.get("avg_entry_price", 0)
+        spread_pct = round((avg_sp - avg_ep) * 100, 1) if avg_ep > 0 else 0
+        red_flags.append(f"🛑 Spread scalper — compra @{avg_ep:.3f}, vende @{avg_sp:.3f} (margen ~{spread_pct}%). Slippage al copiar elimina ganancia")
+    elif trader_type == "scalper":
+        red_flags.append("🛑 Scalper — compra/vende rápido por spread, latencia de copia mata rentabilidad")
+    elif trader_type == "lottery_bettor":
+        red_flags.append(f"🛑 Apostador lotería — mediana ${median_size:.0f}/trade en {total_mkts} mercados distintos. Sin edge, apuestas tipo scatter")
+    elif trader_type == "live_bettor":
+        red_flags.append("⚠️ Live bettor — opera en vivo con cambios rápidos, difícil copia pasiva")
+
+    # Capital muy bajo (usar mediana para detectar micro-trades con outliers)
+    cap_ref = median_size if median_size > 0 else avg_size
+    if 0 < cap_ref < 5:
+        red_flags.append(f"⚠️ Capital ínfimo (mediana ${cap_ref:.1f}/trade) — no viable para copiar")
+    elif 0 < cap_ref < 10:
+        red_flags.append(f"⚠️ Capital muy bajo (mediana ${cap_ref:.0f}/trade) — difícil rentabilizar copias")
+
+    # Sizing inconsistente
+    if patterns.get("sizing_inconsistent"):
+        ratio = patterns.get("sizing_ratio", 0)
+        red_flags.append(f"⚠️ Sizing inconsistente — trade máximo es {ratio:.0f}x el promedio (${max_size:,.0f} vs ${avg_size:.0f})")
+
+    # Scatter pattern
+    if patterns.get("scatter_pattern"):
+        red_flags.append(f"⚠️ Patrón scatter — {total_mkts} mercados con mediana ~${median_size:.0f} c/u, sin concentración")
+
+    # Extreme underdog
+    if patterns.get("extreme_underdog"):
+        ep = patterns.get("avg_entry_price", 0)
+        red_flags.append(f"⚠️ Underdogs extremos (entrada promedio @{ep:.2f}) — baja probabilidad, alto riesgo")
+    elif patterns.get("prefers_underdogs"):
+        ep = patterns.get("avg_entry_price", 0)
+        lines.append(f"Prefiere underdogs (entrada @{ep:.2f}).")
+
+    if patterns.get("prefers_favorites"):
+        ep = patterns.get("avg_entry_price", 0)
+        lines.append(f"Prefiere favoritos (entrada @{ep:.2f}).")
+
+    # Spread scalping pattern
+    if patterns.get("spread_scalping") and trader_type not in ("spread_scalper",):
+        red_flags.append("⚠️ Patrón de spread scalping detectado (compra/vende a precios >0.93)")
+
+    # Opera ambos lados
     if patterns.get("trades_both_sides"):
         n = patterns.get("markets_both_sides_count", 0)
-        lines.append(f"⚠️ Opera ambos lados del mercado ({n} mercados).")
+        red_flags.append(f"⚠️ Opera ambos lados del mercado ({n} mercados)")
 
+    # Fragmentación
     if patterns.get("fragments_orders"):
-        lines.append(f"Fragmenta órdenes ({patterns.get('max_trades_per_market', 0)} trades max por mercado).")
+        mtp = patterns.get("max_trades_per_market", 0)
+        red_flags.append(f"⚠️ Fragmenta órdenes ({mtp} trades max por mercado)")
 
-    lines.append(f"Capital promedio: ${avg_size:,.0f}/trade. PF: {pf:.2f}. ROI: {roi:.0f}%.")
+    # Añadir red flags a la opinión
+    if red_flags:
+        lines.append("RED FLAGS: " + ". ".join(red_flags) + ".")
 
-    # Advertencias específicas por tipo no copiable
-    if trader_type == "bot":
-        lines.append("⛔ BOT: Alta frecuencia y timing preciso imposible de replicar en copy trading.")
-    elif trader_type == "scalper":
-        lines.append("⛔ SCALPER: Compra/vende rápido por spread, difícil de copiar con latencia.")
-    elif trader_type == "live_bettor":
-        lines.append("⚠️ LIVE BETTOR: Opera en vivo con cambios rápidos, complicado para copia pasiva.")
-
-    if avg_size > 0 and avg_size < 5:
-        lines.append(f"⚠️ Capital muy bajo (${avg_size:.1f}/trade), no viable para copiar.")
-
-    # Recomendación — ajustada por tipo
-    if trader_type in ("bot", "scalper"):
-        lines.append("❌ NO RECOMENDADO para copy trading. Patrón incompatible con copia pasiva.")
+    # ── Recomendación final ──
+    non_copyable = ("bot", "scalper", "spread_scalper", "lottery_bettor")
+    if trader_type in non_copyable:
+        lines.append("❌ NO RECOMENDADO para copy trading.")
         risk = "Muy Alto"
     elif copiability >= 8:
         lines.append("✅ EXCELENTE para copy trading. Trader disciplinado y rentable.")
         risk = "Bajo"
     elif copiability >= 6:
-        lines.append("👍 BUENO para copy trading con precaución. Monitorear posiciones.")
+        lines.append("👍 BUENO para copy trading con precaución.")
         risk = "Medio"
     elif copiability >= 4:
-        lines.append("⚠️ REGULAR para copy trading. Alto riesgo de trades no rentables al copiar.")
+        lines.append("⚠️ REGULAR para copy trading. Riesgo de pérdidas al copiar.")
         risk = "Alto"
     else:
-        lines.append("❌ NO RECOMENDADO para copy trading. Patrón incompatible con copia pasiva.")
+        lines.append("❌ NO RECOMENDADO para copy trading.")
         risk = "Muy Alto"
 
     lines.append(f"Riesgo: {risk}.")

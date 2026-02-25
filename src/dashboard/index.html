@@ -7171,8 +7171,8 @@ function renderWAITable(){
         let va=a[_waiSortCol]||0,vb=b[_waiSortCol]||0;
         return _waiSortDir==='DESC'?vb-va:va-vb;
     });
-    const typeColors={directional:'text-blue-400 bg-blue-900/30',holder:'text-yellow-400 bg-yellow-900/30',scalper:'text-red-400 bg-red-900/30',live_bettor:'text-orange-400 bg-orange-900/30',bot:'text-gray-400 bg-gray-700/30',mixed:'text-purple-400 bg-purple-900/30',unknown:'text-gray-500 bg-gray-800/30'};
-    const typeLabels={directional:'Direccional',holder:'Holder',scalper:'Scalper',live_bettor:'Live Bettor',bot:'Bot',mixed:'Mixto',unknown:'?'};
+    const typeColors={directional:'text-blue-400 bg-blue-900/30',holder:'text-yellow-400 bg-yellow-900/30',scalper:'text-red-400 bg-red-900/30',spread_scalper:'text-red-300 bg-red-900/40',live_bettor:'text-orange-400 bg-orange-900/30',bot:'text-gray-400 bg-gray-700/30',lottery_bettor:'text-pink-400 bg-pink-900/30',mixed:'text-purple-400 bg-purple-900/30',unknown:'text-gray-500 bg-gray-800/30'};
+    const typeLabels={directional:'Direccional',holder:'Holder',scalper:'Scalper',spread_scalper:'Spread Scalper',live_bettor:'Live Bettor',bot:'Bot',lottery_bettor:'Lotería',mixed:'Mixto',unknown:'?'};
     const body=document.getElementById('wai-body');
     body.innerHTML=sorted.map((w,i)=>{
         const sc=w.copiability_score||0;
@@ -7193,7 +7193,11 @@ function renderWAITable(){
         if(p.holds_to_resolution)patBadges+='<span class="px-1 py-0.5 rounded bg-green-900/30 text-green-400 text-[9px]">HOLD</span> ';
         if(p.trades_both_sides)patBadges+='<span class="px-1 py-0.5 rounded bg-red-900/30 text-red-400 text-[9px]">2SIDES</span> ';
         if(p.fragments_orders)patBadges+='<span class="px-1 py-0.5 rounded bg-orange-900/30 text-orange-400 text-[9px]">FRAG</span> ';
-        if(p.prefers_underdogs)patBadges+='<span class="px-1 py-0.5 rounded bg-purple-900/30 text-purple-400 text-[9px]">UNDOG</span> ';
+        if(p.scatter_pattern)patBadges+='<span class="px-1 py-0.5 rounded bg-pink-900/30 text-pink-400 text-[9px]">SCATTER</span> ';
+        if(p.sizing_inconsistent)patBadges+='<span class="px-1 py-0.5 rounded bg-amber-900/30 text-amber-400 text-[9px]">SIZE!</span> ';
+        if(p.spread_scalping)patBadges+='<span class="px-1 py-0.5 rounded bg-red-900/30 text-red-300 text-[9px]">SPREAD</span> ';
+        if(p.extreme_underdog)patBadges+='<span class="px-1 py-0.5 rounded bg-purple-900/40 text-purple-300 text-[9px]">UNDOG!</span> ';
+        else if(p.prefers_underdogs)patBadges+='<span class="px-1 py-0.5 rounded bg-purple-900/30 text-purple-400 text-[9px]">UNDOG</span> ';
         if(p.prefers_favorites)patBadges+='<span class="px-1 py-0.5 rounded bg-blue-900/30 text-blue-400 text-[9px]">FAV</span> ';
         const opinion=(w.opinion||'').slice(0,120)+(w.opinion&&w.opinion.length>120?'...':'');
         const addr=w.address||'';
