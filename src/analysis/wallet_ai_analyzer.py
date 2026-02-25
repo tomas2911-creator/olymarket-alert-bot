@@ -272,18 +272,30 @@ def _analyze_patterns(trades: list[dict]) -> dict:
     }
 
 
+# Techo máximo de copiabilidad por tipo de trader
+_TYPE_MAX_SCORE = {
+    "directional": 10,
+    "holder": 10,
+    "mixed": 7,
+    "live_bettor": 5,
+    "scalper": 4,
+    "bot": 3,
+    "unknown": 6,
+}
+
+
 def _calculate_copiability(trader_type: str, patterns: dict, scan_data: dict) -> int:
     """Calcular score de copiabilidad 1-10."""
     score = 5  # Base
 
-    # Tipo de trader
+    # Tipo de trader — penalización fuerte para tipos no copiables
     type_scores = {
         "directional": 3,
         "holder": 3,
         "mixed": 1,
-        "live_bettor": -2,
-        "scalper": -3,
-        "bot": -2,
+        "live_bettor": -3,
+        "scalper": -4,
+        "bot": -6,
         "unknown": 0,
     }
     score += type_scores.get(trader_type, 0)
@@ -328,12 +340,23 @@ def _calculate_copiability(trader_type: str, patterns: dict, scan_data: dict) ->
     if 0 < hold < 600:  # < 10 min
         score -= 1
 
+    # Capital promedio muy bajo = no copiable
+    avg_size = patterns.get("avg_trade_size_usd", 0)
+    if 0 < avg_size < 5:
+        score -= 2
+    elif 0 < avg_size < 20:
+        score -= 1
+
     # ROI positivo
     roi = scan_data.get("roi_pct", 0)
     if roi > 50:
         score += 1
     elif roi < -20:
         score -= 1
+
+    # Aplicar techo máximo según tipo de trader
+    max_score = _TYPE_MAX_SCORE.get(trader_type, 6)
+    score = min(score, max_score)
 
     return max(1, min(10, score))
 
@@ -390,8 +413,22 @@ def _generate_opinion(trader_type: str, patterns: dict, copiability: int,
 
     lines.append(f"Capital promedio: ${avg_size:,.0f}/trade. PF: {pf:.2f}. ROI: {roi:.0f}%.")
 
-    # Recomendación
-    if copiability >= 8:
+    # Advertencias específicas por tipo no copiable
+    if trader_type == "bot":
+        lines.append("⛔ BOT: Alta frecuencia y timing preciso imposible de replicar en copy trading.")
+    elif trader_type == "scalper":
+        lines.append("⛔ SCALPER: Compra/vende rápido por spread, difícil de copiar con latencia.")
+    elif trader_type == "live_bettor":
+        lines.append("⚠️ LIVE BETTOR: Opera en vivo con cambios rápidos, complicado para copia pasiva.")
+
+    if avg_size > 0 and avg_size < 5:
+        lines.append(f"⚠️ Capital muy bajo (${avg_size:.1f}/trade), no viable para copiar.")
+
+    # Recomendación — ajustada por tipo
+    if trader_type in ("bot", "scalper"):
+        lines.append("❌ NO RECOMENDADO para copy trading. Patrón incompatible con copia pasiva.")
+        risk = "Muy Alto"
+    elif copiability >= 8:
         lines.append("✅ EXCELENTE para copy trading. Trader disciplinado y rentable.")
         risk = "Bajo"
     elif copiability >= 6:
