@@ -2997,13 +2997,13 @@
                                 <th class="px-2 py-1.5 text-center">#</th>
                                 <th class="px-2 py-1.5 text-left">Wallet</th>
                                 <th class="px-2 py-1.5 text-center cursor-pointer hover:text-cyan-400" onclick="sortWAI('copiability_score')">Score <span id="wai-sort-score"></span></th>
-                                <th class="px-2 py-1.5 text-center">Tipo</th>
+                                <th class="px-2 py-1.5 text-center cursor-pointer hover:text-cyan-400" onclick="sortWAI('trader_type')">Tipo <span id="wai-sort-type"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-cyan-400" onclick="sortWAI('win_rate')">WR% <span id="wai-sort-wr"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-cyan-400" onclick="sortWAI('profit_factor')">PF <span id="wai-sort-pf"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-cyan-400" onclick="sortWAI('total_pnl')">PnL <span id="wai-sort-pnl"></span></th>
                                 <th class="px-2 py-1.5 text-right cursor-pointer hover:text-cyan-400" onclick="sortWAI('roi_pct')">ROI <span id="wai-sort-roi"></span></th>
                                 <th class="px-2 py-1.5 text-center">Categorías</th>
-                                <th class="px-2 py-1.5 text-center">Patrones</th>
+                                <th class="px-2 py-1.5 text-center cursor-pointer hover:text-cyan-400" onclick="sortWAI('_pattern_count')">Patrones <span id="wai-sort-pat"></span></th>
                                 <th class="px-2 py-1.5 text-left" style="min-width:200px">Opinión AI</th>
                                 <th class="px-2 py-1.5 text-center">PM</th>
                                 <th class="px-2 py-1.5 text-center">Acción</th>
@@ -7156,8 +7156,9 @@ function renderWAISummary(){
 function sortWAI(col){
     if(_waiSortCol===col)_waiSortDir=_waiSortDir==='DESC'?'ASC':'DESC';
     else{_waiSortCol=col;_waiSortDir='DESC';}
-    ['copiability_score','win_rate','profit_factor','total_pnl','roi_pct'].forEach(c=>{
-        const el=document.getElementById('wai-sort-'+{copiability_score:'score',win_rate:'wr',profit_factor:'pf',total_pnl:'pnl',roi_pct:'roi'}[c]);
+    const colMap={copiability_score:'score',win_rate:'wr',profit_factor:'pf',total_pnl:'pnl',roi_pct:'roi',trader_type:'type',_pattern_count:'pat'};
+    Object.entries(colMap).forEach(([c,id])=>{
+        const el=document.getElementById('wai-sort-'+id);
         if(el)el.textContent=c===col?(_waiSortDir==='DESC'?'▼':'▲'):'';
     });
     renderWAITable();
@@ -7167,8 +7168,17 @@ function renderWAITable(){
     if(!_waiData.length){document.getElementById('wai-table-wrap').classList.add('hidden');return;}
     document.getElementById('wai-table-wrap').classList.remove('hidden');
     // Sort
+    // Precompute pattern count for sorting
+    _waiData.forEach(w=>{
+        const p=w.patterns||{};
+        w._pattern_count=[p.holds_to_resolution,p.trades_both_sides,p.fragments_orders,p.scatter_pattern,p.sizing_inconsistent,p.spread_scalping,p.extreme_underdog,p.prefers_underdogs,p.prefers_favorites].filter(Boolean).length;
+    });
     const sorted=[..._waiData].sort((a,b)=>{
-        let va=a[_waiSortCol]||0,vb=b[_waiSortCol]||0;
+        let va=a[_waiSortCol],vb=b[_waiSortCol];
+        if(typeof va==='string'&&typeof vb==='string'){
+            return _waiSortDir==='DESC'?vb.localeCompare(va):va.localeCompare(vb);
+        }
+        va=va||0;vb=vb||0;
         return _waiSortDir==='DESC'?vb-va:va-vb;
     });
     const typeColors={directional:'text-blue-400 bg-blue-900/30',holder:'text-yellow-400 bg-yellow-900/30',scalper:'text-red-400 bg-red-900/30',spread_scalper:'text-red-300 bg-red-900/40',live_bettor:'text-orange-400 bg-orange-900/30',bot:'text-gray-400 bg-gray-700/30',lottery_bettor:'text-pink-400 bg-pink-900/30',mixed:'text-purple-400 bg-purple-900/30',unknown:'text-gray-500 bg-gray-800/30'};
