@@ -7088,13 +7088,13 @@ let _waiSortDir='DESC';
 let _waiPollTimer=null;
 
 async function runWalletAIFromFilters(){
-    const minWr=parseFloat(document.getElementById('wai-min-wr').value)||60;
-    const minTrades=parseInt(document.getElementById('wai-min-trades').value)||10;
-    const minPf=parseFloat(document.getElementById('wai-min-pf').value)||0;
+    if(!_bscanData||!_bscanData.length){alert('Primero carga los resultados del Batch Scan');return;}
+    const addresses=_bscanData.map(w=>w.address);
+    if(!addresses.length){alert('No hay wallets filtradas');return;}
     const btn=document.getElementById('wai-run-btn');
     btn.disabled=true;btn.textContent='⏳ Iniciando...';
     try{
-        const resp=await fetch('/api/wallet-ai/run',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+_authToken},body:JSON.stringify({filter:{min_wr:minWr,min_trades:minTrades,min_pf:minPf}})});
+        const resp=await fetch('/api/wallet-ai/run',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+_authToken},body:JSON.stringify({addresses})});
         const data=await resp.json();
         if(data.error){alert(data.error);btn.disabled=false;btn.textContent='🧠 Analizar Filtradas';return;}
         document.getElementById('wai-progress').classList.remove('hidden');
