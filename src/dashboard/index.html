@@ -2976,7 +2976,10 @@
                     <div id="wai-progress" class="hidden mb-3">
                         <div class="flex items-center justify-between text-xs text-gray-400 mb-1">
                             <span id="wai-progress-text">Analizando wallets con AI...</span>
-                            <span id="wai-progress-count">0/0</span>
+                            <div class="flex items-center gap-2">
+                                <span id="wai-progress-count">0/0</span>
+                                <button onclick="cancelWalletAI()" class="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded text-[10px] font-bold">✕ Cancelar</button>
+                            </div>
                         </div>
                         <div class="w-full bg-gray-700/50 rounded-full h-2">
                             <div id="wai-progress-bar" class="bg-cyan-500 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
@@ -7124,13 +7127,27 @@ async function pollWalletAIStatus(){
         const pct=s.total>0?Math.round(s.current/s.total*100):0;
         document.getElementById('wai-progress-bar').style.width=pct+'%';
         document.getElementById('wai-progress-count').textContent=s.current+'/'+s.total;
-        document.getElementById('wai-progress-text').textContent=s.running?'Analizando: '+s.current_wallet:'Completado';
+        document.getElementById('wai-progress-text').textContent=s.running?(s.cancelled?'Cancelando...':'Analizando: '+s.current_wallet):(s.cancelled?'Cancelado':'Completado');
         if(!s.running){
             clearInterval(_waiPollTimer);_waiPollTimer=null;
+            const bar=document.getElementById('wai-progress-bar');
+            bar.classList.remove('bg-red-500');bar.classList.add('bg-cyan-500');
             setTimeout(()=>{document.getElementById('wai-progress').classList.add('hidden');},2000);
             loadWalletAIResults();
         }
     }catch(e){console.error(e);}
+}
+
+async function cancelWalletAI(){
+    try{
+        const resp=await fetch('/api/wallet-ai/cancel',{method:'POST',headers:{'Authorization':'Bearer '+_authToken}});
+        const data=await resp.json();
+        if(data.ok){
+            document.getElementById('wai-progress-text').textContent='Cancelando...';
+            document.getElementById('wai-progress-bar').classList.remove('bg-cyan-500');
+            document.getElementById('wai-progress-bar').classList.add('bg-red-500');
+        }
+    }catch(e){console.error('cancelWalletAI error',e);}
 }
 
 async function loadWalletAIResults(){

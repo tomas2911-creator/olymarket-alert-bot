@@ -1864,7 +1864,7 @@ async def add_wallet_to_copy_trading(request: Request):
 # ── Wallet AI Analysis ──────────────────────────────────────────────
 
 # Estado global del análisis en curso
-_wai_status = {"running": False, "current": 0, "total": 0, "current_wallet": "", "results": []}
+_wai_status = {"running": False, "current": 0, "total": 0, "current_wallet": "", "results": [], "cancelled": False}
 
 
 @router.get("/api/wallet-ai/results")
@@ -1927,7 +1927,7 @@ async def run_wallet_ai_analysis(request: Request):
         return {"error": "No hay wallets para analizar", "total": 0}
 
     _wai_status = {"running": True, "current": 0, "total": len(addresses),
-                   "current_wallet": "", "results": []}
+                   "current_wallet": "", "results": [], "cancelled": False}
 
     # Lanzar en background
     asyncio.create_task(_run_wallet_ai_batch(db, addresses))
@@ -1944,19 +1944,35 @@ async def _run_wallet_ai_batch(db, addresses: list[str]):
         _wai_status["current"] = current
         _wai_status["current_wallet"] = addr[:12] + "..."
 
+    def cancel_check():
+        return _wai_status.get("cancelled", False)
+
     try:
-        results = await run_batch_analysis(db, addresses, progress_callback=progress_cb)
+        results = await run_batch_analysis(db, addresses, progress_callback=progress_cb,
+                                           cancel_check=cancel_check)
         _wai_status["results"] = [
             {"address": r["address"], "trader_type": r["trader_type"],
              "copiability_score": r["copiability_score"]}
             for r in results
         ]
-        _wai_status["current"] = len(addresses)
-        print(f"[WalletAI] Batch completado: {len(results)}/{len(addresses)} wallets analizadas", flush=True)
+        _wai_status["current"] = len(addresses) if not _wai_status["cancelled"] else _wai_status["current"]
+        msg = "cancelado" if _wai_status["cancelled"] else "completado"
+        print(f"[WalletAI] Batch {msg}: {len(results)}/{len(addresses)} wallets analizadas", flush=True)
     except Exception as e:
         print(f"[WalletAI] Batch error: {e}", flush=True)
     finally:
         _wai_status["running"] = False
+
+
+@router.post("/api/wallet-ai/cancel")
+async def cancel_wallet_ai(request: Request):
+    """Cancelar análisis AI en curso."""
+    global _wai_status
+    if not _wai_status["running"]:
+        return {"ok": False, "message": "No hay análisis en curso"}
+    _wai_status["cancelled"] = True
+    print("[WalletAI] Cancelación solicitada por usuario", flush=True)
+    return {"ok": True, "message": "Cancelando análisis..."}
 
 
 @router.post("/api/wallet-ai/clear")

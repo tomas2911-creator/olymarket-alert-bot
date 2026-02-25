@@ -625,13 +625,15 @@ async def analyze_wallet(address: str, scan_data: dict, trades: list[dict] | Non
 
 
 async def run_batch_analysis(db, addresses: list[str],
-                             progress_callback=None) -> list[dict]:
+                             progress_callback=None,
+                             cancel_check=None) -> list[dict]:
     """Ejecutar análisis batch de múltiples wallets.
 
     Args:
         db: Database instance
         addresses: Lista de direcciones a analizar
         progress_callback: Función async callback(current, total, address) para progreso
+        cancel_check: Función que retorna True si se debe cancelar
 
     Returns:
         Lista de resultados de análisis
@@ -640,6 +642,11 @@ async def run_batch_analysis(db, addresses: list[str],
     total = len(addresses)
 
     for i, addr in enumerate(addresses):
+        # Verificar cancelación
+        if cancel_check and cancel_check():
+            print(f"[WalletAI] Batch cancelado en {i}/{total}", flush=True)
+            break
+
         try:
             if progress_callback:
                 await progress_callback(i, total, addr)
