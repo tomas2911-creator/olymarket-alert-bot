@@ -1917,7 +1917,7 @@ async def run_wallet_ai_analysis(request: Request):
                     WHERE win_rate >= $1 AND total_trades >= $2
                       AND profit_factor >= $3
                     ORDER BY win_rate DESC, total_pnl DESC
-                    LIMIT 200
+                    LIMIT 500
                 """, min_wr, min_trades, min_pf)
                 addresses = [r["address"] for r in rows]
         except Exception as e:
