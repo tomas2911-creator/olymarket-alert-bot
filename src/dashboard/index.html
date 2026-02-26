@@ -7987,7 +7987,7 @@ async function loadCopyTradeConfig(){
         const cfg=await res.json();
         document.getElementById('ct-enabled').checked=!!cfg.copy_trade_enabled;
         document.getElementById('ct-bet-size').value=cfg.copy_trade_bet_size||10;
-        document.getElementById('ct-max-pos').value=cfg.copy_trade_max_positions||3;
+        document.getElementById('ct-max-pos').value=cfg.copy_trade_max_positions||50;
         document.getElementById('ct-max-daily').value=cfg.copy_trade_max_daily||10;
         document.getElementById('ct-slippage').value=cfg.copy_trade_slippage||3;
         // Risk Management fields

@@ -3611,7 +3611,7 @@ async def get_alert_trading_config(request: Request):
         # Copy Trade
         "copy_trade_enabled": raw.get("aat_copy_trade_enabled") == "true",
         "copy_trade_bet_size": float(raw.get("aat_copy_trade_bet_size", 10)),
-        "copy_trade_max_positions": int(raw.get("aat_copy_trade_max_positions", 3)),
+        "copy_trade_max_positions": int(raw.get("aat_copy_trade_max_positions", 50)),
         "copy_trade_max_daily": int(raw.get("aat_copy_trade_max_daily", 10)),
         "copy_trade_slippage": float(raw.get("aat_copy_trade_slippage", 3)),
         "ct_max_entry_price": float(raw.get("aat_ct_max_entry_price", 0.80)),

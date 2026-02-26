@@ -184,7 +184,7 @@ class AlertAutoTrader:
                 # Copy Trade automático
                 "copy_trade_enabled": raw.get("aat_copy_trade_enabled") == "true",
                 "copy_trade_bet_size": float(raw.get("aat_copy_trade_bet_size", 10)),
-                "copy_trade_max_positions": int(raw.get("aat_copy_trade_max_positions", 3)),
+                "copy_trade_max_positions": int(raw.get("aat_copy_trade_max_positions", 50)),
                 "copy_trade_max_daily": int(raw.get("aat_copy_trade_max_daily", 10)),
                 "copy_trade_slippage": float(raw.get("aat_copy_trade_slippage", 3.0)),
                 "ct_max_entry_price": float(raw.get("aat_ct_max_entry_price", 0.80)),
@@ -805,6 +805,7 @@ class AlertAutoTrader:
             if trade_info.get("is_copy_trade"):
                 # Copy trades: filtrar por precio máximo de entrada (evitar comprar a 0.99)
                 ct_max_price = cfg.get("ct_max_entry_price", 0.80)
+                print(f"[CopyTrade] 🔍 Precio check: current={price:.4f} insider={trade_info.get('insider_price', 0):.4f} max_entry={ct_max_price:.2f}", flush=True)
                 if ct_max_price > 0 and price > ct_max_price:
                     return {"success": False, "error": f"Precio actual {price:.2f} > max copy entry {ct_max_price:.2f}"}
             else:
@@ -1506,8 +1507,7 @@ class AlertAutoTrader:
                     # Rate limiting: esperar entre wallets para no saturar API
                     await asyncio.sleep(1)
 
-            if new_trades > 0:
-                print(f"[CopyScanner] Escaneadas {scanned} wallets → {new_trades} trades nuevos detectados", flush=True)
+            print(f"[CopyScanner] Escaneadas {scanned} wallets → {new_trades} trades nuevos detectados | open_positions={len(self._open_positions)}", flush=True)
 
         except Exception as e:
             print(f"[CopyScanner] Error general: {e}", flush=True)
@@ -1537,10 +1537,11 @@ class AlertAutoTrader:
             return
 
         # Filtro: max posiciones copy trade abiertas (global)
-        ct_max_pos = cfg.get("copy_trade_max_positions", 3)
+        ct_max_pos = cfg.get("copy_trade_max_positions", 50)
         ct_open = sum(1 for p in self._open_positions.values() if p.get("is_copy_trade"))
+        print(f"[CopyTrade] 📊 Posiciones copy abiertas: {ct_open}/{ct_max_pos} | total open: {len(self._open_positions)}", flush=True)
         if ct_open >= ct_max_pos:
-            print(f"[CopyTrade] ⚠️ Max posiciones copy trade ({ct_max_pos}) alcanzado", flush=True)
+            print(f"[CopyTrade] ⚠️ Max posiciones copy trade ({ct_max_pos}) alcanzado — BLOQUEANDO trade", flush=True)
             return
 
         # Filtro: max trades diarios copy trade (global)
@@ -2089,21 +2090,33 @@ class AlertAutoTrader:
                         if resp.status_code != 200:
                             continue
                         data = resp.json()
-                        if not data.get("closed"):
-                            continue
+                        is_closed = data.get("closed", False)
 
                         tokens = data.get("tokens", [])
                         winning_token_id = None
                         winning_outcome = None
-                        for token in tokens:
-                            if token.get("winner") is True:
-                                winning_token_id = token.get("token_id", "")
-                                winning_outcome = token.get("outcome", "")
-                                break
-                            if float(token.get("price", 0)) >= 0.95:
-                                winning_token_id = token.get("token_id", "")
-                                winning_outcome = token.get("outcome", "")
-                                break
+                        early_resolve = False
+
+                        if is_closed:
+                            # Mercado oficialmente cerrado: buscar ganador
+                            for token in tokens:
+                                if token.get("winner") is True:
+                                    winning_token_id = token.get("token_id", "")
+                                    winning_outcome = token.get("outcome", "")
+                                    break
+                                if float(token.get("price", 0)) >= 0.95:
+                                    winning_token_id = token.get("token_id", "")
+                                    winning_outcome = token.get("outcome", "")
+                                    break
+                        else:
+                            # Mercado no cerrado: resolución temprana si un token >= 0.97
+                            for token in tokens:
+                                tp = float(token.get("price", 0))
+                                if tp >= 0.97:
+                                    winning_token_id = token.get("token_id", "")
+                                    winning_outcome = token.get("outcome", "")
+                                    early_resolve = True
+                                    break
 
                         if not winning_outcome and not winning_token_id:
                             continue
@@ -2141,8 +2154,9 @@ class AlertAutoTrader:
                         del self._open_positions[cid]
                         resolved += 1
 
+                        tag = "EARLY-RESOLVE" if early_resolve else "RESOLVED"
                         emoji = "✅" if result == "win" else "❌"
-                        print(f"[AlertTrader] {emoji} Trade resuelto: "
+                        print(f"[AlertTrader] {emoji} [{tag}] Trade resuelto: "
                               f"{trade.get('market_slug', cid)[:40]} → {result.upper()} PnL=${pnl:.2f}",
                               flush=True)
 
