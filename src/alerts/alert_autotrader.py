@@ -856,8 +856,9 @@ class AlertAutoTrader:
         return float(d_shares), actual_usdc
 
     async def _post_and_poll_order(self, order_args, token_id: str, max_polls: int = 10) -> tuple:
-        """Postear orden GTC y hacer polling. Retorna (success, order_id, error_msg).
-        max_polls: cantidad de polls (cada 5s). Default 10 = 50s timeout."""
+        """Postear orden GTC y hacer polling. Retorna (success, order_id, error_msg, fill_price).
+        max_polls: cantidad de polls (cada 5s). Default 10 = 50s timeout.
+        fill_price: precio real de fill (0 si no se pudo obtener)."""
         from py_clob_client.clob_types import OrderType
         loop = asyncio.get_running_loop()
         signed_order = await loop.run_in_executor(None, self._client.create_order, order_args)
@@ -917,13 +918,35 @@ class AlertAutoTrader:
             else:
                 print(f"[AlertTrader] ✅ Orden GTC llenada (matched)!", flush=True)
 
-        return success, order_id, error_msg
+        # Obtener precio real de fill si la orden fue exitosa
+        fill_price = 0.0
+        if success and order_id:
+            try:
+                order_info = await loop.run_in_executor(None, self._client.get_order, order_id)
+                oi = order_info if isinstance(order_info, dict) else (
+                    order_info.__dict__ if hasattr(order_info, '__dict__') else {})
+                # associate_trades contiene los fills reales
+                trades = oi.get("associate_trades", oi.get("trades", []))
+                if trades and isinstance(trades, list):
+                    prices = [float(ft.get("price", 0)) for ft in trades if float(ft.get("price", 0)) > 0]
+                    if prices:
+                        fill_price = sum(prices) / len(prices)
+                # Fallback: price field del order info
+                if fill_price <= 0:
+                    fp = float(oi.get("price", 0) or 0)
+                    if 0 < fp < 1:
+                        fill_price = fp
+                if fill_price > 0:
+                    print(f"[AlertTrader] 📊 Fill price real: {fill_price:.4f}", flush=True)
+            except Exception as fp_err:
+                print(f"[AlertTrader] ⚠️ No se pudo obtener fill price: {fp_err}", flush=True)
+
+        return success, order_id, error_msg, fill_price
 
     async def _execute_single_order(self, trade_info: dict, token_id: str, price: float, bet_size: float) -> dict:
-        """Ejecutar una sola orden BUY con 3 capas de protección:
-        1) FOK al best ask (fill inmediato)
-        2) GTC al best ask con polling (50s)
-        3) GTC con precio agresivo (+3%) con polling (50s)
+        """Ejecutar una sola orden BUY con 2 intentos GTC (sin FOK para evitar doble ejecución):
+        1) GTC al best ask con polling (50s)
+        2) GTC con precio agresivo (+3%) con polling (50s)
         """
         cid = trade_info["condition_id"]
         outcome = trade_info["buy_outcome"]
@@ -960,35 +983,40 @@ class AlertAutoTrader:
             print(f"[AlertTrader] ⚠️ MIN_SHARES ajuste: bet=${bet_size:.2f} → real=${actual_usdc:.2f} "
                   f"({shares} shares × ${order_price})", flush=True)
 
-        # ── Intento 1: FOK al best ask (fill inmediato) ──
-        print(f"[AlertTrader] 🔄 BUY Intento 1/3: FOK @ {order_price} ({shares} shares, ${actual_usdc:.2f})", flush=True)
-        fok_result = await self._try_buy_fok(token_id, shares, order_price, loop)
-
-        success = fok_result["filled"]
-        order_id = fok_result.get("order_id", "")
+        success = False
+        order_id = ""
         error_msg = ""
+        fill_price = 0.0
 
-        # ── Intento 2: GTC al best ask con polling ──
-        if not success:
-            print(f"[AlertTrader] 🔄 BUY Intento 2/3: GTC @ {order_price} con polling", flush=True)
-            order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
-            success, order_id, error_msg = await self._post_and_poll_order(order_args, token_id, max_polls=10)
+        # ── Intento 1: GTC al best ask con polling ──
+        print(f"[AlertTrader] 🔄 BUY Intento 1/2: GTC @ {order_price} ({shares} shares, ${actual_usdc:.2f})", flush=True)
+        order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
+        success, order_id, error_msg, fill_price = await self._post_and_poll_order(order_args, token_id, max_polls=10)
 
-        # ── Intento 3: GTC con precio agresivo (+3%) ──
+        # ── Intento 2: GTC con precio agresivo (+3%) ──
         if not success:
             aggressive_price = round(min(best_ask * 1.03, 0.99), 2)
             if aggressive_price <= best_ask:
                 aggressive_price = min(round(best_ask + 0.01, 2), 0.99)
-            shares3, actual_usdc3 = self._calc_shares(bet_size, aggressive_price)
-            if shares3 > 0:
-                print(f"[AlertTrader] 🔄 BUY Intento 3/3: GTC agresivo @ {aggressive_price} "
-                      f"({shares3} shares, ${actual_usdc3:.2f})", flush=True)
-                order_args3 = OrderArgs(price=aggressive_price, size=shares3, side="BUY", token_id=token_id)
-                success, order_id, error_msg = await self._post_and_poll_order(order_args3, token_id, max_polls=10)
+            shares2, actual_usdc2 = self._calc_shares(bet_size, aggressive_price)
+            if shares2 > 0:
+                print(f"[AlertTrader] 🔄 BUY Intento 2/2: GTC agresivo @ {aggressive_price} "
+                      f"({shares2} shares, ${actual_usdc2:.2f})", flush=True)
+                order_args2 = OrderArgs(price=aggressive_price, size=shares2, side="BUY", token_id=token_id)
+                success, order_id, error_msg, fill_price = await self._post_and_poll_order(order_args2, token_id, max_polls=10)
                 if success:
                     order_price = aggressive_price
-                    shares = shares3
-                    actual_usdc = actual_usdc3
+                    shares = shares2
+                    actual_usdc = actual_usdc2
+
+        # Usar precio real de fill si está disponible
+        recorded_price = fill_price if fill_price > 0 else order_price
+        # Recalcular shares y cost reales si tenemos fill_price
+        if fill_price > 0 and fill_price != order_price:
+            real_shares = round(actual_usdc / fill_price, 4) if fill_price > 0 else shares
+            print(f"[AlertTrader] 📊 Ajuste por fill price: {order_price:.4f} → {fill_price:.4f} "
+                  f"({shares} → {real_shares} shares)", flush=True)
+            shares = real_shares
 
         trade_record = {
             "condition_id": cid,
@@ -1003,7 +1031,7 @@ class AlertAutoTrader:
             "triggers": trade_info["triggers"],
             "side": "BUY",
             "outcome": outcome,
-            "price": order_price,
+            "price": round(recorded_price, 4),
             "size_usd": actual_usdc,
             "shares": shares,
             "token_id": token_id,
@@ -1021,13 +1049,13 @@ class AlertAutoTrader:
             self._trades_today.append(trade_record)
             self._open_positions[cid] = trade_record
             print(f"[AlertTrader] ✅ COPY-TRADE: {outcome} en {trade_info['market_slug'][:40]} "
-                  f"${actual_usdc:.2f} @ {order_price:.2f} (score={trade_info['alert_score']} "
+                  f"${actual_usdc:.2f} @ {recorded_price:.4f} (score={trade_info['alert_score']} "
                   f"insider=${trade_info['insider_size']:.0f}) order={order_id}",
                   flush=True)
             return {"success": True, "order_id": order_id, "trade": trade_record,
                     "actual_usdc": actual_usdc}
         else:
-            print(f"[AlertTrader] ❌ BUY RECHAZADO tras 3 intentos: {error_msg}", flush=True)
+            print(f"[AlertTrader] ❌ BUY RECHAZADO tras 2 intentos: {error_msg}", flush=True)
             return {"success": False, "error": error_msg}
 
     async def _try_buy_fok(self, token_id: str, shares: float, price: float, loop) -> dict:
@@ -1127,18 +1155,16 @@ class AlertAutoTrader:
             from py_clob_client.clob_types import OrderArgs
             print(f"[AlertTrader]   DCA [{i+1}/{splits}]: {shares} shares @ {order_price} (${split_actual_usdc:.2f})", flush=True)
 
-            # FOK primero, luego GTC fallback
-            fok_result = await self._try_buy_fok(token_id, shares, order_price, loop)
-            split_success = fok_result["filled"]
-            order_id = fok_result.get("order_id", "")
-
-            if not split_success:
-                order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
-                split_success, order_id, _ = await self._post_and_poll_order(order_args, token_id, max_polls=10)
+            # Solo GTC (sin FOK para evitar doble ejecución)
+            order_args = OrderArgs(price=order_price, size=shares, side="BUY", token_id=token_id)
+            split_success, order_id, _, split_fill_price = await self._post_and_poll_order(order_args, token_id, max_polls=10)
 
             if split_success:
-                total_shares += shares
-                total_cost += split_actual_usdc
+                # Usar precio real de fill si disponible
+                real_price = split_fill_price if split_fill_price > 0 else order_price
+                real_shares = round(split_actual_usdc / real_price, 4) if real_price > 0 else shares
+                total_shares += real_shares
+                total_cost += real_price * real_shares
                 order_ids.append(order_id)
                 fills += 1
 
@@ -1451,10 +1477,20 @@ class AlertAutoTrader:
 
                         # Actualizar last seen al timestamp más reciente de la respuesta
                         if activities:
-                            valid_ts = [
-                                float(a.get("timestamp", 0)) for a in activities
-                                if str(a.get("timestamp", "")).replace(".", "").isdigit()
-                            ]
+                            valid_ts = []
+                            for a in activities:
+                                raw = a.get("timestamp", 0)
+                                try:
+                                    if isinstance(raw, str):
+                                        if raw.replace(".", "").replace("-", "").replace("+", "").isdigit():
+                                            valid_ts.append(float(raw))
+                                        else:
+                                            valid_ts.append(datetime.fromisoformat(
+                                                raw.replace("Z", "+00:00")).timestamp())
+                                    else:
+                                        valid_ts.append(float(raw))
+                                except Exception:
+                                    pass
                             max_ts = max(valid_ts) if valid_ts else last_seen_ts
                             if max_ts > last_seen_ts:
                                 self._ct_last_seen[addr] = max_ts
@@ -1716,10 +1752,11 @@ class AlertAutoTrader:
         partial_pct = cfg.get("partial_tp_pct", 30)
         partial_fraction = cfg.get("partial_tp_fraction", 50) / 100  # 0-1
 
-        # Necesitamos al menos una feature activa
-        if not tp_enabled and not trailing_enabled and not partial_enabled:
+        # Necesitamos al menos una feature activa (incluye SL standalone)
+        sl_active = sl_pct > 0
+        if not tp_enabled and not trailing_enabled and not partial_enabled and not sl_active:
             return
-        if tp_enabled and tp_pct <= 0 and sl_pct <= 0 and not trailing_enabled and not partial_enabled:
+        if tp_enabled and tp_pct <= 0 and not sl_active and not trailing_enabled and not partial_enabled:
             return
 
         try:
@@ -1788,8 +1825,8 @@ class AlertAutoTrader:
                                 if drop_from_high >= trailing_pct:
                                     action = "trailing_stop"
 
-                        # 4. Stop Loss fijo
-                        if not action and tp_enabled and sl_pct > 0 and gain_pct <= -sl_pct:
+                        # 4. Stop Loss fijo (funciona independiente de tp_enabled)
+                        if not action and sl_pct > 0 and gain_pct <= -sl_pct:
                             action = "stop_loss"
 
                         if not action:
@@ -1925,10 +1962,9 @@ class AlertAutoTrader:
             print(f"[CopyTrade] Error auto-exit: {e}", flush=True)
 
     async def _sell_position(self, trade: dict, sell_price: float) -> dict:
-        """Vender una posición abierta con 3 capas de protección:
-        1) FOK al best bid del orderbook
-        2) FOK con slippage agresivo (-5%)
-        3) GTC con polling (50s)
+        """Vender una posición abierta con 2 intentos GTC (sin FOK para evitar doble ejecución):
+        1) GTC al best bid con polling (50s)
+        2) GTC con slippage agresivo (-8%) con polling (50s)
         Solo retorna success=True si se verifica el fill real."""
         try:
             token_id = trade.get("token_id", "")
@@ -1936,7 +1972,7 @@ class AlertAutoTrader:
             if not token_id or not shares:
                 return {"success": False, "error": "Sin token_id o shares"}
 
-            from py_clob_client.clob_types import OrderArgs, OrderType
+            from py_clob_client.clob_types import OrderArgs
             loop = asyncio.get_running_loop()
 
             # ── Obtener best bid del orderbook ──
@@ -1956,35 +1992,28 @@ class AlertAutoTrader:
             except Exception as e:
                 print(f"[SELL] ⚠️ Orderbook fetch: {e}", flush=True)
 
-            # ── Intento 1: FOK al best bid ──
+            # ── Intento 1: GTC al best bid con polling ──
             price1 = max(round(best_bid, 2), 0.01)
-            print(f"[SELL] 🔄 Intento 1/3: FOK @ {price1:.2f} ({shares} shares)", flush=True)
-            result1 = await self._try_sell_fok(token_id, shares, price1, loop)
-            if result1["filled"]:
-                print(f"[SELL] ✅ FOK llenado @ {price1:.2f}", flush=True)
-                return {"success": True, "order_id": result1.get("order_id", "")}
-
-            # ── Intento 2: FOK con slippage agresivo (-5% del bid) ──
-            price2 = max(round(best_bid * 0.95, 2), 0.01)
-            print(f"[SELL] 🔄 Intento 2/3: FOK con slippage @ {price2:.2f}", flush=True)
-            result2 = await self._try_sell_fok(token_id, shares, price2, loop)
-            if result2["filled"]:
-                print(f"[SELL] ✅ FOK+slippage llenado @ {price2:.2f}", flush=True)
-                return {"success": True, "order_id": result2.get("order_id", "")}
-
-            # ── Intento 3: GTC con polling (reutilizar _post_and_poll_order) ──
-            price3 = max(round(best_bid * 0.92, 2), 0.01)
-            print(f"[SELL] 🔄 Intento 3/3: GTC @ {price3:.2f} con polling", flush=True)
-            order_args = OrderArgs(price=price3, size=shares, side="SELL", token_id=token_id)
-            success, order_id, error_msg = await self._post_and_poll_order(order_args, token_id, max_polls=10)
+            print(f"[SELL] 🔄 Intento 1/2: GTC @ {price1:.2f} ({shares} shares)", flush=True)
+            order_args1 = OrderArgs(price=price1, size=shares, side="SELL", token_id=token_id)
+            success, order_id, error_msg, _ = await self._post_and_poll_order(order_args1, token_id, max_polls=10)
             if success:
-                print(f"[SELL] ✅ GTC llenado @ {price3:.2f}", flush=True)
+                print(f"[SELL] ✅ GTC llenado @ {price1:.2f}", flush=True)
                 return {"success": True, "order_id": order_id}
 
-            # ── TODOS FALLARON — NO marcar como vendido ──
+            # ── Intento 2: GTC con slippage agresivo (-8%) ──
+            price2 = max(round(best_bid * 0.92, 2), 0.01)
+            print(f"[SELL] 🔄 Intento 2/2: GTC agresivo @ {price2:.2f}", flush=True)
+            order_args2 = OrderArgs(price=price2, size=shares, side="SELL", token_id=token_id)
+            success, order_id, error_msg, _ = await self._post_and_poll_order(order_args2, token_id, max_polls=10)
+            if success:
+                print(f"[SELL] ✅ GTC agresivo llenado @ {price2:.2f}", flush=True)
+                return {"success": True, "order_id": order_id}
+
+            # ── AMBOS FALLARON — NO marcar como vendido ──
             print(f"[SELL] ❌ TODOS los intentos fallaron para {token_id[:16]}... "
                   f"({shares} shares) — posición SIGUE ABIERTA", flush=True)
-            return {"success": False, "error": f"3 intentos de venta fallaron (bid={best_bid:.2f})"}
+            return {"success": False, "error": f"2 intentos de venta fallaron (bid={best_bid:.2f})"}
 
         except Exception as e:
             print(f"[SELL] ❌ Error crítico vendiendo posición: {e}", flush=True)
