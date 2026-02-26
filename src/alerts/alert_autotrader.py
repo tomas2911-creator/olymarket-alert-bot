@@ -931,12 +931,19 @@ class AlertAutoTrader:
                 order_info = await loop.run_in_executor(None, self._client.get_order, order_id)
                 oi = order_info if isinstance(order_info, dict) else (
                     order_info.__dict__ if hasattr(order_info, '__dict__') else {})
-                # associate_trades contiene los fills reales
+                # associate_trades contiene los fills reales — usar VWAP
                 trades = oi.get("associate_trades", oi.get("trades", []))
                 if trades and isinstance(trades, list):
-                    prices = [float(ft.get("price", 0)) for ft in trades if float(ft.get("price", 0)) > 0]
-                    if prices:
-                        fill_price = sum(prices) / len(prices)
+                    total_value = 0.0
+                    total_size = 0.0
+                    for ft in trades:
+                        fp = float(ft.get("price", 0))
+                        fs = float(ft.get("size", 0))
+                        if fp > 0 and fs > 0:
+                            total_value += fp * fs
+                            total_size += fs
+                    if total_size > 0:
+                        fill_price = total_value / total_size
                 # Fallback: price field del order info
                 if fill_price <= 0:
                     fp = float(oi.get("price", 0) or 0)
@@ -1536,13 +1543,9 @@ class AlertAutoTrader:
             # Insider vendiendo → no abrir nueva posición (no comprar el opuesto)
             return
 
-        # Filtro: max posiciones copy trade abiertas (global)
-        ct_max_pos = cfg.get("copy_trade_max_positions", 50)
+        # Info: posiciones copy trade abiertas (sin límite)
         ct_open = sum(1 for p in self._open_positions.values() if p.get("is_copy_trade"))
-        print(f"[CopyTrade] 📊 Posiciones copy abiertas: {ct_open}/{ct_max_pos} | total open: {len(self._open_positions)}", flush=True)
-        if ct_open >= ct_max_pos:
-            print(f"[CopyTrade] ⚠️ Max posiciones copy trade ({ct_max_pos}) alcanzado — BLOQUEANDO trade", flush=True)
-            return
+        print(f"[CopyTrade] 📊 Posiciones copy abiertas: {ct_open} | total open: {len(self._open_positions)}", flush=True)
 
         # Filtro: max trades diarios copy trade (global)
         ct_max_daily = cfg.get("copy_trade_max_daily", 10)
@@ -2109,10 +2112,10 @@ class AlertAutoTrader:
                                     winning_outcome = token.get("outcome", "")
                                     break
                         else:
-                            # Mercado no cerrado: resolución temprana si un token >= 0.97
+                            # Mercado no cerrado: resolución temprana si un token >= 0.995
                             for token in tokens:
                                 tp = float(token.get("price", 0))
-                                if tp >= 0.97:
+                                if tp >= 0.995:
                                     winning_token_id = token.get("token_id", "")
                                     winning_outcome = token.get("outcome", "")
                                     early_resolve = True
