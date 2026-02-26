@@ -158,6 +158,8 @@ class PolymarketAlertBot:
         try:
             self.alert_autotrader = AlertAutoTrader(self.db)
             await self.alert_autotrader.initialize()
+            # Copy scanner en loop independiente (cada 15s)
+            asyncio.create_task(self._run_copy_scanner())
         except Exception as e:
             print(f"Error iniciando Alert AutoTrader: {e}", flush=True)
             self.alert_autotrader = None
@@ -689,6 +691,23 @@ class PolymarketAlertBot:
         except Exception:
             pass
 
+    async def _run_copy_scanner(self):
+        """Loop independiente para copy trading: scan wallets + TP/SL + resolve.
+        Corre cada 15s para detectar trades rápido sin depender del polling principal."""
+        await asyncio.sleep(10)  # Esperar a que el bot inicie
+        print("[CopyScanner] Loop independiente iniciado (cada 15s)", flush=True)
+        cycle = 0
+        while self._running and self.alert_autotrader:
+            try:
+                cycle += 1
+                # Scan wallets cada ciclo (15s)
+                await self.alert_autotrader.scan_copy_wallets()
+                # TP/SL/Trailing + Resolve cada ciclo
+                await self.alert_autotrader.resolve_trades()
+            except Exception as e:
+                print(f"[CopyScanner] Error en loop: {e}", flush=True)
+            await asyncio.sleep(15)
+
     async def _run_complement_arb(self):
         """v10: Loop background para complement arb scanner."""
         await asyncio.sleep(15)
@@ -713,12 +732,7 @@ class PolymarketAlertBot:
                 await self.poll_cycle()
                 cycle += 1
 
-                # Cada ciclo: scanner dedicado de wallets copy trade
-                if self.alert_autotrader:
-                    try:
-                        await self.alert_autotrader.scan_copy_wallets()
-                    except Exception as e:
-                        print(f"[CopyScanner] Error: {e}", flush=True)
+                # Copy scanner ahora corre en su propio loop independiente (cada 15s)
 
                 # Cada 5 ciclos (~5 min): price impact check + confirmaciones pendientes
                 if cycle % 5 == 0:
@@ -843,12 +857,7 @@ class PolymarketAlertBot:
                 except Exception as e:
                     print(f"Error en crypto arb: {e}", flush=True)
 
-            # Resolver alert autotrades abiertos (mercados largos)
-            if self.alert_autotrader:
-                try:
-                    await self.alert_autotrader.resolve_trades()
-                except Exception as e:
-                    print(f"Error resolviendo alert autotrades: {e}", flush=True)
+            # resolve_trades ahora corre en el copy scanner loop independiente (cada 15s)
 
             await asyncio.sleep(config.POLL_INTERVAL)
 

@@ -1512,7 +1512,7 @@ class AlertAutoTrader:
                         print(f"[CopyScanner] Error escaneando {addr[:10]}: {e}", flush=True)
 
                     # Rate limiting: esperar entre wallets para no saturar API
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.3)
 
             print(f"[CopyScanner] Escaneadas {scanned} wallets → {new_trades} trades nuevos detectados | open_positions={len(self._open_positions)}", flush=True)
 
