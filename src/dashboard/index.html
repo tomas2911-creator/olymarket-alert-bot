@@ -3350,10 +3350,21 @@
                                 <p class="text-[9px] text-gray-600 mt-0.5">Pausar si pérdida diaria > X</p>
                             </div>
                         </div>
+                        <!-- Row 3: Max Entry Price -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div>
+                                <label class="text-[10px] text-gray-500 block mb-1">Max Precio Entrada (¢)</label>
+                                <div class="flex items-center gap-1">
+                                    <input type="number" id="ct-max-entry-price" class="w-full bg-gray-900/60 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-300" value="80" min="5" max="99" step="5" onchange="saveCopyTradeConfig()">
+                                    <span class="text-[10px] text-gray-500">¢</span>
+                                </div>
+                                <p class="text-[9px] text-gray-600 mt-0.5">No comprar si precio actual > X¢ (evita trades a 99¢ con 1% ROI)</p>
+                            </div>
+                        </div>
                         <!-- Recommended Strategy -->
                         <div class="bg-gray-900/40 rounded p-2 border border-gray-700/30">
-                            <p class="text-[9px] text-amber-400/80 font-medium mb-1">💡 Estrategia recomendada: Partial TP 30% + Trailing Stop 15%</p>
-                            <p class="text-[9px] text-gray-600">Asegura ganancia parcial temprano (50% de shares al +30%), y el resto corre hasta que caiga 15% desde su máximo.</p>
+                            <p class="text-[9px] text-amber-400/80 font-medium mb-1">💡 Estrategia recomendada: Partial TP 30% + Trailing Stop 15% + Max Entrada 80¢</p>
+                            <p class="text-[9px] text-gray-600">Asegura ganancia parcial temprano (50% de shares al +30%), y el resto corre hasta que caiga 15% desde su máximo. Max entrada 80¢ evita trades sin margen.</p>
                         </div>
                     </div>
                 </div>
@@ -7991,6 +8002,7 @@ async function loadCopyTradeConfig(){
         document.getElementById('ct-auto-exit').checked=!!cfg.auto_exit_on_sell;
         document.getElementById('ct-min-liquidity').value=cfg.min_market_liquidity||0;
         document.getElementById('ct-max-drawdown').value=cfg.max_drawdown||0;
+        document.getElementById('ct-max-entry-price').value=Math.round((cfg.ct_max_entry_price||0.80)*100);
         const on=!!cfg.copy_trade_enabled;
         const badge=document.getElementById('ct-status-badge');
         const hasWallet=cfg.wallet_connected||cfg.has_own_wallet;
@@ -8017,6 +8029,7 @@ async function saveCopyTradeConfig(){
         const autoExit=document.getElementById('ct-auto-exit').checked;
         const minLiquidity=document.getElementById('ct-min-liquidity').value;
         const maxDrawdown=document.getElementById('ct-max-drawdown').value;
+        const maxEntryPrice=document.getElementById('ct-max-entry-price').value;
         await fetch('/api/alert-trading/config',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+_authToken},
             body:JSON.stringify({
                 copy_trade_enabled:enabled,
@@ -8034,7 +8047,8 @@ async function saveCopyTradeConfig(){
                 partial_tp_fraction:parseFloat(partialFraction),
                 auto_exit_on_sell:autoExit,
                 min_market_liquidity:parseFloat(minLiquidity),
-                max_drawdown:parseFloat(maxDrawdown)
+                max_drawdown:parseFloat(maxDrawdown),
+                ct_max_entry_price:parseFloat(maxEntryPrice)/100
             })});
         const badge=document.getElementById('ct-status-badge');
         badge.textContent=enabled?'🟢 ACTIVO':'🔴 INACTIVO';

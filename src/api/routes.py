@@ -3544,7 +3544,7 @@ async def get_alert_trading_config(request: Request):
         # Copy Trade
         "aat_copy_trade_enabled", "aat_copy_trade_bet_size",
         "aat_copy_trade_max_positions", "aat_copy_trade_max_daily",
-        "aat_copy_trade_slippage",
+        "aat_copy_trade_slippage", "aat_ct_max_entry_price",
         "arb_complement_enabled", "arb_complement_min_edge",
         "arb_complement_scan_interval", "arb_complement_max_markets",
     ], user_id=uid)
@@ -3614,6 +3614,7 @@ async def get_alert_trading_config(request: Request):
         "copy_trade_max_positions": int(raw.get("aat_copy_trade_max_positions", 3)),
         "copy_trade_max_daily": int(raw.get("aat_copy_trade_max_daily", 10)),
         "copy_trade_slippage": float(raw.get("aat_copy_trade_slippage", 3)),
+        "ct_max_entry_price": float(raw.get("aat_ct_max_entry_price", 0.80)),
         "complement_arb_enabled": raw.get("arb_complement_enabled") == "true",
         "complement_arb_min_edge": float(raw.get("arb_complement_min_edge", 1)),
         "complement_arb_scan_interval": int(raw.get("arb_complement_scan_interval", 60)),
@@ -3751,6 +3752,8 @@ async def save_alert_trading_config(request: Request):
         data["aat_copy_trade_max_daily"] = str(body["copy_trade_max_daily"])
     if "copy_trade_slippage" in body:
         data["aat_copy_trade_slippage"] = str(body["copy_trade_slippage"])
+    if "ct_max_entry_price" in body:
+        data["aat_ct_max_entry_price"] = str(body["ct_max_entry_price"])
     # v10: Complement Arb
     if "complement_arb_enabled" in body:
         data["arb_complement_enabled"] = "true" if body["complement_arb_enabled"] else "false"

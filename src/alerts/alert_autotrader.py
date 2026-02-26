@@ -112,7 +112,7 @@ class AlertAutoTrader:
                 # Copy Trade automático
                 "aat_copy_trade_enabled", "aat_copy_trade_bet_size",
                 "aat_copy_trade_max_positions", "aat_copy_trade_max_daily",
-                "aat_copy_trade_slippage",
+                "aat_copy_trade_slippage", "aat_ct_max_entry_price",
                 # Slippage para cruzar el spread en órdenes BUY
                 "aat_buy_price_bump",
             ])
@@ -187,6 +187,7 @@ class AlertAutoTrader:
                 "copy_trade_max_positions": int(raw.get("aat_copy_trade_max_positions", 3)),
                 "copy_trade_max_daily": int(raw.get("aat_copy_trade_max_daily", 10)),
                 "copy_trade_slippage": float(raw.get("aat_copy_trade_slippage", 3.0)),
+                "ct_max_entry_price": float(raw.get("aat_ct_max_entry_price", 0.80)),
                 # Bump de precio para cruzar el spread (default 2 centavos)
                 "buy_price_bump": float(raw.get("aat_buy_price_bump", 0.02)),
             }
@@ -799,10 +800,14 @@ class AlertAutoTrader:
             if not price or price <= 0:
                 return {"success": False, "error": f"Precio inválido: {price}"}
 
-            # Filtro: odds actuales del mercado (no del insider)
-            # Copy trades bypasean este filtro — la decisión ya la tomó la wallet seguida
+            # Filtro: odds actuales del mercado
             cfg = self._config
-            if not trade_info.get("is_copy_trade"):
+            if trade_info.get("is_copy_trade"):
+                # Copy trades: filtrar por precio máximo de entrada (evitar comprar a 0.99)
+                ct_max_price = cfg.get("ct_max_entry_price", 0.80)
+                if ct_max_price > 0 and price > ct_max_price:
+                    return {"success": False, "error": f"Precio actual {price:.2f} > max copy entry {ct_max_price:.2f}"}
+            else:
                 if price > cfg["max_odds"] or price < cfg["min_odds"]:
                     return {"success": False, "error": f"Precio actual {price:.2f} fuera de rango [{cfg['min_odds']}, {cfg['max_odds']}]"}
 
