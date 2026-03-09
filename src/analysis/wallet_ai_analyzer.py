@@ -350,79 +350,104 @@ _TYPE_MAX_SCORE = {
 
 
 def _calculate_copiability(trader_type: str, patterns: dict, scan_data: dict) -> int:
-    """Calcular score de copiabilidad 1-10."""
-    score = 5  # Base
+    """Calcular score de copiabilidad 1-10.
 
-    # Tipo de trader — penalización fuerte para tipos no copiables
-    type_scores = {
-        "directional": 3,
-        "holder": 3,
-        "mixed": 1,
-        "live_bettor": -3,
-        "scalper": -4,
-        "spread_scalper": -5,
-        "bot": -6,
-        "lottery_bettor": -5,
+    Diseñado para ser DISCRIMINATORIO — la mayoría debería estar entre 3-6.
+    Solo wallets verdaderamente excelentes llegan a 8-10.
+    Distribución ideal: ~5% en 9-10, ~15% en 7-8, ~40% en 4-6, ~40% en 1-3.
+    """
+    score = 3  # Base baja — hay que ganarse un buen score
+
+    # ── Tipo de trader (bonus pequeño) ──
+    type_bonus = {
+        "directional": 1,
+        "holder": 1,
+        "mixed": 0,
+        "live_bettor": -1,
+        "scalper": -2,
+        "spread_scalper": -3,
+        "bot": -3,
+        "lottery_bettor": -3,
         "unknown": 0,
     }
-    score += type_scores.get(trader_type, 0)
+    score += type_bonus.get(trader_type, 0)
 
-    # Win rate del scan
-    wr = scan_data.get("win_rate", 0)
-    if wr >= 70:
+    # ── PnL total — FACTOR CRÍTICO (faltaba!) ──
+    total_pnl = float(scan_data.get("total_pnl", 0) or 0)
+    if total_pnl < -5000:
+        score -= 3
+    elif total_pnl < -500:
+        score -= 2
+    elif total_pnl < 0:
+        score -= 1
+    elif total_pnl >= 50000:
+        score += 3
+    elif total_pnl >= 10000:
         score += 2
-    elif wr >= 60:
+    elif total_pnl >= 1000:
         score += 1
 
-    # Profit factor
-    pf = scan_data.get("profit_factor", 0)
-    if pf >= 2.0:
+    # ── Win rate — umbrales estrictos ──
+    wr = float(scan_data.get("win_rate", 0) or 0)
+    if wr >= 85:
+        score += 2
+    elif wr >= 70:
         score += 1
-    elif pf >= 1.5:
-        score += 1
+    elif wr < 40:
+        score -= 3
+    elif wr < 50:
+        score -= 2
+    elif wr < 60:
+        score -= 1
 
-    # No opera ambos lados
+    # ── ROI — penalizar ROI negativo (faltaba!) ──
+    roi = float(scan_data.get("roi_pct", 0) or 0)
+    if roi > 500:
+        score += 2
+    elif roi > 100:
+        score += 1
+    elif roi < -100:
+        score -= 3
+    elif roi < -30:
+        score -= 2
+    elif roi < 0:
+        score -= 1
+
+    # ── Profit Factor ──
+    pf = float(scan_data.get("profit_factor", 0) or 0)
+    if pf >= 5.0:
+        score += 1
+    elif 0 < pf < 1.0:
+        score -= 1
+
+    # ── Patrones de trading ──
+
+    # No opera ambos lados del mismo mercado
     if not patterns.get("trades_both_sides", False):
         score += 1
 
-    # Mantiene hasta resolución
+    # Mantiene hasta resolución (bueno para copy trading)
     if patterns.get("holds_to_resolution", False):
         score += 1
 
-    # No fragmenta demasiado
-    if not patterns.get("fragments_orders", False):
-        score += 1
-    else:
+    # Fragmenta demasiado las órdenes
+    if patterns.get("fragments_orders", False):
         score -= 1
 
-    # Mercados únicos — CUIDADO: ratio muy alto + sizing bajo = scatter/lottery
-    umr = patterns.get("unique_markets_ratio", 0)
+    # Capital mediana muy baja = difícil de copiar
+    med_size = patterns.get("median_trade_size_usd", 0)
     avg_size = patterns.get("avg_trade_size_usd", 0)
-    if umr >= 0.6 and avg_size >= 20:
-        score += 1
-    elif umr < 0.3:
-        score -= 1
-
-    # Hold time muy bajo = scalping
-    hold = patterns.get("avg_hold_time_sec", 0)
-    if 0 < hold < 600:
-        score -= 1
-
-    # Capital muy bajo = no copiable (usar mediana para evitar outliers)
-    med_size = patterns.get("median_trade_size_usd", avg_size)
     cap = med_size if med_size > 0 else avg_size
     if 0 < cap < 5:
-        score -= 3
-    elif 0 < cap < 10:
         score -= 2
-    elif 0 < cap < 20:
+    elif 0 < cap < 15:
         score -= 1
 
     # Sizing inconsistente (max trade >> avg trade)
     if patterns.get("sizing_inconsistent", False):
-        score -= 2
+        score -= 1
 
-    # Scatter pattern (muchos mercados únicos con micro-apuestas)
+    # Scatter pattern (muchos mercados + micro-apuestas)
     if patterns.get("scatter_pattern", False):
         score -= 2
 
@@ -434,14 +459,19 @@ def _calculate_copiability(trader_type: str, patterns: dict, scan_data: dict) ->
     if patterns.get("spread_scalping", False):
         score -= 2
 
-    # ROI positivo
-    roi = scan_data.get("roi_pct", 0)
-    if roi > 50:
-        score += 1
-    elif roi < -20:
+    # Hold time muy bajo = scalping (difícil de copiar)
+    hold = patterns.get("avg_hold_time_sec", 0)
+    if 0 < hold < 600:
         score -= 1
 
-    # Aplicar techo máximo según tipo de trader
+    # Mercados únicos con buen sizing = diversificado
+    umr = patterns.get("unique_markets_ratio", 0)
+    if umr >= 0.6 and cap >= 20:
+        score += 1
+    elif umr < 0.3:
+        score -= 1
+
+    # ── Aplicar techo máximo según tipo de trader ──
     max_score = _TYPE_MAX_SCORE.get(trader_type, 6)
     score = min(score, max_score)
 
