@@ -177,10 +177,57 @@ def _classify_trader_type(trades: list[dict]) -> str:
     # Unique markets ratio
     umr = total_markets / max(total_trades, 1)
 
+    # ── Señales de BOT (acumular evidencia) ──
+    bot_signals = 0
+
+    # Signal 1: Alta frecuencia de trading
+    if trades_per_hour > 30:
+        bot_signals += 2
+    elif trades_per_hour > 10:
+        bot_signals += 1
+
+    # Signal 2: Trades separados por < 5 segundos (imposible para humanos)
+    if len(timestamps) > 1:
+        sub_5s = sum(1 for iv in intervals if 0 < iv < 5)
+        if sub_5s >= 5:
+            bot_signals += 3  # Evidencia fuertísima
+        elif sub_5s >= 2:
+            bot_signals += 2
+        elif sub_5s >= 1:
+            bot_signals += 1
+
+    # Signal 3: Fragmentación extrema (muchos mercados con >3 trades)
+    if fragment_count >= 5:
+        bot_signals += 2
+    elif fragment_count >= 3:
+        bot_signals += 1
+
+    # Signal 4: Múltiples líneas O/U del mismo evento (solo bots hacen esto)
+    event_markets = defaultdict(set)
+    for t in trades:
+        slug = t.get("eventSlug", "") or ""
+        cid = t.get("conditionId", "")
+        if slug and cid:
+            event_markets[slug].add(cid)
+    multi_line_events = sum(1 for cids in event_markets.values() if len(cids) >= 3)
+    if multi_line_events >= 3:
+        bot_signals += 3
+    elif multi_line_events >= 1:
+        bot_signals += 2
+
+    # Signal 5: Volumen total muy alto (>$5000 en 50 trades)
+    total_vol = sum(sizes) if sizes else 0
+    if total_vol > 10000:
+        bot_signals += 1
+
+    # Signal 6: Tamaños uniformes (bot clásico)
+    if size_cv < 0.3 and total_trades > 20:
+        bot_signals += 2
+
     # ── Clasificación (orden importa: de más específico a más genérico) ──
 
-    # BOT: alta frecuencia + tamaños uniformes
-    if trades_per_hour > 10 and size_cv < 0.3 and total_trades > 20:
+    # BOT: 3+ señales acumuladas
+    if bot_signals >= 3:
         return "bot"
 
     # SPREAD_SCALPER: compra/vende "No" (o cualquier outcome) a precios muy altos >0.93
@@ -305,6 +352,25 @@ def _analyze_patterns(trades: list[dict]) -> dict:
     spread_scalping = (avg_entry_price > 0.90 and avg_sell_price > 0.93
                        and len(sells) > 5)
 
+    # Bot signals: trades sub-5s, multi-line events, trades per hour
+    timestamps = sorted(_parse_ts(t.get("timestamp")) for t in trades if _parse_ts(t.get("timestamp")) > 0)
+    if len(timestamps) > 1:
+        t_intervals = [timestamps[i+1] - timestamps[i] for i in range(len(timestamps)-1)]
+        sub_5s_count = sum(1 for iv in t_intervals if 0 < iv < 5)
+        tph = 3600 / (sum(t_intervals) / len(t_intervals)) if t_intervals else 0
+    else:
+        sub_5s_count = 0
+        tph = 0
+
+    event_mkts = defaultdict(set)
+    for t in trades:
+        eslug = t.get("eventSlug", "") or ""
+        cid_e = t.get("conditionId", "")
+        if eslug and cid_e:
+            event_mkts[eslug].add(cid_e)
+    multi_line_events = sum(1 for cids in event_mkts.values() if len(cids) >= 3)
+    max_lines_per_event = max((len(cids) for cids in event_mkts.values()), default=0)
+
     return {
         "total_trades": total_trades,
         "total_markets": total_markets,
@@ -332,6 +398,10 @@ def _analyze_patterns(trades: list[dict]) -> dict:
         "sizing_inconsistent": sizing_inconsistent,
         "scatter_pattern": scatter_pattern,
         "spread_scalping": spread_scalping,
+        "sub_5s_intervals": sub_5s_count,
+        "trades_per_hour": round(tph, 1),
+        "multi_line_events": multi_line_events,
+        "max_lines_per_event": max_lines_per_event,
     }
 
 
@@ -527,7 +597,19 @@ def _generate_opinion(trader_type: str, patterns: dict, copiability: int,
 
     # Tipo no copiable
     if trader_type == "bot":
-        red_flags.append("🛑 BOT de alta frecuencia — timing imposible de replicar")
+        bot_details = []
+        sub5 = patterns.get("sub_5s_intervals", 0)
+        tph = patterns.get("trades_per_hour", 0)
+        mle = patterns.get("multi_line_events", 0)
+        mlpe = patterns.get("max_lines_per_event", 0)
+        if sub5 > 0:
+            bot_details.append(f"{sub5} trades en <5seg")
+        if tph > 10:
+            bot_details.append(f"{tph:.0f} trades/hora")
+        if mle > 0:
+            bot_details.append(f"{mle} eventos con {mlpe}+ líneas O/U")
+        detail_str = f" ({', '.join(bot_details)})" if bot_details else ""
+        red_flags.append(f"🛑 BOT automatizado{detail_str} — sus órdenes masivas mueven el precio, al copiar comprás DESPUÉS del movimiento con slippage de 20-90%")
     elif trader_type == "spread_scalper":
         avg_sp = patterns.get("avg_sell_price", 0)
         avg_ep = patterns.get("avg_entry_price", 0)
